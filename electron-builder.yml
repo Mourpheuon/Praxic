@@ -15,22 +15,24 @@ files:
   # Electron 主进程
   - electron/**/*
   - package.json
-  # Python 源码（运行时需要）
+  # Python 源码（asar:false，保持为可导入的普通文件）
   - siwu/**/*
   - pyproject.toml
   - config.toml.example
-  # 前端构建产物（由 vite build 生成）
-  - siwu/web/dist/**/*
-  # 技能包（.gitkeep 占位，实际技能在运行时填充）
+  # 技能包
   - siwu/skills/**/*
+  # 排除体积大户
+  - "!siwu/web/node_modules"
+  - "!siwu/web/node_modules/**"
+  - "!**/__pycache__"
+  - "!**/__pycache__/**"
+  - "!**/*.pyc"
+  - "!**/.git"
+  - "!**/.git/**"
+  - "!**/.gitkeep"
 
-# 以下不打包进 asar
+# 不打包进 asar——Python 需要导入普通文件
 asar: false
-
-# 额外资源（不压缩，保持原样）
-extraResources:
-  - from: siwu
-    to: siwu
 
 # macOS 配置
 mac:
@@ -39,7 +41,6 @@ mac:
     - dmg
     - zip
   icon: assets/icon.icns
-  # Python 和依赖需要用户自行安装
   extendInfo:
     LSEnvironment:
       SIWU_PROJECTS_DIR: "~/Documents/SiwuProjects"
@@ -53,8 +54,6 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  # 提示用户安装 Python
-  include: null
 
 # Linux 配置
 linux:
@@ -67,4 +66,3 @@ linux:
 # 发布配置（GitHub Releases）
 publish:
   provider: github
- 
