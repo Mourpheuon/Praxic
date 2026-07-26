@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -72,10 +73,12 @@ class ProjectSummary(BaseModel):
     name: str = "默认项目"
     conversation_count: int = 0
     last_active: str = ""
+    local_path: str = ""    # 关联的本地路径（新建项目为空）
 
 
 class CreateProjectRequest(BaseModel):
     name: str
+    folder_path: str = ""   # 非空时关联现有目录，为空时新建
 
 
 # ── Routes ───────────────────────────────────────────────────
@@ -186,13 +189,17 @@ async def list_projects():
             info = db_projects.get(pid, {})
             name_file = d / ".name"
             disp = name_file.read_text(encoding="utf-8").strip() if name_file.exists() else pid
+            local_path_file = d / ".localpath"
+            local_path = local_path_file.read_text(encoding="utf-8").strip() if local_path_file.exists() else ""
+            workspace = Path(local_path) if local_path else d / "workspace"
             projects.append(ProjectSummary(
                 id=pid,
-                workspace_dir=str((d / "workspace").resolve()),
+                workspace_dir=str(workspace.resolve()),
                 data_dir=str(settings.data_dir.resolve()),
                 name=disp,
                 conversation_count=info.get("conversation_count", 0),
                 last_active=info.get("last_active", "") or "",
+                local_path=local_path,
             ))
 
     # DB 有归属但目录尚未建立的项目
@@ -206,6 +213,7 @@ async def list_projects():
             name=pid,
             conversation_count=info.get("conversation_count", 0),
             last_active=info.get("last_active", "") or "",
+            local_path="",
         ))
 
     return {"projects": projects}
@@ -213,7 +221,7 @@ async def list_projects():
 
 @router.post("/projects")
 async def create_project(req: CreateProjectRequest):
-    """创建新项目：在 projects_dir 下建目录 + workspace，写 .name。返回 project_id。"""
+    """创建新项目：支持新建 workspace 或关联现有本地文件夹。返回 project_id。"""
     import re
     pid = re.sub(r"[^\w\-]", "_", req.name.strip().lower())
     if not pid:
@@ -221,6 +229,20 @@ async def create_project(req: CreateProjectRequest):
     project_dir = settings.projects_dir / pid
     if project_dir.exists():
         raise HTTPException(status_code=409, detail=f"项目 '{pid}' 已存在")
-    (project_dir / "workspace").mkdir(parents=True)
-    (project_dir / ".name").write_text(req.name.strip(), encoding="utf-8")
-    return {"project_id": pid, "name": req.name.strip()}
+
+    if req.folder_path.strip():
+        # 模式2：关联现有文件夹
+        local = Path(req.folder_path.strip()).resolve()
+        if not local.is_dir():
+            raise HTTPException(status_code=400, detail=f"目录不存在：{local}")
+        project_dir.mkdir(parents=True)
+        (project_dir / ".name").write_text(req.name.strip(), encoding="utf-8")
+        (project_dir / ".localpath").write_text(str(local), encoding="utf-8")
+        workspace = local
+    else:
+        # 模式1：新建 workspace 子目录
+        (project_dir / "workspace").mkdir(parents=True)
+        (project_dir / ".name").write_text(req.name.strip(), encoding="utf-8")
+        workspace = project_dir / "workspace"
+
+    return {"project_id": pid, "name": req.name.strip(), "workspace_dir": str(workspace)}

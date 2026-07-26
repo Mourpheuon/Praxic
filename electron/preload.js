@@ -36,13 +36,26 @@ contextBridge.exposeInMainWorld('siwu', {
     },
 
     /**
-     * 打开原生文件夹选择对话框
+     * 打开原生文件夹选择对话框（别名，与 pickFolder 等价）
      * @returns {Promise<string|null>} 选中文件夹的绝对路径，取消时返回 null
      */
     selectFolder: async () => {
         const { dialog } = require('electron');
         const result = await dialog.showOpenDialog({
             properties: ['openDirectory'],
+        });
+        return result.canceled ? null : result.filePaths[0];
+    },
+
+    /**
+     * 打开原生文件夹选择对话框
+     * @returns {Promise<string|null>} 选中文件夹的绝对路径，取消时返回 null
+     */
+    pickFolder: async () => {
+        const { dialog } = require('electron');
+        const result = await dialog.showOpenDialog({
+            properties: ['openDirectory'],
+            title: '选择项目文件夹',
         });
         return result.canceled ? null : result.filePaths[0];
     },
