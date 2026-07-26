@@ -301,6 +301,7 @@ class EpisodicMemory:
             params.append(project_id)
         sql = """
                 SELECT cm.conversation_id,
+                       cm.project_id,
                        COALESCE(MAX(e.created_at), cm.updated_at) AS last_active,
                        COUNT(e.id) AS question_count,
                        (SELECT question FROM episodes e2

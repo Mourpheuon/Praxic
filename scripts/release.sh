@@ -6,7 +6,7 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 TAG="v${VERSION}"
-echo "=== Siwu Agent Release ${TAG} ==="
+echo "=== Praxic Release ${TAG} ==="
 if [ -n "$(git status --porcelain)" ]; then
   echo "[ERROR] Working directory not clean. Commit or stash first."
   exit 1
@@ -21,4 +21,4 @@ echo "[3/4] Pushing..."
 git push origin main
 git push origin "${TAG}"
 echo "[4/4] Done! GitHub Actions will build Docker image and wheel."
-echo "Monitor: https://github.com/<user>/siwu-agent/actions"
+echo "Monitor: https://github.com/<user>/praxic/actions"

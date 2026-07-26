@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for 思悟.exe — 单文件打包"""
+"""PyInstaller spec for 即物穷理.exe — 单文件打包"""
 
 import sys
 from pathlib import Path
@@ -160,7 +160,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="思悟",
+    name="即物穷理",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -173,5 +173,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # 图标 —— 可后续添加 .ico 文件: str(_root / "assets" / "siwu.ico")
+    icon=None,  # 图标 —— 可后续添加 .ico 文件: str(_root / "assets" / "praxic.ico")
 )

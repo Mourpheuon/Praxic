@@ -1,5 +1,5 @@
 /**
- * 思悟 Agent —— Electron 主进程
+ * 即物穷理 Praxic —— Electron 主进程
  *
  * 职责：
  * 1. 启动 Python uvicorn 后端（子进程）
@@ -8,7 +8,7 @@
  * 4. 窗口关闭时清理 Python 进程
  */
 
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -59,12 +59,12 @@ function startPythonBackend(port) {
         });
 
         pythonProcess.on('error', (err) => {
-            console.error('[siwu] Python 启动失败:', err.message);
+            console.error('[praxic] Python 启动失败:', err.message);
             reject(new Error(`无法启动 Python: ${err.message}\n请确认已安装 Python 3.11+ 及依赖 (pip install -e ".[web]")`));
         });
 
         pythonProcess.on('exit', (code, signal) => {
-            console.log(`[siwu] Python 后端已退出 (code=${code}, signal=${signal})`);
+            console.log(`[praxic] Python 后端已退出 (code=${code}, signal=${signal})`);
             pythonProcess = null;
         });
 
@@ -85,7 +85,7 @@ function startPythonBackend(port) {
         const checkReady = () => {
             const req = http.get(`http://${HOST}:${port}/api/v1/setup/status`, (res) => {
                 // 任何响应（包括 200/404/500）都说明端口在监听
-                console.log(`[siwu] Python 后端就绪 (${Date.now() - startTime}ms)`);
+                console.log(`[praxic] Python 后端就绪 (${Date.now() - startTime}ms)`);
                 resolve();
             });
 
@@ -117,7 +117,7 @@ function startPythonBackend(port) {
 
 function stopPythonBackend() {
     if (pythonProcess) {
-        console.log('[siwu] 正在关闭 Python 后端...');
+        console.log('[praxic] 正在关闭 Python 后端...');
         if (process.platform === 'win32') {
             // Windows: 使用 taskkill 确保子进程树全部终止
             spawn('taskkill', ['/pid', String(pythonProcess.pid), '/f', '/t']);
@@ -142,7 +142,7 @@ function createWindow() {
         height: 800,
         minWidth: 800,
         minHeight: 600,
-        title: '思悟 Agent',
+        title: '即物穷理',
         icon: path.join(__dirname, '..', 'assets', 'icon.png'),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -173,14 +173,24 @@ function createWindow() {
 app.whenReady().then(async () => {
     try {
         actualPort = await findFreePort(8000);
-        console.log(`[siwu] Using port ${actualPort}`);
+        console.log(`[praxic] Using port ${actualPort}`);
         await startPythonBackend(actualPort);
         createWindow();
     } catch (err) {
-        console.error('[siwu] 启动失败:', err.message);
-        dialog.showErrorBox('思悟 Agent 启动失败', err.message);
+        console.error('[praxic] 启动失败:', err.message);
+        dialog.showErrorBox('即物穷理 启动失败', err.message);
         app.quit();
     }
+});
+
+// ── IPC 处理 ──────────────────────────────────────────────────────
+
+ipcMain.handle('pick-folder', async () => {
+    const result = await dialog.showOpenDialog({
+        properties: ['openDirectory'],
+        title: '选择项目文件夹',
+    });
+    return result.canceled ? null : result.filePaths[0];
 });
 
 app.on('window-all-closed', () => {

@@ -1,4 +1,4 @@
-# 思悟 Agent —— Electron 壳构建脚本 (Windows PowerShell)
+# 即物穷理 Praxic —— Electron 壳构建脚本 (Windows PowerShell)
 # 用法：.\scripts\build-electron.ps1
 # 前置条件：Node.js >= 18, npm
 
@@ -13,7 +13,7 @@ Set-Location $projectRoot
 
 $version = (Get-Content package.json | ConvertFrom-Json).version
 Write-Host "========================================" -ForegroundColor Green
-Write-Host "  思悟 Agent Electron 壳构建  v$version" -ForegroundColor Green
+Write-Host "  即物穷理 Electron 壳构建  v$version" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 

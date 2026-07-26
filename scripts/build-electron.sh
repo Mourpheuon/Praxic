@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 思悟 Agent —— Electron 壳构建脚本
+# 即物穷理 Praxic —— Electron 壳构建脚本
 # 在本地 Windows/macOS/Linux 上运行，构建可分发的 Electron 应用包。
 #
 # 前置条件：
@@ -24,7 +24,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  思悟 Agent Electron 壳构建${NC}"
+echo -e "${GREEN}  即物穷理 Electron 壳构建${NC}"
 echo -e "${GREEN}  version: $(node -e "console.log(require('./package.json').version)")${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""

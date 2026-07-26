@@ -1,10 +1,10 @@
-# Siwu Agent -- Docker Image
-# Build:  docker build -t siwu-agent .
-# Run:    docker run -p 8000:8000 -v $(pwd)/data:/app/data -v $(pwd)/config.toml:/app/config.toml siwu-agent
+# Praxic -- Docker Image
+# Build:  docker build -t praxic .
+# Run:    docker run -p 8000:8000 -v $(pwd)/data:/app/data -v $(pwd)/config.toml:/app/config.toml praxic
 
 FROM python:3.12-slim
 
-LABEL org.opencontainers.image.title="Siwu Agent"
+LABEL org.opencontainers.image.title="Praxic"
 LABEL org.opencontainers.image.description="AI agent with Maoist dialectical-materialist cognitive core"
 LABEL org.opencontainers.image.version="0.0.3"
 
@@ -36,8 +36,8 @@ COPY siwu/ ./siwu/
 # prompts/ 目录由应用启动时自动创建（siwu/config.py _resolve_prompts_dir），无需 COPY
 
 # Create non-root user
-RUN useradd --create-home --shell /bin/bash siwu && chown -R siwu:siwu /app
-USER siwu
+RUN useradd --create-home --shell /bin/bash praxic && chown -R praxic:praxic /app
+USER praxic
 
 # Create volume mount points
 RUN mkdir -p /app/data /app/workspace /app/logs

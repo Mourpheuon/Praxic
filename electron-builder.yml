@@ -1,9 +1,9 @@
-# 思悟 Agent —— Electron Builder 打包配置
+# 即物穷理 Praxic —— Electron Builder 打包配置
 # 用法：npm run electron:build
 # 参考：https://www.electron.build/configuration
 
-appId: com.siwu.agent
-productName: "思悟 Agent"
+appId: com.praxic.agent
+productName: "即物穷理"
 copyright: "Copyright © 2026 Mourpheuon"
 
 # 打包目录：包含 Electron 主进程 + Python 源码

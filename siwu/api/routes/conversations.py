@@ -49,6 +49,7 @@ class ConversationSummary(BaseModel):
     question_count: int = 0
     last_question: str = ""
     last_active: str = ""
+    project_id: str = ""
 
 
 class ConversationDetail(BaseModel):
@@ -100,6 +101,7 @@ async def list_conversations(project_id: Optional[str] = None):
             question_count=row.get("question_count", 0),
             last_question=row.get("last_question", "") or "",
             last_active=row.get("last_active", ""),
+            project_id=row.get("project_id", ""),
         ))
     return {"conversations": conversations}
 

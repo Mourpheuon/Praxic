@@ -1,5 +1,5 @@
 /**
- * 思悟 Agent —— Electron Preload 脚本
+ * 即物穷理 Praxic —— Electron Preload 脚本
  *
  * 通过 contextBridge 安全地向渲染进程暴露精选的 Node.js API。
  * 当前版本（v0.0.1）保留为最小接口，后续可按需扩展：

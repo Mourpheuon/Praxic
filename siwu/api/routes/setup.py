@@ -1,5 +1,5 @@
 """
-思悟 Agent —— 设置 / 引导路由
+即物穷理 Praxic —— 设置 / 引导路由
 POST /api/v1/setup        保存 LLM 配置到 config.toml + .env
 GET  /api/v1/setup/status 检查是否已完成配置
 GET  /api/v1/settings     读取 UI 设置（字体、角色、知识）
@@ -345,7 +345,7 @@ async def save_setup(req: SetupRequest):
     try:
         env_path = Path.cwd() / ".env"
         env_lines = [
-            f"# 思悟 Agent —— API 配置（由 Web UI 自动生成）",
+            f"# 即物穷理 —— API 配置（由 Web UI 自动生成）",
             f"SIWU_LLM_PROVIDER={'anthropic' if is_anthropic else 'openai_compatible'}",
         ]
         if is_anthropic:
@@ -650,7 +650,7 @@ async def _gh_release_create(version: str, dist_dir: Path, *, gh: str) -> str:
 
     body = f"自动构建发布 {tag}\n\n构建时间：{dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     args = [gh, "release", "create", tag,
-            "--title", f"思悟 v{version}", "--notes", body]
+            "--title", f"即物穷理 v{version}", "--notes", body]
     if version.startswith("0.0"):
         args.append("--prerelease")
     create = await _run_cmd(*args, cwd=cwd,

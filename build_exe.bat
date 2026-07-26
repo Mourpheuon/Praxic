@@ -1,11 +1,11 @@
 @echo off
 REM ============================================================
-REM  SiWu Agent - Build exe
+REM  Praxic - Build exe
 REM ============================================================
 
 echo.
 echo  ==================================================
-echo   SiWu Agent - Build Tool
+echo   Praxic - Build Tool
 echo  ==================================================
 echo.
 
@@ -30,7 +30,7 @@ if errorlevel 1 (
     echo  [WARN] Some dependencies may have failed, continuing...
 )
 
-echo  [3/3] Building SiWu.exe...
+echo  [3/3] Building 即物穷理.exe...
 echo.
 pyinstaller siwu.spec --noconfirm --clean
 
@@ -44,7 +44,7 @@ if errorlevel 1 (
 echo.
 echo  ==================================================
 echo   Build complete!
-echo   Output: dist\SiWu.exe
+echo   Output: dist\即物穷理.exe
 echo   Double-click to launch the web interface.
 echo  ==================================================
 echo.

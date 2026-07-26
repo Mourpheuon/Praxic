@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "siwu-agent"
 version = "0.1.1"
-description = "思悟 Agent —— 以毛泽东思想方法论为认知内核的 AI 智能体"
+description = "即物穷理 Praxic —— 以辩证唯物主义方法论为认知内核的 AI 智能体"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
@@ -49,7 +49,7 @@ all = [
 ]
 
 [project.scripts]
-siwu = "siwu.cli:app"
+praxic = "siwu.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["siwu"]

@@ -1,4 +1,4 @@
-"""思悟 Agent -- 核心数据模型（6阶段认知循环）"""
+"""即物穷理 Praxic -- 核心数据模型（6阶段认知循环）"""
 from __future__ import annotations
 from dataclasses import field as dc_field
 from datetime import datetime

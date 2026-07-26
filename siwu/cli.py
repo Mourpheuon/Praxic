@@ -1,10 +1,10 @@
 """
-思悟 Agent —— 命令行接口
+即物穷理 Praxic —— 命令行接口
 用法：
-  siwu run "你的问题"
-  siwu run "你的问题" --mode deep --context "背景"
-  siwu serve              # 启动 FastAPI
-  siwu config show        # 显示当前配置
+  praxic run "你的问题"
+  praxic run "你的问题" --mode deep --context "背景"
+  praxic serve              # 启动 FastAPI
+  praxic config show        # 显示当前配置
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 app = typer.Typer(
-    name="siwu",
-    help="思悟 Agent —— 以毛泽东思想方法论为认知内核的 AI 智能体",
+    name="praxic",
+    help="即物穷理 Praxic —— 以辩证唯物主义方法论为认知内核的 AI 智能体",
     add_completion=False,
 )
 console = Console()
@@ -83,7 +83,7 @@ def cmd_run(
 
     console.print(Panel(
         f"[bold cyan]{question}[/bold cyan]",
-        title="[bold]思悟 Agent 认知循环[/bold]",
+        title="[bold]即物穷理 认知循环[/bold]",
         subtitle=f"模式：{mode} | 对话：{cid}",
     ))
     console.print()
@@ -136,7 +136,7 @@ def cmd_serve(
 ):
     """启动 FastAPI REST API 服务"""
     from .api.server import run_server
-    console.print(f"[bold]思悟 Agent API[/bold] 启动于 http://{host}:{port}")
+    console.print(f"[bold]即物穷理 API[/bold] 启动于 http://{host}:{port}")
     console.print(f"  文档：http://{host}:{port}/docs")
     run_server(host=host, port=port, reload=reload)
 
@@ -145,7 +145,7 @@ def cmd_serve(
 def config_show():
     """显示当前配置"""
     from .config import settings
-    table = Table(title="思悟 Agent 配置", show_header=True)
+    table = Table(title="即物穷理 配置", show_header=True)
     table.add_column("配置项", style="cyan")
     table.add_column("值", style="white")
     table.add_row("default_model", settings.default_model)

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>思悟 Agent</title>
+  <title>即物穷理 Praxic</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     MathJax = {
@@ -436,14 +436,15 @@
     // ── Sidebar（Codex 式单栏：项目选择 + 会话列表 合一）─────────
     function Sidebar({ projects, activeProjectId, onSelectProject, onNewProject,
                        conversations, activeId, onSelect, onDelete, onNewSession,
-                       workspaceDir, animTitleId, runningConvs }) {
+                       workspaceDir, animTitleId, runningConvs,
+                       sessionSort, onSortChange }) {
       const [projOpen, setProjOpen] = useState(false);
       const activeProject = (projects || []).find(p => p.id === activeProjectId) || (projects || [])[0];
       return (
         <aside className="w-60 bg-linen/60 flex flex-col flex-shrink-0 border-r border-clay/30">
           {/* 品牌 + 新建对话 */}
           <div className="px-3 py-3 flex items-center justify-between border-b border-clay/20">
-            <span className="text-sm font-semibold text-ink font-display">🧭 思悟</span>
+            <span className="text-sm font-semibold text-ink font-display">🧭 即物穷理</span>
             <button onClick={onNewSession} title="新建对话"
               className="w-6 h-6 rounded-lg bg-seal text-white text-sm flex items-center justify-center hover:bg-seal-light transition-colors">＋</button>
           </div>
@@ -472,29 +473,45 @@
             )}
           </div>
           {/* 会话列表 */}
-          <div className="px-3 pt-2 pb-1">
+          <div className="px-2 pt-2 pb-1 flex items-center justify-between">
             <span className="text-[10px] font-semibold text-warmgray uppercase tracking-wide">对话</span>
+            <select value={sessionSort} onChange={e => onSortChange(e.target.value)}
+              className="text-[10px] text-warmgray bg-transparent border-none outline-none cursor-pointer hover:text-ink">
+              <option value="recent">最近优先</option>
+              <option value="oldest">最早优先</option>
+              <option value="by_project">按项目分组</option>
+            </select>
           </div>
           <div className="flex-1 overflow-y-auto scrollbar-thin px-1 space-y-0.5">
             {(!conversations || !conversations.length) && (
               <div className="p-3 text-xs text-warmgray text-center mt-6">暂无对话</div>
             )}
-            {[...(conversations || [])].reverse().map(c => (
-              <button key={c.id} onClick={() => onSelect(c.id)}
-                className={'w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors group ' + (c.id === activeId ? 'bg-paper border border-clay/30 shadow-sm' : 'hover:bg-dust/50')}>
-                <div className="flex items-center gap-1.5">
-                  {runningConvs && runningConvs.has(c.id) && (
-                    <span className="w-2.5 h-2.5 rounded-full border-2 border-seal animate-pulse flex-shrink-0" title="后台运行中" />
-                  )}
-                  <span className={'font-medium text-ink truncate ' + (c.id === animTitleId ? 'title-fade-in' : '')}>{c.name || c.id}</span>
-                </div>
-                <div className="text-[10px] text-warmgray mt-0.5 flex justify-between items-center">
-                  <span>{c.question_count || 0} 轮</span>
-                  <span onClick={e => { e.stopPropagation(); onDelete(c.id); }}
-                    className="opacity-0 group-hover:opacity-100 text-clay hover:text-seal transition-opacity">×</span>
-                </div>
-              </button>
-            ))}
+            {(conversations || []).map((c, idx) => {
+              if (c.type === 'group_header') {
+                return (
+                  <div key={'hdr-' + c.pid + '-' + idx}
+                    className="px-2 pt-3 pb-1 text-[10px] font-semibold text-warmgray/60 uppercase tracking-wide">
+                    {c.label}
+                  </div>
+                );
+              }
+              return (
+                <button key={c.id} onClick={() => onSelect(c.id)}
+                  className={'w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors group ' + (c.id === activeId ? 'bg-paper border border-clay/30 shadow-sm' : 'hover:bg-dust/50')}>
+                  <div className="flex items-center gap-1.5">
+                    {runningConvs && runningConvs.has(c.id) && (
+                      <span className="w-2.5 h-2.5 rounded-full border-2 border-seal animate-pulse flex-shrink-0" title="后台运行中" />
+                    )}
+                    <span className={'font-medium text-ink truncate ' + (c.id === animTitleId ? 'title-fade-in' : '')}>{c.name || c.id}</span>
+                  </div>
+                  <div className="text-[10px] text-warmgray mt-0.5 flex justify-between items-center">
+                    <span>{c.question_count || 0} 轮</span>
+                    <span onClick={e => { e.stopPropagation(); onDelete(c.id); }}
+                      className="opacity-0 group-hover:opacity-100 text-clay hover:text-seal transition-opacity">×</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           {/* 工作空间 */}
           {workspaceDir && (
@@ -609,7 +626,7 @@
           )}
           <div className="flex items-end gap-2">
             <textarea value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder={awaitingClarification ? "回答思悟的问题…（Enter 发送，留空＝跳过）" : running ? "输入引导指令…（Enter 发送）" : "提出一个问题…（Enter 发送，Shift+Enter 换行）"}
+              placeholder={awaitingClarification ? "回答即物穷理的问题…（Enter 发送，留空＝跳过）" : running ? "输入引导指令…（Enter 发送）" : "提出一个问题…（Enter 发送，Shift+Enter 换行）"}
               rows={1}
               className="flex-1 resize-none bg-paper border border-linen/60 rounded-lg px-4 py-2.5 text-sm text-ink placeholder:text-clay focus:outline-none focus:border-seal/50 focus:ring-1 focus:ring-seal/20" />
             {awaitingClarification ? (
@@ -1739,6 +1756,12 @@
       const [projects, setProjects] = useState([]);
       const [activeProjectId, setActiveProjectId] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEY))?.activeProjectId || ''; } catch { return ''; } });
       const [showNewProject, setShowNewProject] = useState(false);
+      const [sessionSort, setSessionSort] = useState(() => {
+        try { return localStorage.getItem('siwu_session_sort') || 'recent'; } catch { return 'recent'; }
+      });
+      useEffect(() => {
+        try { localStorage.setItem('siwu_session_sort', sessionSort); } catch {}
+      }, [sessionSort]);
 
       // ── File upload (lifted to App for page-wide drag-and-drop) ──
       const [files, setFiles] = useState([]);
@@ -1793,6 +1816,29 @@
       const { list, setList: setListDirect, refresh, create, rename, remove, loadTurns } = useConversations();
       const { runningConvs, start, stop, attach } = useSSE();
       const running = runningConvs.has(activeConvId);
+      // ── 排序/分组后的会话列表 ──
+      const sortedConversations = useMemo(() => {
+        const convs = [...(list || [])];
+        if (sessionSort === 'by_project') {
+          const groups = {};
+          for (const c of convs) {
+            const pid = c.project_id || '';
+            if (!groups[pid]) groups[pid] = [];
+            groups[pid].push(c);
+          }
+          const result = [];
+          for (const [pid, items] of Object.entries(groups)) {
+            const proj = (projects || []).find(p => p.id === pid);
+            result.push({ type: 'group_header', pid, label: proj?.name || (pid ? '未知项目' : '默认项目') });
+            for (const c of items) result.push({ ...c, type: 'conv' });
+          }
+          return result;
+        } else if (sessionSort === 'oldest') {
+          return convs.reverse();
+        }
+        // recent: API 已按 last_active DESC 返回，直接用
+        return convs;
+      }, [list, sessionSort, projects]);
       const stopCurrent = useCallback(async () => {
         const cid = activeConvRef.current;
         if (!cid) return;
@@ -2270,8 +2316,9 @@
       return (
         <div className="flex h-screen overflow-hidden" onDragOver={handleDragOver} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDrop={handleDrop}>
           <Sidebar projects={projects} activeProjectId={activeProjectId} onSelectProject={handleSelectProject} onNewProject={handleNewProject}
-                   conversations={list} activeId={activeConvId} onSelect={handleSelectSession} onDelete={handleDeleteSession} onNewSession={handleNewSession}
-                   workspaceDir={workspaceDir} animTitleId={animTitleId} runningConvs={runningConvs} />
+                   conversations={sortedConversations} activeId={activeConvId} onSelect={handleSelectSession} onDelete={handleDeleteSession} onNewSession={handleNewSession}
+                   workspaceDir={workspaceDir} animTitleId={animTitleId} runningConvs={runningConvs}
+                   sessionSort={sessionSort} onSortChange={setSessionSort} />
           <div className="w-px bg-clay/30 flex-shrink-0" />
           <div className="flex-1 flex flex-col min-w-0">
             {/* Chat header */}

@@ -1,8 +1,8 @@
-# 思悟 Agent（Siwu Agent）
+# 即物穷理（Praxic）
 
 > **以辩证唯物主义方法论为认知内核的 AI 智能体**
 >
-> 「思」以析理，「悟」以通变。六阶段认知循环——调查、矛盾、理性、决策、实践、反思。
+> "即物"贴近事物，"穷理"穷尽条理。Praxic = Praxis + Dialectic——在实践中穿过矛盾，淬出真知。
 
 ---
 
@@ -88,7 +88,7 @@ python -m siwu
 
 ```powershell
 .\scripts\build-electron.ps1
-# 构建后运行 dist-electron/win-unpacked/思悟 Agent.exe
+# 构建后运行 dist-electron/win-unpacked/即物穷理.exe
 ```
 
 **Python SDK：**
@@ -143,7 +143,7 @@ asyncio.run(main())
 ## 项目结构
 
 ```
-siwu-agent/
+praxic/
 ├── siwu/                          # 核心包
 │   ├── core/                      # 认知引擎
 │   │   ├── cognitive_loop.py      # 认知循环控制器（主入口）
@@ -266,14 +266,14 @@ cd D:\Files\2026\07\Siwu
 npm install
 cd siwu/web; npx vite build; cd ..\..
 npx electron-builder
-# 产物：dist-electron/思悟 Agent Setup *.exe
+# 产物：dist-electron/即物穷理 Setup *.exe
 ```
 
 ### Docker 镜像
 
 ```bash
-docker build -t siwu-agent .
-docker run -p 8000:8000 -v $(pwd)/data:/app/data siwu-agent
+docker build -t praxic .
+docker run -p 8000:8000 -v $(pwd)/data:/app/data praxic
 ```
 
 ### 版本发布

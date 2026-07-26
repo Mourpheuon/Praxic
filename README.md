@@ -1,8 +1,8 @@
-# Siwu Agent
+# Praxic
 
 > **An AI agent with dialectical-materialist methodology as its cognitive core**
 >
-> "Si" (思) for analysis, "Wu" (悟) for insight. A six-phase cognitive loop — Investigation → Contradiction → Rational → Decision → Practice → Reflection.
+> "Jiwu" (即物) to engage with things, "Qiongli" (穷理) to exhaust their principles. Praxic = Praxis + Dialectic — knowledge forged through contradiction in practice.
 
 ---
 
@@ -88,7 +88,7 @@ python -m siwu
 
 ```powershell
 .\scripts\build-electron.ps1
-# Run dist-electron/win-unpacked/思悟 Agent.exe after build
+# Run dist-electron/win-unpacked/Praxic.exe after build
 ```
 
 **Python SDK:**
@@ -143,7 +143,7 @@ asyncio.run(main())
 ## Project Structure
 
 ```
-siwu-agent/
+praxic/
 ├── siwu/                          # Core package
 │   ├── core/                      # Cognitive engine
 │   │   ├── cognitive_loop.py      # Cognitive loop controller (main entry)
@@ -265,14 +265,14 @@ The Web UI Settings dialog supports:
 npm install
 cd siwu/web; npx vite build; cd ..\..
 npx electron-builder
-# Output: dist-electron/思悟 Agent Setup *.exe
+# Output: dist-electron/Praxic Setup *.exe
 ```
 
 ### Docker Image
 
 ```bash
-docker build -t siwu-agent .
-docker run -p 8000:8000 -v $(pwd)/data:/app/data siwu-agent
+docker build -t praxic .
+docker run -p 8000:8000 -v $(pwd)/data:/app/data praxic
 ```
 
 ### Version Release

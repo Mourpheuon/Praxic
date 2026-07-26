@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-思悟技能批量导入 CLI
+即物穷理技能批量导入 CLI
 
 把 siwu/skills/ 下的外部 Claude 格式技能适配并写入 registry.json。
 规则由 siwu/skills/IMPORT_RULES.md 驱动。
@@ -65,7 +65,7 @@ def _print_report(report: dict, dry_run: bool) -> None:
 
 
 async def _main() -> int:
-    ap = argparse.ArgumentParser(description="思悟技能批量导入")
+    ap = argparse.ArgumentParser(description="即物穷理技能批量导入")
     ap.add_argument("--dry-run", action="store_true", help="只预览，不写入 registry")
     ap.add_argument("--no-llm", action="store_true", help="仅确定性映射，不调用 LLM")
     ap.add_argument("--limit", type=int, default=None, help="只处理前 N 个技能")

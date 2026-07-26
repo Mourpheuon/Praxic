@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 思悟 Agent —— Git Push 脚本
+# 即物穷理 Praxic —— Git Push 脚本
 # 从项目根目录的 .github-token 文件读取 token 并推送。
 # 用法：bash scripts/push.sh [branch]
 #

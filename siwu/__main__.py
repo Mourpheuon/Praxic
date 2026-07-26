@@ -1,4 +1,4 @@
-"""思悟 —— 认知循环智能体（`python -m siwu` / PyInstaller 入口）"""
+"""即物穷理 —— 认知循环智能体（`python -m siwu` / PyInstaller 入口）"""
 from __future__ import annotations
 import sys, subprocess, threading, webbrowser, signal, os, socket, argparse
 from pathlib import Path
@@ -26,7 +26,7 @@ except ImportError:
     if not os.path.exists(_venv):
         _venv = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".venv", "bin", "python3"))
     if os.path.exists(_venv) and _venv != sys.executable:
-        print("[思悟] 切换虚拟环境:", _venv)
+        print("[即物穷理] 切换虚拟环境:", _venv)
         os.execv(_venv, [_venv] + sys.argv)
     for m in ["uvicorn", "fastapi", "pydantic", "structlog"]:
         try:
@@ -44,12 +44,12 @@ def _ensure_config():
         if os.path.exists(bundled):
             import shutil
             shutil.copy(bundled, cfg)
-            print("[思悟] 已复制配置:", cfg)
-            print("[思悟] 请编辑此文件填入你的 API Key 后重新启动")
+            print("[即物穷理] 已复制配置:", cfg)
+            print("[即物穷理] 请编辑此文件填入你的 API Key 后重新启动")
             return
     with open(cfg, "w", encoding="utf-8") as f:
         f.write('[llm]\nprovider="openai_compatible"\nbase_url="https://api.deepseek.com"\napi_key=""\nmodel="deepseek-v4-pro"\n')
-    print("[思悟] 已创建默认配置:", cfg)
+    print("[即物穷理] 已创建默认配置:", cfg)
 
 
 def _port_is_free(host: str, port: int) -> bool:
@@ -72,12 +72,12 @@ def _kill_port(port: int):
             if (f":{port}") in line and "LISTENING" in line:
                 pid = line.strip().split()[-1]
                 if pid and pid != "0":
-                    print(f"[思悟] 关闭端口 {port} 旧进程 PID={pid}")
+                    print(f"[即物穷理] 关闭端口 {port} 旧进程 PID={pid}")
                     subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True, timeout=10)
                     import time; time.sleep(0.5)
                     break
     except Exception as e:
-        print(f"[思悟] 关闭旧进程出错: {e}")
+        print(f"[即物穷理] 关闭旧进程出错: {e}")
 
 
 def _find_free_port(host: str, start: int) -> int:
@@ -85,14 +85,14 @@ def _find_free_port(host: str, start: int) -> int:
     if _port_is_free(host, start):
         return start
 
-    print(f"[思悟] 端口 {start} 已被占用，尝试切换…")
+    print(f"[即物穷理] 端口 {start} 已被占用，尝试切换…")
     for offset in range(1, 11):
         if _port_is_free(host, start + offset):
-            print(f"[思悟] 自动切换至端口 {start + offset}")
+            print(f"[即物穷理] 自动切换至端口 {start + offset}")
             return start + offset
 
     # All ports start..start+10 busy — kill the old one on the original port and retry
-    print(f"[思悟] 端口 {start}-{start+10} 均被占用，强制关闭 {start}…")
+    print(f"[即物穷理] 端口 {start}-{start+10} 均被占用，强制关闭 {start}…")
     _kill_port(start)
     import time; time.sleep(1)
     if _port_is_free(host, start):
@@ -103,13 +103,13 @@ def _find_free_port(host: str, start: int) -> int:
     while True:
         p = randint(1024, 65535)
         if _port_is_free(host, p):
-            print(f"[思悟] 随机分配端口 {p}")
+            print(f"[即物穷理] 随机分配端口 {p}")
             return p
 
 
 def _print_help(url: str):
     print()
-    print(f"  思悟已启动 -> {url}")
+    print(f"  即物穷理已启动 -> {url}")
     print(f"  按 R + Enter 重启服务")
     print(f"  按 Q + Enter 或 Ctrl+C 停止服务")
     print()
@@ -174,7 +174,7 @@ def run_forever(host: str, port: int, open_browser: bool = True):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="思悟")
+    parser = argparse.ArgumentParser(description="即物穷理 Praxic")
     parser.add_argument("--no-browser", action="store_true",
                         help="不自动打开浏览器")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT,

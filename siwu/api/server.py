@@ -1,5 +1,5 @@
 """
-思悟 Agent —— FastAPI 主服务入口
+即物穷理 Praxic —— FastAPI 主服务入口
 """
 
 from __future__ import annotations
@@ -44,9 +44,9 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="思悟 Agent API",
+        title="即物穷理 API",
         description=(
-            "以毛泽东思想方法论为认知内核的 AI 智能体。"
+            "以辩证唯物主义方法论为认知内核的 AI 智能体。"
             "认知循环：调查研究 → 矛盾分析 → 理性认识 → 决策输出 → 实践反思"
         ),
         version="0.0.3",
@@ -117,7 +117,7 @@ app = create_app()
 def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False, open_browser: bool = False):
     import webbrowser, threading
     url = f"http://localhost:{port}"
-    print(f"\n  思悟已启动 -> {url}")
+    print(f"\n  即物穷理已启动 -> {url}")
     print(f"  按 Ctrl+C 停止服务\n")
     if open_browser:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()
