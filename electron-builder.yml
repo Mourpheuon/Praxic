@@ -15,15 +15,28 @@ files:
   # Electron 主进程
   - electron/**/*
   - package.json
-  # Python 源码（asar:false，保持为可导入的普通文件）
+  # Python 源码
   - siwu/**/*
   - pyproject.toml
   - config.toml.example
   # 技能包
   - siwu/skills/**/*
-  # 排除体积大户
+  # ── 运行时不需要的内容 ──
+  # siwu/web/ 下只保留 index.html，其余全是开发工具
   - "!siwu/web/node_modules"
   - "!siwu/web/node_modules/**"
+  - "!siwu/web/src"
+  - "!siwu/web/src/**"
+  - "!siwu/web/dist"
+  - "!siwu/web/dist/**"
+  - "!siwu/web/public"
+  - "!siwu/web/public/**"
+  - "!siwu/web/package.json"
+  - "!siwu/web/package-lock.json"
+  - "!siwu/web/*.ts"
+  - "!siwu/web/*.js"
+  - "!siwu/web/*.config.*"
+  # Python 编译缓存
   - "!**/__pycache__"
   - "!**/__pycache__/**"
   - "!**/*.pyc"
