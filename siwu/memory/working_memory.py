@@ -38,6 +38,11 @@ class WorkingMemory:
 
     def get_context_for_phase(self, phase):
         parts = []
+        # 当前日期时间（全阶段无条件可见）——"今天几号""现在几点"直接据此回答，
+        # 不要当作需要调查搜索的信息缺口。
+        cur_dt = self._store.get("_current_datetime", "")
+        if cur_dt:
+            parts.append("## 当前时间\n%s（智能体运行环境的本地时间）" % cur_dt)
         # 问题预处理——注入扩展后的问题理解
         eq = self._store.get("expanded_question", "")
         qi = self._store.get("question_intent", "")

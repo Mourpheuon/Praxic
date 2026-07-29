@@ -487,7 +487,7 @@ async def check_version():
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             r = await client.get(
-                "https://api.github.com/repos/Mourpheuon/Siwu-agent/releases/latest",
+                "https://api.github.com/repos/Mourpheuon/Praxic/releases/latest",
                 headers={"Accept": "application/vnd.github+json", "User-Agent": "Siwu-Agent"},
             )
             if r.status_code == 200:
@@ -676,7 +676,7 @@ async def _gh_release_create(version: str, dist_dir: Path, *, gh: str) -> str:
         if up.returncode != 0:
             log.warning("gh_upload_failed | %s", (serr or sout).decode("gbk" if sys.platform == "win32" else "utf-8", errors="replace")[:200])
 
-    release_url = f"https://github.com/Mourpheuon/Siwu-agent/releases/tag/{tag}"
+    release_url = f"https://github.com/Mourpheuon/Praxic/releases/tag/{tag}"
     log.info("github_release_published | url=%s", release_url)
     return release_url
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "siwu-agent"
-version = "0.1.1"
+version = "0.1.2"
 description = "即物穷理 Praxic —— 以辩证唯物主义方法论为认知内核的 AI 智能体"
 readme = "README.md"
 license = {text = "MIT"}
@@ -25,6 +25,7 @@ dependencies = [
 web = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
 ]
 ui = [
     "flet>=0.85.0",
