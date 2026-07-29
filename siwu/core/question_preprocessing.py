@@ -228,11 +228,21 @@ class QuestionPreprocessing:
     # 公共入口
     # ═══════════════════════════════════════════════════════════════
 
-    async def preprocess(self, question: str, conversation_history: str = "") -> PreprocessedQuestion:
+    async def preprocess(self, question: str, conversation_history: str = "",
+                         current_datetime: str = "") -> PreprocessedQuestion:
         log.info("question_preprocessing.start", question=question[:100])
 
-        # ── Step 1：任务性质 + 复杂度 ──
-        step1 = await self._step_task_nature(question, conversation_history)
+        # 当前时间作为前缀注入——让 Step1 知道"今天几号""现在几点"可直接回答，
+        # 不必判为需要调查。current_datetime 非空时并入对话历史上下文。
+        _ctx_prefix = conversation_history
+        if current_datetime:
+            _dt_line = f"[当前时间：{current_datetime}]"
+            _ctx_prefix = (_dt_line + "\n" + conversation_history) if conversation_history else _dt_line
+
+        # ── Step 1：任务性质 + 复杂度 + needs_investigation ──
+        # 由 LLM 判断是否需要调查——寒暄、简单常识、简单计算等均应由此截获，
+        # 交给回答阶段直接处理，不硬编码任何输入类型。
+        step1 = await self._step_task_nature(question, _ctx_prefix)
         task_nature = step1.get("task_nature", "other")
         complexity = step1.get("complexity", "standard")
 
@@ -252,7 +262,7 @@ class QuestionPreprocessing:
 
         # ── Step 3：意图矛盾（仅在非简单任务时执行）──
         if complexity != "simple":
-            step3 = await self._step_contradiction_in_intent(question, task_nature, conversation_history)
+            step3 = await self._step_contradiction_in_intent(question, task_nature, _ctx_prefix)
             contradiction_in_question = step3.get("contradiction_in_question", "")
         else:
             contradiction_in_question = ""
@@ -262,7 +272,7 @@ class QuestionPreprocessing:
             task_nature in _STEP4_SKIP_TASK_TYPES and complexity == "simple"
         )
         if do_step4:
-            step4 = await self._step_premise_audit(question, task_nature, conversation_history)
+            step4 = await self._step_premise_audit(question, task_nature, _ctx_prefix)
             questionable_premises = step4.get("questionable_premises", []) or []
             overlooked_factors = step4.get("overlooked_factors", []) or []
         else:
@@ -273,7 +283,7 @@ class QuestionPreprocessing:
         step5 = await self._step_structure(
             question, task_nature, complexity,
             contradiction_in_question, questionable_premises, overlooked_factors,
-            conversation_history,
+            _ctx_prefix,
         )
 
         result = PreprocessedQuestion(
@@ -312,13 +322,29 @@ class QuestionPreprocessing:
         content = f"用户问题：{question}"
         if conversation_history:
             content = f"对话历史：\n{conversation_history}\n\n---\n\n{content}"
-        return await self._call_step(
+        # fallback：LLM 失败时，极短问题（<20字符，通常是寒暄/简单问句）保守判为无需调查，
+        # 避免因 API 超时/解析失败把寒暄拖入 investigation 卡住。
+        # 这是 LLM 失败兜底，不是主逻辑硬编码——正常 LLM 调用仍完全由模型判断。
+        _short_q = len(question.strip()) < 20
+        _fallback = {
+            "task_nature": "other",
+            "complexity": "simple" if _short_q else "standard",
+            "needs_investigation": not _short_q,
+            "reasoning": "解析失败-兜底",
+        }
+        result = await self._call_step(
             _STEP1_TASK_NATURE_PROMPT,
             content,
             "task_nature",
-            {"task_nature": "other", "complexity": "standard", "reasoning": "解析失败"},
+            _fallback,
             temperature=0.3, max_tokens=256,
         )
+        log.debug("question_preprocessing.step1_result",
+                  question=question[:60],
+                  needs_investigation=result.get("needs_investigation"),
+                  task_nature=result.get("task_nature"),
+                  reasoning=result.get("reasoning", "")[:80])
+        return result
 
     async def _step_contradiction_in_intent(self, question: str, task_nature: str, conversation_history: str = "") -> dict:
         content = f"用户问题：{question}\n任务性质：{task_nature}"
