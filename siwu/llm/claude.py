@@ -14,7 +14,7 @@ class ClaudeLLM(BaseLLM):
 
     def __init__(self, api_key: Optional[str] = None, default_model: Optional[str] = None):
         import anthropic  # lazy -- only imported when provider=anthropic
-        self._client = anthropic.AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
+        self._client = anthropic.AsyncAnthropic(api_key=api_key or settings.anthropic_api_key, timeout=120.0)
         self.default_model = default_model or settings.default_model
 
     async def call(self, messages, system=None, temperature=0.5, max_tokens=4096, model=None, **kwargs):

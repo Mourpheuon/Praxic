@@ -71,5 +71,8 @@ projects/*
 siwu/skills/*
 !siwu/skills/.gitkeep
 
+# Project handoff (internal, not for distribution)
+PROJECT_HANDOFF.md
+
 # Misc dev scraps
 tail_fix.py

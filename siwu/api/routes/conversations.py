@@ -248,3 +248,25 @@ async def create_project(req: CreateProjectRequest):
         workspace = project_dir / "workspace"
 
     return {"project_id": pid, "name": req.name.strip(), "workspace_dir": str(workspace)}
+
+
+@router.post("/projects/open-folder")
+async def open_folder(request: dict):
+    """在系统文件管理器中打开指定目录。"""
+    import subprocess, sys
+    path = request.get("path", "").strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="path 不能为空")
+    folder = Path(path)
+    if not folder.exists():
+        raise HTTPException(status_code=404, detail=f"目录不存在：{path}")
+    try:
+        if sys.platform == "win32":
+            subprocess.Popen(["explorer", str(folder)])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(folder)])
+        else:
+            subprocess.Popen(["xdg-open", str(folder)])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"无法打开目录：{e}")
+    return {"ok": True, "path": str(folder)}

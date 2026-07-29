@@ -11,15 +11,14 @@ from ..llm.base import BaseLLM
 from ..memory.episodic_memory import EpisodicMemory
 from ..memory.working_memory import WorkingMemory
 from ..tools.filesystem import WorkspaceToolkit
+from ..tools.registry import ToolRegistry
 from .contradiction import ContradictionAnalyzer
-from .decision import DecisionEngine
 from .dev_tracer import DevTracer, TracingLLMWrapper
 from .investigation import InvestigationModule
 from .loop_controller import (
     LoopController, get_controller, release_controller,
     register_conv_controller, release_conv_controller,
 )
-from .perspectives import MultiPerspectiveReview
 from .practice import PracticeModule
 from .question_preprocessing import QuestionPreprocessing
 from .rational import RationalCognitionModule
@@ -152,8 +151,6 @@ class CognitiveLoop:
         self.preprocessing = QuestionPreprocessing(_llm("preprocessing"), settings.phase("preprocessing"))
         self.contradiction = ContradictionAnalyzer(_llm("contradiction"), settings.phase("contradiction"))
         self.rational = RationalCognitionModule(_llm("rational"), settings.phase("rational"))
-        self.decision = DecisionEngine(_llm("decision"), settings.phase("decision"))
-        self.perspectives = MultiPerspectiveReview(_llm("perspectives"), settings.phase("perspectives"))
         self.practice = PracticeModule(_llm("practice"), settings.phase("practice"), workspace=self.workspace, practice_rounds=settings.practice_rounds)
         self.reflection = ReflectionEngine(_llm("reflection"), settings.phase("reflection"))
         skills_dir = getattr(settings, "skills_dir", None)
@@ -161,6 +158,13 @@ class CognitiveLoop:
             from pathlib import Path
             skills_dir = Path("siwu/skills")
         self.skill_manager = SkillManager(skills_dir)
+        # 初始化工具注册表（实践阶段用）
+        self._registry = ToolRegistry()
+        try:
+            from ..tools.python_exec import PythonExecTool
+            self._registry.register(PythonExecTool(workspace_dir=str(self.workspace.workspace) if self.workspace else ""))
+        except Exception:
+            pass
         self.max_iterations = settings.max_iterations
         self.convergence_threshold = 0.85
         self.enable_trajectory_logging = settings.enable_trajectory_logging
@@ -257,8 +261,8 @@ class CognitiveLoop:
                 all_text += trace.rational_synthesis.essence + " "
                 all_text += " ".join(trace.rational_synthesis.patterns) + " "
                 all_text += trace.rational_synthesis.synthesis_text
-            if trace.decision:
-                all_text += (trace.decision.summary or trace.decision.strategic_assessment) + " "
+            if trace.practice and trace.practice.practice_summary:
+                all_text += trace.practice.practice_summary + " "
             if trace.reflection and trace.reflection.final_answer:
                 all_text += trace.reflection.final_answer
             
@@ -288,42 +292,7 @@ class CognitiveLoop:
             evidence["sub_question_coverage"] = _sq_data
         
         # ── 2. 决策项验证覆盖检查 ──
-        if trace.decision and trace.decision.action_items:
-            verified = []
-            unverified = []
-            unverifiable = []
-            
-            practice_steps = trace.practice.steps_taken if trace.practice else []
-            practice_summary = (trace.practice.practice_summary if trace.practice else "") + " "
-            for s in practice_steps:
-                practice_summary += s.description + " " + (s.observed_result or "") + " "
-            
-            for ai in trace.decision.action_items:
-                target = ai.description
-                found = False
-                for s in practice_steps:
-                    if _text_overlap(target, s.description, threshold=0.3):
-                        found = True
-                        break
-                if not found and practice_summary:
-                    found = _text_overlap(target, practice_summary, threshold=0.3)
-                
-                if found:
-                    verified.append(target)
-                elif ai.practice_feasibility == "direct" and ai.suggested_practice_form:
-                    unverified.append(target)
-                else:
-                    unverifiable.append({
-                        "item": target,
-                        "why": ai.why_cannot_practice or "智能体无法自行执行此验证",
-                    })
-            
-            evidence["action_verification"] = {
-                "verified": len(verified),
-                "total": len(trace.decision.action_items),
-                "unverified_list": unverified,
-                "unverifiable_list": unverifiable,
-            }
+        # 决策验证不再适用（已移除决策阶段）
         
         # ── 3. 矛盾解决状态检查 ──
         if trace.contradictions:
@@ -430,6 +399,9 @@ class CognitiveLoop:
             working_mem.set("conversation_history", conv_context)
             log.info("cognitive_loop.conversation_context",
                      conversation=conv_id, len=len(conv_context))
+        # 注入当前日期时间（全阶段可见）——智能体运行在有时钟的机器上，
+        # "今天几号""现在几点"等应由此上下文直接回答，而非当作需要调查的信息缺口。
+        working_mem.set("_current_datetime", _current_datetime_str())
         # 注入 Agent 角色设定和用户自定义知识（写入专用键，由 get_context_for_phase 全阶段 surface）
         persona_ctx = _load_persona_context()
         if persona_ctx:
@@ -438,6 +410,7 @@ class CognitiveLoop:
         if on_phase: on_phase("preprocessing", "正在分析问题意图与结构")
         preprocessed = await self.preprocessing.preprocess(
             question, conversation_history=conv_context,
+            current_datetime=working_mem.get("_current_datetime", ""),
         )
         working_mem.set("preprocessed_question", preprocessed)
         working_mem.set("original_question", preprocessed.original_question)
@@ -514,13 +487,6 @@ class CognitiveLoop:
         # ── 无需调查：LLM 知识可直接回答 → 跳过全部认知阶段，直接生成回复 ──
         if not getattr(preprocessed, "needs_investigation", True):
             log.info("cognitive_loop.direct_answer", question=question[:80])
-            from ..api.schemas.models import DecisionReport, ActionItem
-            _decision = DecisionReport(
-                strategic_assessment="可直接用自身知识回答的简单问题",
-                action_items=[],
-                summary="",
-            )
-            trace.decision = _decision
             trace.metadata.end_time = datetime.now()
             trace.metadata.iterations = 0
             _title = await self._generate_title(question, preprocessed) if on_title else ""
@@ -548,7 +514,7 @@ class CognitiveLoop:
                 log.info("cognitive_loop.title_result", conv_id=conv_id, title=title or "(empty)")
                 if title:
                     self.episodic.set_conversation_name(conv_id, title)
-                    on_title(title)
+                    on_title(title, conv_id)
                     log.info("cognitive_loop.title_generated", conversation=conv_id, title=title)
             except Exception:
                 log.warning("cognitive_loop.title_generation_failed", exc_info=True)
@@ -628,10 +594,6 @@ class CognitiveLoop:
                 rational = await self.rational.synthesize(effective_question, fact_report, contradiction_graph,
                     system_model=contradiction_graph.system_model)
                 trace.rational_synthesis = rational
-                if on_phase: on_phase(CognitivePhaseName.DECISION, "正在形成决策（快速模式）")
-                decision = await self.decision.decide(effective_question, fact_report, contradiction_graph, rational,
-                    system_model=contradiction_graph.system_model)
-                trace.decision = decision
                 if on_phase: on_phase("done", "快速模式完成")
                 break
             if await _check("contradiction"): break
@@ -676,35 +638,6 @@ class CognitiveLoop:
                 _record_duration(trace, "rational", t2)
                 if on_phase: on_phase(CognitivePhaseName.RATIONAL, "本质：" + rational_synthesis.essence[:80],
                                        data=rational_synthesis)
-            if await _check("decision"): break
-            self.skill_manager.inject_phase_skills("decision", working_mem)
-            if on_phase: on_phase(CognitivePhaseName.DECISION, "正在形成决策")
-            t3 = datetime.now()
-            dec_question = effective_question + _steer("decision")
-            hist = working_mem.get("conversation_history", "")
-            if hist: dec_question = dec_question + "\n\n" + hist
-            decision_report = await self.decision.decide(question=dec_question, fact_report=fact_report, contradiction_graph=contradiction_graph, rational_synthesis=rational_synthesis, system_model=getattr(contradiction_graph, 'system_model', None))
-            trace.decision = decision_report
-            _record_duration(trace, "decision", t3)
-            if on_phase: on_phase(CognitivePhaseName.DECISION, decision_report.summary,
-                                   data=decision_report)
-            if effective_review == "iterative" or (effective_review == "once" and iteration == 1):
-                if await _check("perspectives"): break
-                log.info("cognitive_loop.perspectives_running",
-                         effective_review=effective_review, iteration=iteration)
-                if on_phase: on_phase("perspectives", "正在进行多视角审查")
-                tp = datetime.now()
-                rounds = 2 if effective_review == "iterative" else 1
-                perspective_synthesis = await self.perspectives.review(question=effective_question, contradiction_graph=contradiction_graph, decision_report=decision_report, rounds=rounds)
-                trace.perspectives = perspective_synthesis
-                _record_duration(trace, "perspectives", tp)
-                if on_phase and perspective_synthesis.critical_warnings:
-                    nw = len(perspective_synthesis.critical_warnings)
-                    on_phase("perspectives", "关键警告 " + str(nw) + " 条",
-                             data=perspective_synthesis)
-            else:
-                log.info("cognitive_loop.perspectives_skipped",
-                         effective_review=effective_review, iteration=iteration)
             if await _check("practice"): break
             if "practice" in skip_phases:
                 if on_phase: on_phase("practice", "已跳过：实践结论复用上一轮")
@@ -715,8 +648,9 @@ class CognitiveLoop:
                 t_prac = datetime.now()
                 practice_report = await self.practice.practice(
                     question=effective_question + _hint("practice") + _steer("practice"),
-                    decision_report=decision_report, trace=trace,
+                    trace=trace,
                     wm=working_mem,
+                    registry=self._registry,
                 )
                 if practice_report is not None:
                     trace.practice = practice_report
@@ -824,7 +758,7 @@ class CognitiveLoop:
             working_mem.set("_prev_qualitative_leap", had_leap)
             try:
                 from .credibility_chain import CredibilityChain
-                chain = CredibilityChain.from_trace(fact_report=fact_report, contradiction_graph=contradiction_graph, rational_synthesis=rational_synthesis, decision_report=decision_report)
+                chain = CredibilityChain.from_trace(fact_report=fact_report, contradiction_graph=contradiction_graph, rational_synthesis=rational_synthesis, decision_report=None)
                 trace.metadata.credibility_chain_summary = chain.summary()
                 working_mem.set("_credibility_chain", chain.summary())
                 log.info("cognitive_loop.credibility_chain", chain=chain.summary())
@@ -898,10 +832,10 @@ class CognitiveLoop:
                     queue.put_nowait({"type": "clarification", "questions": list(questions or [])})
                 except Exception:
                     pass
-            def _push_title(title):
+            def _push_title(title, conv_id_arg=""):
                 try:
                     queue.put_nowait({"type": "title", "title": title,
-                                       "conversation_id": conversation_id})
+                                       "conversation_id": conv_id_arg or conversation_id})
                     log.info("cognitive_loop.title_queued", title=title, conv_id=conversation_id)
                 except Exception:
                     log.warning("cognitive_loop.title_queue_failed", exc_info=True)
@@ -919,7 +853,7 @@ class CognitiveLoop:
                     sid = _uuid.uuid4().hex[:8]
                     self.episodic.save_episode(
                         session_id=sid, question=question,
-                        summary=f"[处理异常] {str(exc)[:200]}",
+                        summary=f"[处理异常] {str(exc)}",
                         conversation_id=conversation_id,
                         project_id=project_id,
                     )
@@ -965,13 +899,11 @@ class CognitiveLoop:
         核心改动：不再使用反思阶段的 final_answer（常为过程总结），
         而是将全部累积分析材料发给 LLM，要求其直接回答用户的问题。
         """
-        decision = trace.decision
-        if decision is None:
-            return AgentResponse(
-                summary="认知循环未完成，请重试",
-                session_id=session_id, question=question,
-                full_trace=trace, conversation_id=conversation_id,
-            )
+        practice_report = trace.practice
+        # 仅当整条轨迹为空（既无实践也无调查，也非可直接回答的寒暄）时才判定为异常。
+        # 直接回答路径（needs_investigation=False）本就不跑实践，此时应正常生成回复。
+        if practice_report is None and trace.investigation is None:
+            log.info("build_response.direct_answer_path", question=question[:60])
 
         # ── 构建分析上下文 ──
         analysis_context = self._summarize_for_answer(question, trace, detailed=detailed)
@@ -986,7 +918,8 @@ class CognitiveLoop:
                 max_tokens=(settings.detailed_report_max_tokens if detailed else settings.final_answer_max_tokens),
             )
             summary = response.content.strip()
-            if len(summary) < 20:
+            # 仅过滤空/近空输出——短回答对寒暄、简单问题是合理的，不应因长度被丢弃
+            if len(summary) < 2:
                 summary = ""
             else:
                 log.info("build_response.llm_answer", len=len(summary))
@@ -1001,18 +934,14 @@ class CognitiveLoop:
             if not summary and trace.practice and trace.practice.analysis_summary:
                 summary = trace.practice.analysis_summary.strip()
                 log.info("build_response.fallback_analysis_summary", len=len(summary))
-            if not summary:
-                summary = decision.summary or decision.strategic_assessment[:200]
-                if trace.practice and trace.practice.practice_summary:
-                    ps = trace.practice.practice_summary
-                    if ps and len(ps) > 10:
-                        summary = ps[:300] + "\n" + summary
-                log.info("build_response.fallback_decision_summary", len=len(summary))
+            if not summary and practice_report and practice_report.practice_summary:
+                summary = practice_report.practice_summary
+                log.info("build_response.fallback_practice_summary", len=len(summary))
 
-        # ── 行动项（action_items）：来自决策输出 ──
+        # ── 行动项（action_items）：来自实践输出 ──
         action_texts = []
-        if decision.action_items:
-            action_texts = [a.description for a in decision.action_items[:6]]
+        if practice_report and practice_report.steps_taken:
+            action_texts = [s.description for s in practice_report.steps_taken[:6]]
 
         if not action_texts and trace.practice and trace.practice.real_world_practice_needed:
             if trace.practice.real_world_practice_needed:
@@ -1059,6 +988,8 @@ class CognitiveLoop:
         n_sec, cap_sec = (8, 300) if detailed else (5, 150)
         n_list, cap_item, cap_ess = (10, 200, 600) if detailed else (5, 100, 300)
         parts = [f"# 用户原始问题\n{question}\n"]
+        # 当前时间（供"今天几号""现在几点"类问题直接、准确回答）
+        parts.append(f"## 当前时间\n{_current_datetime_str()}（智能体运行环境的本地时间）\n")
 
         if trace.investigation:
             inv = trace.investigation
@@ -1095,14 +1026,10 @@ class CognitiveLoop:
             if r.hypotheses:
                 parts.append(f"假设：{'；'.join(r.hypotheses[:n_list])}")
 
-        if trace.decision:
-            d = trace.decision
-            parts.append(f"\n## 决策方向")
-            parts.append(d.summary or d.strategic_assessment[:cap_ess])
-            if d.action_items:
-                parts.append(f"行动项：{'；'.join(a.description[:cap_item] for a in d.action_items[:n_list])}")
-            if d.risks:
-                parts.append(f"风险：{'；'.join(d.risks[:n_list])}")
+        if trace.practice and trace.practice.practice_summary:
+            p = trace.practice
+            parts.append(f"\n## 实践结论")
+            parts.append(p.practice_summary[:cap_ess])
 
         if trace.practice:
             p = trace.practice
@@ -1178,7 +1105,7 @@ class CognitiveLoop:
             self.episodic.save_episode(
                 session_id=response.session_id,
                 question=response.question,
-                summary=response.summary[:500],
+                summary=response.summary,
                 action_items=response.action_items,
                 principal_contradiction=pc,
                 lessons=lessons,
@@ -1245,6 +1172,13 @@ class CognitiveLoop:
 def _record_duration(trace, phase, t0):
     elapsed = (datetime.now() - t0).total_seconds()
     trace.metadata.phase_durations[phase] = elapsed
+
+
+def _current_datetime_str() -> str:
+    """返回当前本地日期时间的中文描述，供全阶段上下文使用。"""
+    now = datetime.now()
+    weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][now.weekday()]
+    return now.strftime("%Y年%m月%d日 ") + weekday_cn + now.strftime(" %H:%M")
 
 
 def _load_persona_context() -> str:
