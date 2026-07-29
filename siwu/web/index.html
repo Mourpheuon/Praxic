@@ -439,8 +439,24 @@
                        workspaceDir, animTitleId, runningConvs,
                        sessionSort, onSortChange }) {
       const [projOpen, setProjOpen] = useState(false);
+      const [ctxMenu, setCtxMenu] = useState(null); // { x, y, workspaceDir, label }
       const activeProject = (projects || []).find(p => p.id === activeProjectId) || (projects || [])[0];
+
+      const openFolder = async (dir) => {
+        try { await fetch('/api/v1/projects/open-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: dir }) }); }
+        catch (e) { console.error('[open-folder]', e); }
+        setCtxMenu(null);
+      };
+
+      const handleGroupCtx = (e, c) => {
+        e.preventDefault();
+        const proj = (projects || []).find(p => p.id === c.pid);
+        const dir = proj?.workspace_dir || '';
+        if (!dir) return;
+        setCtxMenu({ x: e.clientX, y: e.clientY, workspaceDir: dir, label: c.label });
+      };
       return (
+        <React.Fragment>
         <aside className="w-60 bg-linen/60 flex flex-col flex-shrink-0 border-r border-clay/30">
           {/* 品牌 + 新建对话 */}
           <div className="px-3 py-3 flex items-center justify-between border-b border-clay/20">
@@ -490,8 +506,12 @@
               if (c.type === 'group_header') {
                 return (
                   <div key={'hdr-' + c.pid + '-' + idx}
-                    className="px-2 pt-3 pb-1 text-[10px] font-semibold text-warmgray/60 uppercase tracking-wide">
-                    {c.label}
+                    onContextMenu={(e) => handleGroupCtx(e, c)}
+                    className="px-2 pt-3 pb-1 text-[10px] font-semibold text-warmgray/60 uppercase tracking-wide select-none cursor-context-menu flex items-center justify-between">
+                    <span>{c.label}</span>
+                    {(projects || []).find(p => p.id === c.pid)?.workspace_dir && (
+                      <span className="text-[9px] text-clay/50 font-normal normal-case">右键打开</span>
+                    )}
                   </div>
                 );
               }
@@ -513,14 +533,20 @@
               );
             })}
           </div>
-          {/* 工作空间 */}
-          {workspaceDir && (
-            <div className="p-2 border-t border-clay/20 text-[9px] text-clay leading-tight">
-              <div className="font-semibold text-warmgray mb-0.5">📁 工作空间</div>
-              <div className="truncate" title={workspaceDir}>{workspaceDir}</div>
-            </div>
-          )}
         </aside>
+        {/* 右键菜单 */}
+        {ctxMenu && (
+          <div className="fixed z-50" style={{ top: ctxMenu.y, left: ctxMenu.x }}
+            onMouseLeave={() => setCtxMenu(null)}>
+            <div className="bg-paper border border-clay/30 rounded-lg shadow-lg py-1 min-w-[140px]">
+              <button onClick={() => openFolder(ctxMenu.workspaceDir)}
+                className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-dust/60 flex items-center gap-2">
+                <span>📂</span><span>打开项目文件夹</span>
+              </button>
+            </div>
+          </div>
+        )}
+        </React.Fragment>
       );
     }
 
@@ -626,7 +652,7 @@
           )}
           <div className="flex items-end gap-2">
             <textarea value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder={awaitingClarification ? "回答即物穷理的问题…（Enter 发送，留空＝跳过）" : running ? "输入引导指令…（Enter 发送）" : "提出一个问题…（Enter 发送，Shift+Enter 换行）"}
+              placeholder={awaitingClarification ? "回答即物穷理的问题…（Enter 发送，留空＝跳过）" : running ? (question.trim() ? "输入插话内容…（Enter 发送）" : "点击终止或输入内容插话…") : "提出一个问题…（Enter 发送，Shift+Enter 换行）"}
               rows={1}
               className="flex-1 resize-none bg-paper border border-linen/60 rounded-lg px-4 py-2.5 text-sm text-ink placeholder:text-clay focus:outline-none focus:border-seal/50 focus:ring-1 focus:ring-seal/20" />
             {awaitingClarification ? (
@@ -635,10 +661,11 @@
                 <button onClick={onStop} className="px-4 py-2.5 rounded-lg bg-warmgray text-white text-sm font-semibold hover:bg-warmgray/80 flex-shrink-0">⛔ 终止</button>
               </>
             ) : running ? (
-              <>
-                <button onClick={handleSend} disabled={!question.trim()} className="px-4 py-2.5 rounded-lg bg-olive text-white text-sm font-semibold hover:bg-olive/80 disabled:opacity-40 flex-shrink-0">引导 →</button>
-                <button onClick={onStop} className="px-4 py-2.5 rounded-lg bg-warmgray text-white text-sm font-semibold hover:bg-warmgray/80 flex-shrink-0">⛔ 终止</button>
-              </>
+              question.trim() ? (
+                <button onClick={handleSend} className="px-4 py-2.5 rounded-lg bg-olive text-white text-sm font-semibold hover:bg-olive/80 flex-shrink-0">插话 →</button>
+              ) : (
+                <button onClick={onStop} className="px-4 py-2.5 rounded-lg bg-warmgray text-white text-sm font-semibold hover:bg-warmgray/80 flex-shrink-0">⏹ 终止</button>
+              )
             ) : (
               <button onClick={handleSend} disabled={!question.trim()} className="px-5 py-2.5 rounded-lg bg-seal text-white text-sm font-semibold hover:bg-seal-light disabled:opacity-40 flex-shrink-0">→ 发送</button>
             )}
@@ -1515,7 +1542,7 @@
                             </details>
                           )}
                           <div className="mt-3">
-                            <a href={versionInfo.release_url || 'https://github.com/Mourpheuon/Siwu-agent/releases'} target="_blank"
+                            <a href={versionInfo.release_url || 'https://github.com/Mourpheuon/Praxic/releases'} target="_blank"
                               className="block text-center py-2 rounded-lg bg-seal text-white text-sm font-semibold hover:bg-seal-light transition-colors no-underline">
                               前往下载
                             </a>
@@ -1610,7 +1637,7 @@
                       本软件按 MIT 许可证分发，允许自由使用、复制、修改、合并、出版发行、散布、再授权及贩售软件及软件的副本，
                       唯需在所有副本或实质性部分中包含上述著作权声明和本许可声明。
                     </p>
-                    <a href="https://github.com/Mourpheuon/Siwu-agent/blob/main/LICENSE" target="_blank"
+                    <a href="https://github.com/Mourpheuon/Praxic/blob/main/LICENSE" target="_blank"
                       className="inline-block mt-1.5 text-xs text-seal hover:text-seal-light underline">
                       查看完整许可证 →
                     </a>
@@ -1637,9 +1664,9 @@
                     <p className="text-[10px] text-warmgray/50">
                       LLM 支持：DeepSeek / OpenAI / Anthropic Claude / Ollama
                     </p>
-                    <a href="https://github.com/Mourpheuon/Siwu-agent" target="_blank"
+                    <a href="https://github.com/Mourpheuon/Praxic" target="_blank"
                       className="inline-block text-xs text-seal hover:text-seal-light underline">
-                      GitHub · Mourpheuon/Siwu-agent
+                      GitHub · Mourpheuon/Praxic
                     </a>
                   </div>
 
@@ -1773,17 +1800,25 @@
         const arr = Array.from(fileList || []);
         if (!arr.length) return;
         setUploading(true);
-        for (const f of arr) {
-          try {
-            const fd = new FormData();
-            fd.append('file', f);
-            fd.append('project_id', activeProjectIdRef.current || '');
-            const r = await fetch('/api/v1/agent/upload-file', { method: 'POST', body: fd });
-            const data = await r.json();
-            if (r.ok && data.file_path) setFiles(prev => [...prev, { name: data.file_name || f.name, path: data.file_path }]);
-          } catch (e) { console.error('[upload] error:', e); }
+        try {
+          for (const f of arr) {
+            try {
+              const fd = new FormData();
+              fd.append('file', f);
+              fd.append('project_id', activeProjectIdRef.current || '');
+              const r = await fetch('/api/v1/agent/upload-file', { method: 'POST', body: fd });
+              if (!r.ok) {
+                const errText = await r.text().catch(() => String(r.status));
+                console.error('[upload] server error:', r.status, errText);
+                continue;
+              }
+              const data = await r.json();
+              if (data.file_path) setFiles(prev => [...prev, { name: data.file_name || f.name, path: data.file_path }]);
+            } catch (e) { console.error('[upload] error:', e); }
+          }
+        } finally {
+          setUploading(false);
         }
-        setUploading(false);
       }, []);
 
       const handleDragOver = useCallback((e) => {
@@ -2322,10 +2357,8 @@
           <div className="w-px bg-clay/30 flex-shrink-0" />
           <div className="flex-1 flex flex-col min-w-0">
             {/* Chat header */}
-            <div className="px-4 py-2 border-b border-linen/60 bg-cream flex items-center justify-between">
-              <h1 className="text-sm font-semibold text-ink font-display">🧭 思悟</h1>
+            <div className="px-4 py-2 border-b border-linen/60 bg-cream flex items-center justify-end">
               <div className="flex items-center gap-2">
-                {workspaceDir && <span className="text-[10px] text-warmgray/60 truncate max-w-[200px] hidden sm:inline" title={'数据目录: ' + workspaceDir}>📂 {workspaceDir}</span>}
                 {devMode && <span className="text-[10px] px-2 py-0.5 rounded bg-seal-wash text-seal">DEV</span>}
                 <button onClick={() => setShowSettings(true)} className="text-xs px-2 py-1 rounded bg-dust text-warmgray hover:bg-clay/30">设置</button>
               </div>
