@@ -41,18 +41,18 @@ echo "[2/5] 安装 npm 依赖..."
 npm install
 
 # 安装前端依赖
-if [ -d "siwu/web" ]; then
+if [ -d "praxic/web" ]; then
     echo "       安装前端依赖..."
-    cd siwu/web && npm install && cd "$PROJECT_ROOT"
+    cd praxic/web && npm install && cd "$PROJECT_ROOT"
 fi
 
 # ── 3. 构建前端 ──
 echo "[3/5] 构建前端（Vite）..."
-if [ -d "siwu/web" ]; then
-    cd siwu/web && npx vite build && cd "$PROJECT_ROOT"
-    echo "       前端构建完成 → siwu/web/dist/"
+if [ -d "praxic/web" ]; then
+    cd praxic/web && npx vite build && cd "$PROJECT_ROOT"
+    echo "       前端构建完成 → praxic/web/dist/"
 else
-    echo -e "${YELLOW}       siwu/web/ 不存在，跳过前端构建${NC}"
+    echo -e "${YELLOW}       praxic/web/ 不存在，跳过前端构建${NC}"
 fi
 
 # ── 4. Electron Builder 打包 ──

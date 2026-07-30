@@ -27,22 +27,22 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 # 2. 安装依赖
 Write-Host "[2/4] 安装 npm 依赖..."
 npm install
-if (Test-Path "siwu/web/package.json") {
+if (Test-Path "praxic/web/package.json") {
     Write-Host "       安装前端依赖..."
-    Set-Location siwu/web
+    Set-Location praxic/web
     npm install
     Set-Location $projectRoot
 }
 
 # 3. 构建前端
 Write-Host "[3/4] 构建前端（Vite）..."
-if (Test-Path "siwu/web") {
-    Set-Location siwu/web
+if (Test-Path "praxic/web") {
+    Set-Location praxic/web
     npx vite build
     Set-Location $projectRoot
-    Write-Host "       前端构建完成 -> siwu/web/dist/"
+    Write-Host "       前端构建完成 -> praxic/web/dist/"
 } else {
-    Write-Host "       siwu/web/ 不存在，跳过" -ForegroundColor Yellow
+    Write-Host "       praxic/web/ 不存在，跳过" -ForegroundColor Yellow
 }
 
 # 4. Electron Builder 打包

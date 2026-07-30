@@ -8,11 +8,13 @@ next phase (investigation) already sees it -> loop continues to completion.
 Reuses UniversalFake from test_full_loop_integration (exec its setup prefix).
 """
 import io, os, sys, asyncio, traceback
+from pathlib import Path
 
-BASE = "/sessions/magical-serene-ramanujan/mnt/Siwu"
-_src = io.open(BASE + "/tests/test_full_loop_integration.py", encoding="utf-8").read()
-_ns = {}
-exec(compile(_src.split("\nasync def main")[0], "prefix", "exec"), _ns)
+BASE = Path(__file__).resolve().parents[1]
+_source_path = BASE / "tests" / "test_full_loop_integration.py"
+_src = io.open(_source_path, encoding="utf-8").read()
+_ns = {"__file__": str(_source_path)}
+exec(compile(_src.split("\nasync def main")[0], str(_source_path), "exec"), _ns)
 UniversalFake = _ns["UniversalFake"]
 settings = _ns["settings"]
 _SUPERSET = _ns["_SUPERSET"]
@@ -23,8 +25,8 @@ _SUPERSET["clarifying_questions"] = ["你更看重成本还是速度？", "目�
 
 ANSWER = "CLARIFY_ANSWER_PROBE_9x7 我更看重速度，环境是 Linux 服务器"
 
-from siwu.core.cognitive_loop import CognitiveLoop
-from siwu.core.loop_controller import get_controller_by_conv
+from praxic.core.cognitive_loop import CognitiveLoop
+from praxic.core.loop_controller import get_controller_by_conv
 
 captured = []   # every user-message content sent to the LLM
 
@@ -97,11 +99,12 @@ async def main() -> bool:
     return ok
 
 
-try:
-    ok = asyncio.run(main())
-    print("\nOVERALL:", "PASS" if ok else "FAIL")
-    sys.exit(0 if ok else 1)
-except Exception as e:
-    print("\nEXCEPTION:", e)
-    traceback.print_exc()
-    sys.exit(2)
+if __name__ == "__main__":
+    try:
+        ok = asyncio.run(main())
+        print("\nOVERALL:", "PASS" if ok else "FAIL")
+        sys.exit(0 if ok else 1)
+    except Exception as e:
+        print("\nEXCEPTION:", e)
+        traceback.print_exc()
+        sys.exit(2)

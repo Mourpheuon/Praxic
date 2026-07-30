@@ -9,21 +9,22 @@ Tests:
 Runs instantly, uses a temp skills dir.
 """
 import asyncio, sys, os, tempfile, shutil, json, traceback
+from pathlib import Path
 
-os.chdir('/sessions/magical-serene-ramanujan/mnt/Siwu')
-sys.path.insert(0, '/sessions/magical-serene-ramanujan/mnt/Siwu')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+os.chdir(PROJECT_ROOT)
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from siwu.core.skill_manager import SkillManager
-from siwu.memory.working_memory import WorkingMemory
-from siwu.api.schemas.models import (
+from praxic.core.skill_manager import SkillManager
+from praxic.memory.working_memory import WorkingMemory
+from praxic.api.schemas.models import (
     SkillMetadata, SkillDraftCandidate, SkillValidationRecord,
 )
-from pathlib import Path
 
 
 def make_skills_dir():
     """Create a temp skills dir with one active skill."""
-    d = tempfile.mkdtemp(prefix="siwu_skills_")
+    d = tempfile.mkdtemp(prefix="praxic_skills_")
     skill_dir = os.path.join(d, "web-scraper")
     os.makedirs(skill_dir)
     with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
@@ -136,10 +137,11 @@ def main():
     return all_pass
 
 
-try:
-    ok = main()
-    sys.exit(0 if ok else 1)
-except Exception as e:
-    print(f"\nEXCEPTION: {e}")
-    traceback.print_exc()
-    sys.exit(2)
+if __name__ == "__main__":
+    try:
+        ok = main()
+        sys.exit(0 if ok else 1)
+    except Exception as e:
+        print(f"\nEXCEPTION: {e}")
+        traceback.print_exc()
+        sys.exit(2)

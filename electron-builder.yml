@@ -16,26 +16,26 @@ files:
   - electron/**/*
   - package.json
   # Python 源码
-  - siwu/**/*
+  - praxic/**/*
   - pyproject.toml
   - config.toml.example
   # 技能包
-  - siwu/skills/**/*
+  - praxic/skills/**/*
   # ── 运行时不需要的内容 ──
-  # siwu/web/ 下只保留 index.html，其余全是开发工具
-  - "!siwu/web/node_modules"
-  - "!siwu/web/node_modules/**"
-  - "!siwu/web/src"
-  - "!siwu/web/src/**"
-  - "!siwu/web/dist"
-  - "!siwu/web/dist/**"
-  - "!siwu/web/public"
-  - "!siwu/web/public/**"
-  - "!siwu/web/package.json"
-  - "!siwu/web/package-lock.json"
-  - "!siwu/web/*.ts"
-  - "!siwu/web/*.js"
-  - "!siwu/web/*.config.*"
+  # praxic/web/ 下只保留 index.html，其余全是开发工具
+  - "!praxic/web/node_modules"
+  - "!praxic/web/node_modules/**"
+  - "!praxic/web/src"
+  - "!praxic/web/src/**"
+  - "!praxic/web/dist"
+  - "!praxic/web/dist/**"
+  - "!praxic/web/public"
+  - "!praxic/web/public/**"
+  - "!praxic/web/package.json"
+  - "!praxic/web/package-lock.json"
+  - "!praxic/web/*.ts"
+  - "!praxic/web/*.js"
+  - "!praxic/web/*.config.*"
   # Python 编译缓存
   - "!**/__pycache__"
   - "!**/__pycache__/**"
@@ -56,7 +56,7 @@ mac:
   icon: assets/icon.icns
   extendInfo:
     LSEnvironment:
-      SIWU_PROJECTS_DIR: "~/Documents/SiwuProjects"
+      PRAXIC_PROJECTS_DIR: "~/Documents/PraxicProjects"
 
 # Windows 配置
 win:

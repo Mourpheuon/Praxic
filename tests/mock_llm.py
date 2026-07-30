@@ -1,7 +1,7 @@
 """Mock LLM for testing."""
 from __future__ import annotations
 from typing import AsyncIterator, Optional
-from siwu.llm.base import BaseLLM, LLMResponse
+from praxic.llm.base import BaseLLM, LLMResponse
 
 class MockLLM(BaseLLM):
     def __init__(self, default_model="mock-model", default_response="{}"):

@@ -45,11 +45,11 @@ function startPythonBackend(port) {
     return new Promise((resolve, reject) => {
         const env = { ...process.env };
         // Ensure .env file env vars are read by Python
-        // (python-dotenv loads them in siwu/config.py)
+        // (python-dotenv loads them in praxic/config.py)
 
         pythonProcess = spawn(PYTHON_COMMAND, [
             '-m', 'uvicorn',
-            'siwu.api.server:app',
+            'praxic.api.server:app',
             '--host', HOST,
             '--port', String(port),
         ], {

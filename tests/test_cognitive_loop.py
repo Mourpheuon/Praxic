@@ -1,6 +1,7 @@
 """Integration tests for CognitiveLoop."""
 import json, pytest
-from siwu.core.cognitive_loop import CognitiveLoop
+from praxic.core.cognitive_loop import CognitiveLoop
+from praxic.core.loop_controller import LoopController
 from tests.mock_llm import MockLLM
 
 INV = json.dumps({"facts":[{"id":"f1","content":"用户提出了一个技术问题","source_type":"user_input","credibility":0.95},{"id":"f2","content":"系统具备相关知识库","source_type":"internal","credibility":0.8}],"gaps":[{"description":"需验证新信息","importance":"high","suggested_query":"搜索"}],"summary":"调查完成"})
@@ -73,6 +74,24 @@ class TestBasic:
         r = await loop.run(question="复杂")
         assert r.full_trace.metadata.iterations >= 1
         assert r.summary != ""
+
+
+class TestSteeringSemantics:
+    def test_broadcast_persists_and_targeted_steer_is_consumed_once(self):
+        controller = LoopController("steering-contract")
+        controller.steer("广播提示")
+        controller.steer("实践提示", target_phase="practice")
+
+        investigation = controller.collect_steers("investigation")
+        practice = controller.collect_steers("practice")
+        reflection = controller.collect_steers("reflection")
+
+        assert "广播提示" in investigation
+        assert "广播提示" in practice
+        assert "广播提示" in reflection
+        assert "实践提示" not in investigation
+        assert "实践提示" in practice
+        assert "实践提示" not in reflection
 
 class TestTrace:
     @pytest.mark.asyncio

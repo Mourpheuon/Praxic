@@ -32,7 +32,7 @@ if errorlevel 1 (
 
 echo  [3/3] Building 即物穷理.exe...
 echo.
-pyinstaller siwu.spec --noconfirm --clean
+pyinstaller praxic.spec --noconfirm --clean
 
 if errorlevel 1 (
     echo.

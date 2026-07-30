@@ -2,8 +2,8 @@
 """
 即物穷理技能批量导入 CLI
 
-把 siwu/skills/ 下的外部 Claude 格式技能适配并写入 registry.json。
-规则由 siwu/skills/IMPORT_RULES.md 驱动。
+把 praxic/skills/ 下的外部 Claude 格式技能适配并写入 registry.json。
+规则由 praxic/skills/IMPORT_RULES.md 驱动。
 
 用法:
   python scripts/import_skills.py                # 混合模式（确定性 + LLM 精炼），写入
@@ -23,8 +23,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from siwu.core.skill_importer import SkillImporter  # noqa: E402
-from siwu.config import settings  # noqa: E402
+from praxic.core.skill_importer import SkillImporter  # noqa: E402
+from praxic.config import settings  # noqa: E402
 
 
 def _print_report(report: dict, dry_run: bool) -> None:
@@ -74,12 +74,12 @@ async def _main() -> int:
     args = ap.parse_args()
 
     skills_dir = Path(args.skills_dir) if args.skills_dir else getattr(
-        settings, "skills_dir", ROOT / "siwu" / "skills")
+        settings, "skills_dir", ROOT / "praxic" / "skills")
 
     llm = None
     if not args.no_llm:
         try:
-            from siwu.llm import get_llm
+            from praxic.llm import get_llm
             llm = get_llm()
         except Exception as e:
             print(f"[警告] 无法初始化 LLM（{e}），回退到 --no-llm 确定性模式")

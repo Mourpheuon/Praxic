@@ -56,8 +56,8 @@ cp config.toml.example config.toml
 
 ```bash
 # DeepSeek（默认，推荐）
-export SIWU_API_KEY="sk-xxx"
-export SIWU_BASE_URL="https://api.deepseek.com"
+export PRAXIC_LLM_API_KEY="sk-xxx"
+export PRAXIC_LLM_BASE_URL="https://api.deepseek.com"
 
 # Anthropic Claude
 export ANTHROPIC_API_KEY="sk-ant-xxx"
@@ -72,15 +72,15 @@ cp .env.example .env
 **命令行（CLI）：**
 
 ```bash
-python -m siwu run "为什么我的开源项目难以吸引贡献者？"
-python -m siwu run "考虑一群个体进行博弈..." --mode deep
-python -m siwu run --help   # 查看全部选项
+python -m praxic run "为什么我的开源项目难以吸引贡献者？"
+python -m praxic run "考虑一群个体进行博弈..." --mode deep
+python -m praxic run --help   # 查看全部选项
 ```
 
 **Web UI（浏览器）：**
 
 ```bash
-python -m siwu
+python -m praxic
 # 自动打开 http://localhost:8000
 ```
 
@@ -95,7 +95,7 @@ python -m siwu
 
 ```python
 import asyncio
-from siwu.core.cognitive_loop import CognitiveLoop
+from praxic.core.cognitive_loop import CognitiveLoop
 
 async def main():
     loop = CognitiveLoop()
@@ -143,8 +143,8 @@ asyncio.run(main())
 ## 项目结构
 
 ```
-praxic/
-├── siwu/                          # 核心包
+Praxic/
+├── praxic/                          # 核心包
 │   ├── core/                      # 认知引擎
 │   │   ├── cognitive_loop.py      # 认知循环控制器（主入口）
 │   │   ├── investigation.py       # 调查研究
@@ -240,10 +240,10 @@ web_search_enabled = true
 
 | 变量 | 说明 |
 |------|------|
-| `SIWU_API_KEY` | OpenAI 兼容 API Key |
-| `SIWU_BASE_URL` | 兼容端点地址 |
-| `SIWU_MODEL` | 默认模型 |
-| `SIWU_LLM_PROVIDER` | `openai_compatible` 或 `anthropic` |
+| `PRAXIC_LLM_API_KEY` | OpenAI 兼容 API Key |
+| `PRAXIC_LLM_BASE_URL` | 兼容端点地址 |
+| `PRAXIC_LLM_MODEL` | 默认模型 |
+| `PRAXIC_LLM_PROVIDER` | `openai_compatible` 或 `anthropic` |
 | `ANTHROPIC_API_KEY` | Anthropic API Key |
 | `TAVILY_API_KEY` | Tavily 搜索 API Key |
 
@@ -262,9 +262,9 @@ Web UI 的设置对话框支持：
 ### Electron 桌面应用（Windows）
 
 ```powershell
-cd D:\Files\2026\07\Siwu
+cd C:\path\to\Praxic
 npm install
-cd siwu/web; npx vite build; cd ..\..
+cd praxic/web; npx vite build; cd ..\..
 npx electron-builder
 # 产物：dist-electron/即物穷理 Setup *.exe
 ```

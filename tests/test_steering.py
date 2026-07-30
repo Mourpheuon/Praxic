@@ -2,14 +2,15 @@
 import io, sys, asyncio, os
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _project_root)
-_src = io.open(os.path.join(_project_root, 'tests', 'test_full_loop_integration.py'), encoding="utf-8").read()
-_ns = {}
-exec(compile(_src.split("\nasync def main")[0], "prefix", "exec"), _ns)
+_source_path = os.path.join(_project_root, 'tests', 'test_full_loop_integration.py')
+_src = io.open(_source_path, encoding="utf-8").read()
+_ns = {"__file__": _source_path}
+exec(compile(_src.split("\nasync def main")[0], _source_path, "exec"), _ns)
 UF = _ns["UniversalFake"]; settings = _ns["settings"]
 settings.max_iterations = 1; settings.practice_rounds = 1
 settings.web_search_enabled = False; settings.web_fetch_enabled = False
-from siwu.core.cognitive_loop import CognitiveLoop
-from siwu.core.loop_controller import get_controller_by_conv
+from praxic.core.cognitive_loop import CognitiveLoop
+from praxic.core.loop_controller import get_controller_by_conv
 
 hits = []
 class SF(UF):
@@ -72,6 +73,8 @@ async def main():
     print(f"\n{'='*30}")
     for k,v in results.items(): print(f"  [{'PASS' if v else 'FAIL'}] {k}")
     print(f"\nOVERALL: {'PASS' if all_ok else 'FAIL'}")
-    sys.exit(0 if all_ok else 1)
+    return all_ok
 
-asyncio.run(main())
+
+if __name__ == "__main__":
+    sys.exit(0 if asyncio.run(main()) else 1)

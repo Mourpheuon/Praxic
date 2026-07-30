@@ -50,16 +50,23 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+.playwright-cli/
+output/
 
 # Claude desktop internal data
 .claude/
 CLAUDE.md
 
+# Codex desktop internal data
+.AGENT/
+AGENT.md
+
+
 # Electron build output
 dist-electron/
 
 # Design docs (internal, not for distribution)
-siwu-agent-plan.md
+praxic-agent-plan.md
 
 # Prompt design docs (internal, not for distribution)
 prompts/
@@ -68,8 +75,8 @@ docs/
 # Runtime project & skill data (keep folder, ignore contents)
 projects/*
 !projects/.gitkeep
-siwu/skills/*
-!siwu/skills/.gitkeep
+praxic/skills/*
+!praxic/skills/.gitkeep
 
 # Project handoff (internal, not for distribution)
 PROJECT_HANDOFF.md

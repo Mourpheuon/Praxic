@@ -56,8 +56,8 @@ Set up your API Key (choose one):
 
 ```bash
 # DeepSeek (default, recommended)
-export SIWU_API_KEY="sk-xxx"
-export SIWU_BASE_URL="https://api.deepseek.com"
+export PRAXIC_LLM_API_KEY="sk-xxx"
+export PRAXIC_LLM_BASE_URL="https://api.deepseek.com"
 
 # Anthropic Claude
 export ANTHROPIC_API_KEY="sk-ant-xxx"
@@ -72,15 +72,15 @@ cp .env.example .env
 **Command Line (CLI):**
 
 ```bash
-python -m siwu run "Why is my open-source project struggling to attract contributors?"
-python -m siwu run "Consider a group of agents playing..." --mode deep
-python -m siwu run --help   # Show all options
+python -m praxic run "Why is my open-source project struggling to attract contributors?"
+python -m praxic run "Consider a group of agents playing..." --mode deep
+python -m praxic run --help   # Show all options
 ```
 
 **Web UI (browser):**
 
 ```bash
-python -m siwu
+python -m praxic
 # Automatically opens http://localhost:8000
 ```
 
@@ -95,7 +95,7 @@ python -m siwu
 
 ```python
 import asyncio
-from siwu.core.cognitive_loop import CognitiveLoop
+from praxic.core.cognitive_loop import CognitiveLoop
 
 async def main():
     loop = CognitiveLoop()
@@ -143,8 +143,8 @@ asyncio.run(main())
 ## Project Structure
 
 ```
-praxic/
-├── siwu/                          # Core package
+Praxic/
+├── praxic/                          # Core package
 │   ├── core/                      # Cognitive engine
 │   │   ├── cognitive_loop.py      # Cognitive loop controller (main entry)
 │   │   ├── investigation.py       # Investigation
@@ -240,10 +240,10 @@ web_search_enabled = true
 
 | Variable | Description |
 |----------|-------------|
-| `SIWU_API_KEY` | OpenAI-compatible API Key |
-| `SIWU_BASE_URL` | Compatible endpoint URL |
-| `SIWU_MODEL` | Default model |
-| `SIWU_LLM_PROVIDER` | `openai_compatible` or `anthropic` |
+| `PRAXIC_LLM_API_KEY` | OpenAI-compatible API Key |
+| `PRAXIC_LLM_BASE_URL` | Compatible endpoint URL |
+| `PRAXIC_LLM_MODEL` | Default model |
+| `PRAXIC_LLM_PROVIDER` | `openai_compatible` or `anthropic` |
 | `ANTHROPIC_API_KEY` | Anthropic API Key |
 | `TAVILY_API_KEY` | Tavily search API Key |
 
@@ -263,7 +263,7 @@ The Web UI Settings dialog supports:
 
 ```powershell
 npm install
-cd siwu/web; npx vite build; cd ..\..
+cd praxic/web; npx vite build; cd ..\..
 npx electron-builder
 # Output: dist-electron/Praxic Setup *.exe
 ```

@@ -32,8 +32,8 @@ RUN pip install --no-cache-dir --break-system-packages \
     "aiosqlite>=0.20.0"
 
 # Copy application code
-COPY siwu/ ./siwu/
-# prompts/ 目录由应用启动时自动创建（siwu/config.py _resolve_prompts_dir），无需 COPY
+COPY praxic/ ./praxic/
+# prompts/ 目录由应用启动时自动创建（praxic/config.py _resolve_prompts_dir），无需 COPY
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash praxic && chown -R praxic:praxic /app
@@ -47,4 +47,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/setup/status || exit 1
 
-CMD ["python", "-m", "uvicorn", "siwu.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "praxic.api.server:app", "--host", "0.0.0.0", "--port", "8000"]

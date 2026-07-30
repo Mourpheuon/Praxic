@@ -12,18 +12,19 @@ setup prefix (everything before `async def main`) so we don't trigger that
 module's bottom sys.exit.
 """
 import io, os, sys, asyncio, traceback
+from pathlib import Path
 
-BASE = "/sessions/magical-serene-ramanujan/mnt/Siwu"
-_src_path = BASE + "/tests/test_full_loop_integration.py"
+BASE = Path(__file__).resolve().parents[1]
+_src_path = BASE / "tests" / "test_full_loop_integration.py"
 _src = io.open(_src_path, encoding="utf-8").read()
 _prefix = _src.split("\nasync def main")[0]
-_ns: dict = {}
-exec(compile(_prefix, _src_path, "exec"), _ns)      # sets up env + defines UniversalFake, _SUPERSET
+_ns: dict = {"__file__": str(_src_path)}
+exec(compile(_prefix, str(_src_path), "exec"), _ns)      # sets up env + defines UniversalFake, _SUPERSET
 UniversalFake = _ns["UniversalFake"]
 settings = _ns["settings"]
 
-from siwu.core.cognitive_loop import CognitiveLoop
-from siwu.core.loop_controller import get_controller_by_conv
+from praxic.core.cognitive_loop import CognitiveLoop
+from praxic.core.loop_controller import get_controller_by_conv
 
 
 async def main() -> bool:
@@ -81,11 +82,12 @@ async def main() -> bool:
     return all(checks.values())
 
 
-try:
-    ok = asyncio.run(main())
-    print(f"\nOVERALL: {'PASS' if ok else 'FAIL'}")
-    sys.exit(0 if ok else 1)
-except Exception as e:
-    print(f"\nEXCEPTION: {e}")
-    traceback.print_exc()
-    sys.exit(2)
+if __name__ == "__main__":
+    try:
+        ok = asyncio.run(main())
+        print(f"\nOVERALL: {'PASS' if ok else 'FAIL'}")
+        sys.exit(0 if ok else 1)
+    except Exception as e:
+        print(f"\nEXCEPTION: {e}")
+        traceback.print_exc()
+        sys.exit(2)

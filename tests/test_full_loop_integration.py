@@ -6,13 +6,15 @@ skill distillation — the code paths that fast-mode skips and that the
 Runs instantly (no network).
 """
 import asyncio, sys, os, json, tempfile, traceback
+from pathlib import Path
 
 os.environ['DEEPSEEK_API_KEY'] = 'x'
-os.chdir('/sessions/magical-serene-ramanujan/mnt/Siwu')
-sys.path.insert(0, '/sessions/magical-serene-ramanujan/mnt/Siwu')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+os.chdir(PROJECT_ROOT)
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from siwu.llm.base import BaseLLM, LLMResponse
-from siwu.config import settings
+from praxic.llm.base import BaseLLM, LLMResponse
+from praxic.config import settings
 
 # minimal ui-settings so persona loader + phase models resolve
 p = settings.data_dir / "ui-settings.json"
@@ -111,7 +113,7 @@ class UniversalFake(BaseLLM):
 
 
 async def main():
-    from siwu.core.cognitive_loop import CognitiveLoop
+    from praxic.core.cognitive_loop import CognitiveLoop
 
     settings.max_iterations = 1
     settings.practice_rounds = 1
@@ -177,10 +179,11 @@ async def main():
     return ok
 
 
-try:
-    res = asyncio.run(main())
-    sys.exit(0 if res else 1)
-except Exception as e:
-    print(f"\nEXCEPTION: {e}")
-    traceback.print_exc()
-    sys.exit(2)
+if __name__ == "__main__":
+    try:
+        res = asyncio.run(main())
+        sys.exit(0 if res else 1)
+    except Exception as e:
+        print(f"\nEXCEPTION: {e}")
+        traceback.print_exc()
+        sys.exit(2)

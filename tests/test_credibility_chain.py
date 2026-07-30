@@ -1,7 +1,7 @@
 """Tests for CredibilityChain."""
 import pytest
-from siwu.api.schemas.models import (Contradiction, ContradictionGraph, ContradictionType, DecisionReport, Fact, FactReport, RationalSynthesis)
-from siwu.core.credibility_chain import CredibilityChain
+from praxic.api.schemas.models import (Contradiction, ContradictionGraph, ContradictionType, DecisionReport, Fact, FactReport, RationalSynthesis)
+from praxic.core.credibility_chain import CredibilityChain
 
 def _make_fact_report(facts):
     return FactReport(facts=[Fact(id=fid, content=content, credibility=cred, source_type="internal") for fid, content, cred in facts], summary="test")

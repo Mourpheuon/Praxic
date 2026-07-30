@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "siwu-agent"
+name = "praxic-agent"
 version = "0.1.2"
 description = "即物穷理 Praxic —— 以辩证唯物主义方法论为认知内核的 AI 智能体"
 readme = "README.md"
@@ -46,14 +46,14 @@ dev = [
     "mypy>=1.10.0",
 ]
 all = [
-    "siwu-agent[web,ui,storage,search]",
+    "praxic-agent[web,ui,storage,search]",
 ]
 
 [project.scripts]
-praxic = "siwu.cli:app"
+praxic = "praxic.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["siwu"]
+packages = ["praxic"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "config.toml.example" = "config.toml.example"

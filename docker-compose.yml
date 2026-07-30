@@ -13,7 +13,7 @@ services:
       - ./logs:/app/logs
       - ./config.toml:/app/config.toml:ro
     environment:
-      - SIWU_LLM_API_KEY=${SIWU_LLM_API_KEY:-}
+      - PRAXIC_LLM_API_KEY=${PRAXIC_LLM_API_KEY:-}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}

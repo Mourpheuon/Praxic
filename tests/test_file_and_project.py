@@ -9,15 +9,16 @@ import asyncio, sys, os, json, tempfile, traceback
 from pathlib import Path
 
 os.environ['DEEPSEEK_API_KEY'] = 'x'
-os.chdir('/sessions/magical-serene-ramanujan/mnt/Siwu')
-sys.path.insert(0, '/sessions/magical-serene-ramanujan/mnt/Siwu')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+os.chdir(PROJECT_ROOT)
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from siwu.config import settings
+from praxic.config import settings
 # 隔离数据目录，避免污染真实库
 settings.data_dir = Path(tempfile.mkdtemp())
 settings.projects_dir = Path(tempfile.mkdtemp())
 
-from siwu.llm.base import BaseLLM, LLMResponse
+from praxic.llm.base import BaseLLM, LLMResponse
 
 SENTINEL = "SENTINEL_QUANTUM_42_UPLOADED_FILE"
 
@@ -59,7 +60,7 @@ class CapturingFake(BaseLLM):
         yield ""
 
 async def main():
-    from siwu.core.cognitive_loop import CognitiveLoop
+    from praxic.core.cognitive_loop import CognitiveLoop
     settings.max_iterations = 1
     settings.practice_rounds = 1
     settings.web_search_enabled = False
@@ -95,7 +96,7 @@ async def main():
     results["哨兵出现在某次LLM调用"] = sentinel_anywhere
 
     # ── 断言 2：project_id 落到 episode + conversation_meta ──
-    from siwu.memory.episodic_memory import EpisodicMemory
+    from praxic.memory.episodic_memory import EpisodicMemory
     em = EpisodicMemory()   # 同一 settings.data_dir
     import sqlite3
     con = sqlite3.connect(em.db_path); con.row_factory = sqlite3.Row
@@ -128,10 +129,11 @@ async def main():
     print(f"\nOVERALL: {'PASS' if ok else 'FAIL'}")
     return ok
 
-try:
-    res = asyncio.run(main())
-    sys.exit(0 if res else 1)
-except Exception as e:
-    print(f"\nEXCEPTION: {e}")
-    traceback.print_exc()
-    sys.exit(2)
+if __name__ == "__main__":
+    try:
+        res = asyncio.run(main())
+        sys.exit(0 if res else 1)
+    except Exception as e:
+        print(f"\nEXCEPTION: {e}")
+        traceback.print_exc()
+        sys.exit(2)

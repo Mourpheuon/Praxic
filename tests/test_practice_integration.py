@@ -8,18 +8,20 @@ Tests the NEW code paths:
 Runs instantly (no real API calls).
 """
 import asyncio, sys, os, tempfile, traceback
+from pathlib import Path
 
-os.chdir('/sessions/magical-serene-ramanujan/mnt/Siwu')
-sys.path.insert(0, '/sessions/magical-serene-ramanujan/mnt/Siwu')
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+os.chdir(PROJECT_ROOT)
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from siwu.llm.base import BaseLLM, LLMResponse
-from siwu.core.practice import PracticeModule
-from siwu.tools.filesystem import WorkspaceToolkit
-from siwu.api.schemas.models import (
+from praxic.llm.base import BaseLLM, LLMResponse
+from praxic.core.practice import PracticeModule
+from praxic.tools.filesystem import WorkspaceToolkit
+from praxic.api.schemas.models import (
     ActionItem, DecisionReport, CognitiveTrace,
     FactReport, Fact, RationalSynthesis, ContradictionGraph,
 )
-from siwu.memory.working_memory import WorkingMemory
+from praxic.memory.working_memory import WorkingMemory
 
 
 class FakeLLM(BaseLLM):
@@ -73,7 +75,7 @@ async def main():
     print("=== Practice phase integration test (FakeLLM) ===")
 
     # Workspace in a temp dir
-    tmpdir = tempfile.mkdtemp(prefix="siwu_test_ws_")
+    tmpdir = tempfile.mkdtemp(prefix="praxic_test_ws_")
     ws = WorkspaceToolkit(workspace_dir=tmpdir)
 
     fake = FakeLLM()
@@ -159,10 +161,11 @@ async def main():
     return ok
 
 
-try:
-    result = asyncio.run(main())
-    sys.exit(0 if result else 1)
-except Exception as e:
-    print(f"\nEXCEPTION: {e}")
-    traceback.print_exc()
-    sys.exit(2)
+if __name__ == "__main__":
+    try:
+        result = asyncio.run(main())
+        sys.exit(0 if result else 1)
+    except Exception as e:
+        print(f"\nEXCEPTION: {e}")
+        traceback.print_exc()
+        sys.exit(2)

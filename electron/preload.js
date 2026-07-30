@@ -11,7 +11,7 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('siwu', {
+contextBridge.exposeInMainWorld('praxic', {
     /** 平台信息 */
     platform: process.platform,
 

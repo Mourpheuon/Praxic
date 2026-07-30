@@ -1,7 +1,7 @@
 """Tests for ContradictionAnalyzer."""
 import json, pytest
-from siwu.api.schemas.models import ContradictionType, Fact, FactReport
-from siwu.core.contradiction import ContradictionAnalyzer
+from praxic.api.schemas.models import ContradictionType, Fact, FactReport
+from praxic.core.contradiction import ContradictionAnalyzer
 from tests.mock_llm import MockLLM
 
 VALID_RESP = json.dumps({"principal_contradiction":{"description":"用户期望与系统能力之间的根本矛盾","tension_poles":["用户高期望","系统能力有限"],"contradiction_type":"internal","rank":1,"primary_aspect":"系统能力有限","transformation_condition":"当知识库扩展时转移","basis_fact_ids":["f1","f2"],"basis_summary":"基于f1和f2"},"secondary_contradictions":[{"description":"准确性与速度的矛盾","tension_poles":["准确性","速度"],"contradiction_type":"internal","rank":2,"primary_aspect":"准确性","transformation_condition":"有充分计算资源时缓解","basis_fact_ids":["f3"],"basis_summary":"基于f3"}],"dynamic_note":"主要矛盾处于相对稳定状态","synthesis":"核心矛盾是用户期望与能力差距"}, ensure_ascii=False)
