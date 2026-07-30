@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Praxic red outline mark</title>
+  <desc id="desc">A red compass diamond inside a ring on a transparent field.</desc>
+  <defs>
+    <filter id="chalk" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.025 0.09" numOctaves="2" seed="29" result="noise" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.05" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+  </defs>
+  <g filter="url(#chalk)" fill="none" stroke="#8c271e" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="128" cy="128" r="91" stroke-width="12" />
+    <g transform="rotate(34 128 128)">
+      <path d="M128 38 160 128 128 218 96 128Z" stroke-width="11" />
+      <path d="M128 38 160 128 96 128Z" stroke-width="8" />
+      <circle cx="128" cy="128" r="17" stroke-width="8" />
+    </g>
+  </g>
+</svg>

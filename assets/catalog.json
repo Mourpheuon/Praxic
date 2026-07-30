@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "assets": [
+    {
+      "id": "brand.praxic.compass.v1",
+      "name": "Praxic Compass",
+      "kind": "brand-mark",
+      "status": "candidate",
+      "source_path": "brand/source/praxic-compass-v1.png",
+      "provenance": "user-provided generated artwork",
+      "added_on": "2026-07-30",
+      "format": "png",
+      "width": 1024,
+      "height": 1024,
+      "has_transparency": true,
+      "sha256": "37e60472bd0d2fae5c295cf28c98b6d203c3c672d4b4633933e50b7f1fe2fd8e",
+      "recommended_uses": [
+        "setup-screen identity at 72-96 px",
+        "about-screen identity at 96-128 px",
+        "empty-state brand mark at 64-96 px"
+      ],
+      "requires_derivative_for": [
+        "sidebar mark below 32 px",
+        "favicon",
+        "system tray icon",
+        "application executable icon"
+      ],
+      "notes": "Preserve this file as the source master. Produce simplified, tightly cropped exports before small-size UI use."
+    },
+    {
+      "id": "brand.praxic.mark.v2",
+      "name": "Praxic Geometric Mark",
+      "kind": "application-icon",
+      "status": "approved",
+      "source_path": "brand/source/praxic-mark-v2.svg",
+      "export_path": "brand/exports/praxic-mark-v2.svg",
+      "prompt_path": "brand/prompts/praxic-mark-v2.md",
+      "published_path": "praxic/web/public/assets/brand/praxic-mark-v2.svg",
+      "provenance": "project-native vector artwork derived from user direction",
+      "added_on": "2026-07-30",
+      "format": "svg",
+      "view_box": "0 0 256 256",
+      "has_transparency": true,
+      "sha256": "3d17e7b44b13f69ae9b8e789ebb9b25b1efc422a694a8a39493c645d5f8d7e92",
+      "export_sha256": "40971d34b3fd6a9f1b5dccd0359e9fc58364d60ceae8b584eb7d2278a64a3b5e",
+      "recommended_uses": [
+        "sidebar brand mark at 22 px",
+        "assistant identity at 16 px",
+        "setup and about identity at 56-72 px",
+        "favicon"
+      ],
+      "notes": "Black field with warm-white ring, diagonal diamond and center ring. The favicon export omits texture for maximum small-size clarity."
+    },
+    {
+      "id": "brand.praxic.mark-red-outline.v2",
+      "name": "Praxic Red Outline Mark",
+      "kind": "brand-mark-variant",
+      "status": "approved",
+      "source_path": "brand/source/praxic-mark-red-outline-v2.svg",
+      "export_path": "brand/exports/praxic-mark-red-outline-v2.svg",
+      "published_path": "praxic/web/public/assets/brand/praxic-mark-red-outline-v2.svg",
+      "provenance": "project-native vector variant derived from user direction",
+      "added_on": "2026-07-30",
+      "format": "svg",
+      "view_box": "0 0 256 256",
+      "has_transparency": true,
+      "sha256": "84849c7fb354864054d76c0583e012ced8ccac7b7320f276937a6b27b1c07bf1",
+      "export_sha256": "774b8c3e2eb3558440dde8dd38bcda4fb79cb3830de07066d6b6aa042d5a09f9",
+      "recommended_uses": [
+        "main-workspace empty state at 72 px",
+        "light paper surfaces at 48-96 px"
+      ],
+      "notes": "Transparent field with seal-red outline geometry. Use only on light surfaces with sufficient surrounding space."
+    }
+  ]
+}

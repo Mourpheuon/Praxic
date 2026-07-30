@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Praxic</title>
+  <desc id="desc">A chalk-white compass diamond inside a ring on a black square.</desc>
+  <defs>
+    <filter id="chalk" x="-8%" y="-8%" width="116%" height="116%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.025 0.09" numOctaves="2" seed="29" result="noise" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.15" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="18" fill="#11110f" />
+  <g filter="url(#chalk)" stroke="#f4f0e7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="128" cy="128" r="87" fill="none" stroke-width="12" />
+    <g transform="rotate(34 128 128)">
+      <path d="M128 42 158 128 128 214 98 128Z" fill="#11110f" stroke-width="10" />
+      <path d="M128 42 158 128 98 128Z" fill="#f4f0e7" stroke="none" />
+      <circle cx="128" cy="128" r="17" fill="#11110f" stroke-width="8" />
+    </g>
+  </g>
+</svg>
