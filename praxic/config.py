@@ -1,6 +1,8 @@
 """Praxic -- unified config loader."""
 
 from __future__ import annotations
+
+import ipaddress
 import os
 from dataclasses import dataclass, field
 from enum import IntEnum
@@ -20,6 +22,54 @@ try:
             load_dotenv(_pkg_env)
 except ImportError:
     pass
+
+
+def _normalize_no_proxy_for_httpx() -> None:
+    """Make IPv6 ``NO_PROXY`` entries compatible with the installed httpx.
+
+    httpx 0.28 builds URL patterns from ``NO_PROXY`` values.  IPv6 CIDR
+    entries such as ``::1/128`` are bracketed as ``[::1/128]`` and then
+    parsed as an invalid URL, which prevents every httpx-based client from
+    being constructed.  A /128 network is equivalent to its host address;
+    wider IPv6 CIDRs cannot be represented by httpx's URL-pattern matcher,
+    so they are omitted rather than crashing client initialization.
+    """
+    for variable in ("NO_PROXY", "no_proxy"):
+        raw = os.environ.get(variable)
+        if raw is None:
+            continue
+
+        normalized: list[str] = []
+        changed = False
+        for token in raw.split(","):
+            entry = token.strip()
+            if not entry:
+                continue
+
+            network = None
+            if "/" in entry:
+                try:
+                    network = ipaddress.ip_network(entry, strict=False)
+                except ValueError:
+                    pass
+
+            if network is not None and network.version == 6:
+                if network.prefixlen == network.max_prefixlen:
+                    host = str(network.network_address)
+                    changed = changed or host != entry
+                    entry = host
+                else:
+                    changed = True
+                    continue
+
+            normalized.append(entry)
+
+        if changed:
+            os.environ[variable] = ",".join(normalized)
+
+
+# Apply the compatibility fix before any httpx-backed client is created.
+_normalize_no_proxy_for_httpx()
 
 _tomllib: Any = None
 try:
