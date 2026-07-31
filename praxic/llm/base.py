@@ -34,7 +34,7 @@ class BaseLLM(ABC):
         messages: list[dict],
         system: Optional[str] = None,
         temperature: float = 0.5,
-        max_tokens: int = 4096,
+        max_tokens: Optional[int] = None,
         **kwargs,
     ) -> LLMResponse:
         """异步调用 LLM，返回完整响应"""
@@ -46,7 +46,7 @@ class BaseLLM(ABC):
         messages: list[dict],
         system: Optional[str] = None,
         temperature: float = 0.5,
-        max_tokens: int = 4096,
+        max_tokens: Optional[int] = None,
         **kwargs,
     ) -> AsyncIterator[str]:
         """异步流式调用 LLM，逐块 yield 文本"""

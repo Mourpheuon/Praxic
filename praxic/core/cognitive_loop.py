@@ -1197,11 +1197,12 @@ class CognitiveLoop:
         # ── 调用 LLM 生成直接回答 ──
         summary = ""
         try:
+            answer_max_tokens = settings.detailed_report_max_tokens if detailed else settings.final_answer_max_tokens
             response = await self.llm.call(
                 messages=[{"role": "user", "content": analysis_context}],
                 system=_DETAILED_REPORT_PROMPT if detailed else _FINAL_ANSWER_PROMPT,
                 temperature=0.5,
-                max_tokens=(settings.detailed_report_max_tokens if detailed else settings.final_answer_max_tokens),
+                max_tokens=answer_max_tokens if answer_max_tokens > 0 else None,
             )
             summary = response.content.strip()
             # 仅过滤空/近空输出——短回答对寒暄、简单问题是合理的，不应因长度被丢弃

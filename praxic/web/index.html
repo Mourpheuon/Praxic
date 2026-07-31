@@ -2157,13 +2157,14 @@
             const open = expandedPhases[group.id] ?? defaultOpen;
             const actions = group.events.filter(entry => ['tool_call', 'steering'].includes(eventKind(entry)) || eventKind(entry).startsWith('authorization')).length || group.events.length;
             const last = group.events[group.events.length - 1];
+            const showSummary = group.id !== 'preprocessing';
             return (
               <section key={group.id} className={'praxic-phase-group praxic-phase-group--' + status + (open ? ' praxic-phase-group--open' : '')}>
                 <button type="button" className="praxic-phase-group__header" onClick={() => togglePhase(group.id, defaultOpen)} aria-expanded={open}>
                   <span className="praxic-phase-group__icon" aria-hidden="true" />
                   <span className="praxic-phase-group__title"><strong>{group.label}<small>{' · '}{group.subtitle}</small></strong></span>
                   <span className="praxic-phase-group__meta"><strong>{String(actions).padStart(2, '0')}</strong><small>{status === 'active' ? '进行中' : status === 'waiting' ? '等待授权' : status === 'error' ? '需注意' : '已完成'}</small></span>
-                  <span className="praxic-phase-group__summary">{last?.summary || '等待进入'}</span>
+                  <span className="praxic-phase-group__summary">{showSummary ? (last?.summary || '等待进入') : ''}</span>
                   <span className="praxic-phase-group__chevron">{open ? '−' : '+'}</span>
                 </button>
                 {open && <div className="praxic-phase-group__events">
@@ -3246,7 +3247,7 @@
                   {/* Version */}
                   <div className="text-center">
                     <span className="inline-block bg-cream/60 rounded-full px-4 py-1 border border-clay/15 text-xs font-medium text-warmgray">
-                      v{versionInfo?.python_version || versionInfo?.electron_version || '0.0.3'}
+                      v{versionInfo?.python_version || versionInfo?.electron_version || '0.1.5'}
                     </span>
                   </div>
 
@@ -3427,9 +3428,6 @@
                   <div className="border-t border-clay/15 pt-4 text-center space-y-1.5">
                     <p className="text-[10px] text-warmgray/50">
                       技术栈：Python 3.11+ · FastAPI · structlog · Electron
-                    </p>
-                    <p className="text-[10px] text-warmgray/50">
-                      LLM 支持：DeepSeek / OpenAI / Anthropic Claude / Ollama
                     </p>
                     <a href="https://github.com/Mourpheuon/Praxic" target="_blank"
                       className="inline-block text-xs text-seal hover:text-seal-light underline">

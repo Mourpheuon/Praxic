@@ -207,8 +207,9 @@ class Settings:
     file_loader_max_total_chars: int = 80000  # 所有上传文件合并后的最大字符数
     file_loader_max_per_file: int = 10_000_000  # 单文件最大字节数（10MB）
     # ── 最终回答 / 详实报告 token 预算 ──
-    final_answer_max_tokens: int = 1024  # 常规简答的 max_tokens
-    detailed_report_max_tokens: int = 4096  # 触发详实报告时的 max_tokens
+    # 0 表示不添加应用层输出上限，交给模型提供方决定。
+    final_answer_max_tokens: int = 0
+    detailed_report_max_tokens: int = 0
 
     def phase(self, name: str) -> PhaseConfig:
         cfg = self.phases.get(name, PhaseConfig())
@@ -422,10 +423,10 @@ def _build() -> Settings:
             or inv.get("investigation_legacy_per_file_max_chars", 2000)
         ),
         final_answer_max_tokens=int(
-            _env("PRAXIC_FINAL_ANSWER_MAX_TOKENS") or rt.get("final_answer_max_tokens", 1024)
+            _env("PRAXIC_FINAL_ANSWER_MAX_TOKENS") or rt.get("final_answer_max_tokens", 0)
         ),
         detailed_report_max_tokens=int(
-            _env("PRAXIC_DETAILED_REPORT_MAX_TOKENS") or rt.get("detailed_report_max_tokens", 4096)
+            _env("PRAXIC_DETAILED_REPORT_MAX_TOKENS") or rt.get("detailed_report_max_tokens", 0)
         ),
     )
 

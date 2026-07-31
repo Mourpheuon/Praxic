@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
             "以辩证唯物主义方法论为认知内核的 AI 智能体。"
             "认知循环：调查研究 → 矛盾分析 → 理性认识 → 实践检验 → 反思复盘"
         ),
-        version="0.0.3",
+        version="0.1.5",
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,

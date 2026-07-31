@@ -435,8 +435,8 @@ async def test_connection(req: TestConnectionRequest):
 # ── Version / Update routes ──────────────────────────────────────
 
 class VersionInfoResponse(BaseModel):
-    python_version: str = "0.0.3"
-    electron_version: str = "0.0.3"
+    python_version: str = "0.1.5"
+    electron_version: str = "0.1.5"
     latest_version: str = ""
     update_available: bool = False
     release_url: str = ""
@@ -457,7 +457,7 @@ def _get_pyproject_version() -> str:
                     return line.split("=", 1)[1].strip().strip('"').strip("'")
     except Exception:
         pass
-    return "0.0.3"
+    return "0.1.5"
 
 
 def _get_package_json_version() -> str:
@@ -465,17 +465,17 @@ def _get_package_json_version() -> str:
         pj = Path.cwd() / "package.json"
         if pj.exists():
             data = json.loads(pj.read_text(encoding="utf-8"))
-            return data.get("version", "0.0.3")
+            return data.get("version", "0.1.5")
     except Exception:
         pass
     try:
         pj2 = Path.cwd() / "resources" / "app" / "package.json"
         if pj2.exists():
             data = json.loads(pj2.read_text(encoding="utf-8"))
-            return data.get("version", "0.0.3")
+            return data.get("version", "0.1.5")
     except Exception:
         pass
-    return "0.0.3"
+    return "0.1.5"
 
 
 @router.get("/setup/version", response_model=VersionInfoResponse)
@@ -753,24 +753,58 @@ async def _gh_release_create(version: str, dist_dir: Path, *, gh: str) -> str:
             err = (serr or sout).decode("gbk" if sys.platform == "win32" else "utf-8", errors="replace").strip()
             log.warning("gh_release_delete_failed | %s", err[:200])
 
-    # Create / update tag on remote
-    # Strategy: push tag → create release (avoids interactive prompts)
+    # Create / update tag on remote. Run each Git command sequentially so the
+    # tag push cannot race the remote-tag deletion or local tag update.
     import shutil as _shutil2
     _git = _shutil2.which("git")
+    release_target = ""
     if _git:
         # Delete stale remote tag if it exists (ignore errors)
-        await _run_cmd(_git, "push", "origin", f":refs/tags/{tag}", cwd=cwd,
-                       stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        delete_remote = await _run_cmd(
+            _git, "push", "origin", f":refs/tags/{tag}", cwd=cwd,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        await delete_remote.wait()
+
         # Force-update local tag to current HEAD
-        await _run_cmd(_git, "tag", "-f", tag, cwd=cwd,
-                       stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        update_local = await _run_cmd(
+            _git, "tag", "-f", tag, cwd=cwd,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        await update_local.wait()
+
         # Push the tag to remote
-        await _run_cmd(_git, "push", "origin", tag, cwd=cwd,
-                       stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        push_tag = await _run_cmd(
+            _git, "push", "origin", tag, cwd=cwd,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        push_stdout, push_stderr = await push_tag.communicate()
+        if push_tag.returncode != 0:
+            push_error = (push_stderr or push_stdout).decode(
+                "gbk" if sys.platform == "win32" else "utf-8", errors="replace"
+            ).strip()
+            log.warning("github_tag_push_failed | tag=%s | %s", tag, push_error[:300])
+
+            # gh can create the remote tag through the GitHub API when the
+            # commit is already reachable remotely but Git HTTPS auth failed.
+            target = await _run_cmd(
+                _git, "rev-parse", "HEAD", cwd=cwd,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            target_stdout, target_stderr = await target.communicate()
+            if target.returncode == 0:
+                release_target = target_stdout.decode("ascii", errors="replace").strip()
+            else:
+                target_error = (target_stderr or target_stdout).decode(
+                    "gbk" if sys.platform == "win32" else "utf-8", errors="replace"
+                ).strip()
+                log.warning("github_release_target_failed | %s", target_error[:300])
 
     body = f"自动构建发布 {tag}\n\n构建时间：{dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
     args = [gh, "release", "create", tag,
             "--title", f"即物穷理 v{version}", "--notes", body]
+    if release_target:
+        args.extend(["--target", release_target])
     if version.startswith("0.0"):
         args.append("--prerelease")
     create = await _run_cmd(*args, cwd=cwd,
@@ -966,7 +1000,7 @@ async def build_electron(req: BuildRequest = BuildRequest()):
                     yield _sse({"type": "result", "ok": True, "release_url": release_url, "version": release_ver})
                 except Exception as e:
                     yield _sse({"type": "log", "line": f"❌ 发布失败: {e}"})
-                    yield _sse({"type": "result", "ok": True, "message": "自动发布失败", "error": str(e)})
+                    yield _sse({"type": "result", "ok": False, "message": "自动发布失败", "error": str(e)})
         elif not skip_build:
             yield _sse({"type": "result", "ok": True, "message": "构建完成"})
         else:

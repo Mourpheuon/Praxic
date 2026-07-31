@@ -47,7 +47,7 @@ class OpenAICompatibleLLM(BaseLLM):
         messages: list[dict],
         system: Optional[str] = None,
         temperature: float = 0.5,
-        max_tokens: int = 4096,
+        max_tokens: Optional[int] = None,
         model: Optional[str] = None,
         **kwargs,
     ) -> LLMResponse:
@@ -62,9 +62,10 @@ class OpenAICompatibleLLM(BaseLLM):
         params: dict = {
             "model": model,
             "messages": full_messages,
-            "max_tokens": max_tokens,
             "temperature": temperature,
         }
+        if max_tokens is not None and max_tokens > 0:
+            params["max_tokens"] = max_tokens
         if kwargs.pop("use_provider_prompt_cache", False):
             cache_key = kwargs.pop("cache_key", None)
             if cache_key:
@@ -106,7 +107,7 @@ class OpenAICompatibleLLM(BaseLLM):
         messages: list[dict],
         system: Optional[str] = None,
         temperature: float = 0.5,
-        max_tokens: int = 4096,
+        max_tokens: Optional[int] = None,
         model: Optional[str] = None,
         **kwargs,
     ) -> AsyncIterator[str]:
@@ -120,10 +121,11 @@ class OpenAICompatibleLLM(BaseLLM):
         params: dict = {
             "model": model,
             "messages": full_messages,
-            "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": True,
         }
+        if max_tokens is not None and max_tokens > 0:
+            params["max_tokens"] = max_tokens
 
         async with await self._client.chat.completions.create(**params) as stream:
             async for chunk in stream:

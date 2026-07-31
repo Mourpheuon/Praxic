@@ -8,6 +8,7 @@ from .base import BaseLLM, LLMResponse
 from .cache import usage_value
 
 log = structlog.get_logger(__name__)
+_DEFAULT_UNBOUNDED_MAX_TOKENS = 32768
 
 
 class ClaudeLLM(BaseLLM):
@@ -21,9 +22,12 @@ class ClaudeLLM(BaseLLM):
         self._client = anthropic.AsyncAnthropic(api_key=api_key or settings.anthropic_api_key, timeout=120.0)
         self.default_model = default_model or settings.default_model
 
-    async def call(self, messages, system=None, temperature=0.5, max_tokens=4096, model=None, **kwargs):
+    async def call(self, messages, system=None, temperature=0.5, max_tokens=None, model=None, **kwargs):
         model = model or self.default_model
         log.debug("llm.call", model=model, n_messages=len(messages))
+        # Anthropic requires a positive max_tokens value; use a generous provider
+        # fallback while keeping the application default free of a short cap.
+        max_tokens = max_tokens if max_tokens and max_tokens > 0 else _DEFAULT_UNBOUNDED_MAX_TOKENS
         params = dict(model=model, messages=messages, max_tokens=max_tokens, temperature=temperature)
         if system:
             if kwargs.pop("cache_prompt", True):
@@ -53,8 +57,9 @@ class ClaudeLLM(BaseLLM):
         self._record_cache_response(result)
         return result
 
-    async def stream(self, messages, system=None, temperature=0.5, max_tokens=4096, model=None, **kwargs):
+    async def stream(self, messages, system=None, temperature=0.5, max_tokens=None, model=None, **kwargs):
         model = model or self.default_model
+        max_tokens = max_tokens if max_tokens and max_tokens > 0 else _DEFAULT_UNBOUNDED_MAX_TOKENS
         params = dict(model=model, messages=messages, max_tokens=max_tokens, temperature=temperature)
         if system:
             if kwargs.pop("cache_prompt", True):
