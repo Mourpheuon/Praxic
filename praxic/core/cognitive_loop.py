@@ -16,6 +16,7 @@ from ..tools.filesystem import FileReadTool, FileWriteTool, FileListTool, FileDe
 from ..tools.permissions import PermissionPolicy
 from ..tools.shell import ShellTool
 from ..tools.web_search import WebSearchTool
+from ..tools.web_fetch import WebFetchTool
 from .contradiction import ContradictionAnalyzer
 from .decision import DecisionEngine
 from .dev_tracer import DevTracer, TracingLLMWrapper
@@ -225,6 +226,8 @@ class CognitiveLoop:
             api_key=settings.tavily_api_key,
             max_results=settings.web_search_max_results,
         ))
+        if _web and settings.web_fetch_enabled:
+            self._registry.register(WebFetchTool())
         self.max_iterations = settings.max_iterations
         self.convergence_threshold = 0.85
         self.enable_trajectory_logging = settings.enable_trajectory_logging
@@ -674,6 +677,25 @@ class CognitiveLoop:
                 if sig == "resumed":
                     _emit_phase(on_phase, phase, "已恢复，继续执行")
                 return False
+            async def _micro_steering(phase, tool):
+                # 让 /control steer 请求有机会在工具事件发出后进入当前运行，
+                # 不必等到整个认知阶段结束；同一消息由控制器按阶段去重。
+                await asyncio.sleep(0)
+                steering = controller.collect_steers(phase)
+                if steering:
+                    previous = working_mem.get("_micro_steering", "")
+                    working_mem.set("_micro_steering", previous + steering)
+                    _emit_phase(
+                        on_phase,
+                        phase,
+                        "收到插话，已带入后续小循环",
+                        data={
+                            "event_type": "steering_applied",
+                            "tool": tool,
+                            "content": steering,
+                        },
+                    )
+                return steering
             # 初始化阶段输出变量——被跳过的阶段下游仍需引用
             fact_report = None
             contradiction_graph = None
@@ -688,7 +710,17 @@ class CognitiveLoop:
                 extra_ctx = working_mem.get_context_for_phase("investigation") + _hint("investigation") + _steer("investigation")
                 hist = working_mem.get("conversation_history", "")
                 if hist: extra_ctx = hist + "\n" + extra_ctx if extra_ctx else hist
-                fact_report = await self.investigation.investigate(question=effective_question, additional_context=context + extra_ctx)
+                fact_report = await self.investigation.investigate(
+                    question=effective_question,
+                    additional_context=context + extra_ctx,
+                    on_progress=(
+                        (lambda _tool, summary, data=None: _emit_phase(
+                            on_phase, CognitivePhaseName.INVESTIGATION, summary, data=data
+                        ))
+                        if on_phase else None
+                    ),
+                    steering_checkpoint=lambda tool: _micro_steering("investigation", tool),
+                )
                 trace.investigation = fact_report
                 working_mem.set("last_investigation", fact_report.summary)
                 _record_duration(trace, "investigation", t0)
@@ -831,6 +863,7 @@ class CognitiveLoop:
                         (lambda phase, summary, data=None: _emit_phase(on_phase, "action", summary, data=data))
                         if on_phase else None
                     ),
+                    steering_checkpoint=lambda tool, _result=None: _micro_steering("practice", tool),
                 )
                 if practice_report is not None:
                     trace.practice = practice_report
@@ -881,7 +914,8 @@ class CognitiveLoop:
             # ── 收集终止判定证据 ──
             termination_evidence = await self._gather_termination_evidence(trace, working_mem)
             working_mem.set("_termination_evidence", termination_evidence)
-            reflection_report = await self.reflection.reflect(question=effective_question, trace=trace, termination_evidence=termination_evidence)
+            reflection_question = effective_question + working_mem.get("_micro_steering", "")
+            reflection_report = await self.reflection.reflect(question=reflection_question, trace=trace, termination_evidence=termination_evidence)
             trace.reflection = reflection_report
             _record_duration(trace, "reflection", t4)
             if on_phase:

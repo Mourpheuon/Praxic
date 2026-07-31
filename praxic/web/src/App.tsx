@@ -1,7 +1,7 @@
-import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSSE } from './hooks/useSSE'
-import type { ActivityEvent, AuthorizationRequest, PhaseId, RunStatus, SSEDoneEvent } from './types'
-import { PHASES, PHASE_LABELS } from './types'
+import type { ActivityEvent, AuthorizationRequest, RunStatus, SSEDoneEvent } from './types'
+import { PHASES, PHASE_ICONS, PHASE_LABELS } from './types'
 
 function newConversationId() {
   return Math.random().toString(36).slice(2, 10)
@@ -24,6 +24,76 @@ function authorizationFrom(event?: ActivityEvent): AuthorizationRequest | null {
   const candidate = event?.data?.authorization
   if (!candidate || typeof candidate !== 'object' || !('request_id' in candidate)) return null
   return candidate as unknown as AuthorizationRequest
+}
+
+type PhaseColor = 'red' | 'blue' | 'yellow'
+
+interface PhaseGroup {
+  id: string
+  label: string
+  subtitle: string
+  icon: string
+  code: string
+  color: PhaseColor
+  events: ActivityEvent[]
+}
+
+function normalizePhase(event: ActivityEvent, currentPhase = '') {
+  if (PHASE_LABELS[event.phase]) return event.phase
+  if (event.phase === 'action') return 'practice'
+  if (event.phase === 'authorization') return currentPhase || 'practice'
+  return event.phase
+}
+
+function normalizeActivity(event: ActivityEvent, currentPhase = ''): ActivityEvent {
+  return { ...event, phase: normalizePhase(event, currentPhase) }
+}
+
+function recordFrom(event: ActivityEvent) {
+  return event.data?.record as Record<string, any> | undefined
+}
+
+function toolResultFrom(event: ActivityEvent) {
+  return recordFrom(event)?.result as Record<string, any> | undefined
+}
+
+function toolNameFrom(event: ActivityEvent) {
+  return String(event.data?.tool || recordFrom(event)?.tool || 'TOOL')
+}
+
+function activityHasFailure(event: ActivityEvent) {
+  const result = toolResultFrom(event)
+  const authorization = authorizationFrom(event)
+  return result?.status === 'error'
+    || result?.state_classification === 'verification_failed'
+    || result?.state_classification === 'tool_error'
+    || authorization?.status === 'denied'
+    || event.event_type === 'error'
+}
+
+function activityStatus(event: ActivityEvent) {
+  const authorization = authorizationFrom(event)
+  if (authorization?.status === 'pending') return '等待授权'
+  if (authorization?.status === 'approved') return '已授权'
+  if (authorization?.status === 'denied') return '已拒绝'
+  if (event.event_type === 'steering') return '已注入'
+  if (event.event_type === 'user_question') return '已提交'
+  if (event.event_type === 'result') return '已完成'
+  if (activityHasFailure(event)) return '需注意'
+  if (event.summary.includes('正在') || event.summary.includes('进行中')) return '进行中'
+  return '已完成'
+}
+
+function localActivity(phase: string, eventType: string, summary: string, data?: Record<string, unknown>): ActivityEvent {
+  return {
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    type: 'local',
+    event_type: eventType,
+    phase,
+    summary,
+    data,
+  }
 }
 
 function SetupGate() {
@@ -111,6 +181,12 @@ export default function App() {
   const [authorizations, setAuthorizations] = useState<Record<string, AuthorizationRequest>>({})
   const [authorizationBusy, setAuthorizationBusy] = useState('')
   const [authorizationError, setAuthorizationError] = useState('')
+  const [expandedPhases, setExpandedPhases] = useState<Record<string, boolean>>({})
+  const [steeringHistory, setSteeringHistory] = useState<string[]>([])
+  const [steerTargetId, setSteerTargetId] = useState('')
+  const [steeringBusy, setSteeringBusy] = useState(false)
+  const [steeringError, setSteeringError] = useState('')
+  const lastPhaseRef = useRef('')
 
   const reset = useCallback(() => {
     setActivities([])
@@ -120,12 +196,20 @@ export default function App() {
     setAuthorizations({})
     setAuthorizationBusy('')
     setAuthorizationError('')
+    setExpandedPhases({})
+    setSteeringHistory([])
+    setSteerTargetId('')
+    setSteeringBusy(false)
+    setSteeringError('')
+    lastPhaseRef.current = ''
   }, [])
 
   const handleEvent = useCallback((event: ActivityEvent) => {
-    setActivities(previous => [...previous, event].slice(-300))
-    setSelectedId(event.id)
-    const authorization = authorizationFrom(event)
+    const normalized = normalizeActivity(event, lastPhaseRef.current)
+    if (PHASE_LABELS[normalized.phase]) lastPhaseRef.current = normalized.phase
+    setActivities(previous => [...previous, normalized].slice(-300))
+    setSelectedId(normalized.id)
+    const authorization = authorizationFrom(normalized)
     if (authorization) {
       setAuthorizations(previous => ({ ...previous, [authorization.request_id]: authorization }))
     }
@@ -134,6 +218,13 @@ export default function App() {
   const handleDone = useCallback((data: SSEDoneEvent) => {
     setResult(data)
     setStartedAt(null)
+    lastPhaseRef.current = 'reflection'
+    const event = localActivity('reflection', data.error ? 'error' : 'result', data.error || data.summary, {
+      event_type: data.error ? 'error' : 'result',
+      result: data,
+    })
+    setActivities(previous => [...previous, event].slice(-300))
+    setSelectedId(event.id)
   }, [])
 
   const handleTitle = useCallback(() => {}, [])
@@ -155,19 +246,62 @@ export default function App() {
     : null
   const pendingAuthorization = Object.values(authorizations).find(item => item.status === 'pending') || null
 
-  const activePhase = selected?.phase && PHASE_LABELS[selected.phase]
-    ? selected.phase
-    : [...activities].reverse().find(activity => PHASE_LABELS[activity.phase])?.phase || ''
+  const activePhase = [...activities].reverse().find(activity => {
+    return PHASE_LABELS[activity.phase] && activity.event_type !== 'user_question' && activity.event_type !== 'steering'
+  })?.phase || ''
+
+  const phaseGroups = useMemo<PhaseGroup[]>(() => {
+    const grouped = new Map<string, ActivityEvent[]>()
+    for (const activity of activities) {
+      const events = grouped.get(activity.phase) || []
+      events.push(activity)
+      grouped.set(activity.phase, events)
+    }
+
+    const known = PHASES.map(phase => ({ ...phase, events: grouped.get(phase.id) || [] }))
+      .filter(group => group.events.length > 0)
+      .map(group => ({ ...group, color: group.color as PhaseColor }))
+
+    const knownIds = new Set<string>(PHASES.map(phase => phase.id))
+    const unknown = [...grouped.entries()]
+      .filter(([phase]) => !knownIds.has(phase))
+      .map(([phase, events]) => ({
+        id: phase,
+        label: PHASE_LABELS[phase] || phase,
+        subtitle: '运行事件',
+        icon: PHASE_ICONS[phase] || '•',
+        code: '++',
+        color: 'blue' as PhaseColor,
+        events,
+      }))
+
+    return [...known, ...unknown]
+  }, [activities])
 
   const phaseStatus = (phase: string) => {
+    const events = activities.filter(activity => activity.phase === phase)
+    const hasPendingAuthorization = events.some(activity => authorizationFrom(activity)?.status === 'pending')
+    if (hasPendingAuthorization) return 'waiting'
+    if (events.some(activityHasFailure)) return 'error'
     if (phase === activePhase && status === 'running') return 'active'
-    if (activities.some(activity => activity.phase === phase)) return 'done'
+    if (events.length) return 'done'
     return 'idle'
   }
 
   const selectPhase = (phase: string) => {
     const event = [...activities].reverse().find(activity => activity.phase === phase)
-    if (event) setSelectedId(event.id)
+    if (event) {
+      setSelectedId(event.id)
+      setExpandedPhases(previous => ({ ...previous, [phase]: true }))
+    }
+  }
+
+  const togglePhase = (phase: string) => {
+    const events = activities.filter(activity => activity.phase === phase)
+    const autoExpanded = phase === activePhase
+      || events.some(activity => authorizationFrom(activity)?.status === 'pending')
+      || events.some(activityHasFailure)
+    setExpandedPhases(previous => ({ ...previous, [phase]: !(previous[phase] ?? autoExpanded) }))
   }
 
   const run = () => {
@@ -177,24 +311,87 @@ export default function App() {
     const nextId = newConversationId()
     setConversationId(nextId)
     setStartedAt(Date.now())
+    const questionEvent = localActivity('preprocessing', 'user_question', trimmed, {
+      event_type: 'user_question',
+      content: trimmed,
+    })
+    setActivities([questionEvent])
+    setSelectedId(questionEvent.id)
+    lastPhaseRef.current = 'preprocessing'
+    setQuestion('')
     start(trimmed, context, mode, nextId, [], projectId)
   }
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
+    if (status === 'running') {
+      const anchor = activities[activities.length - 1]
+      if (question.trim() && anchor) {
+        void sendSteering(question, anchor)
+        setQuestion('')
+      }
+      return
+    }
     run()
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault()
-      run()
+      if (status === 'running') {
+        const anchor = activities[activities.length - 1]
+        if (question.trim() && anchor) {
+          void sendSteering(question, anchor)
+          setQuestion('')
+        }
+      } else {
+        run()
+      }
     }
   }
 
   const stopRun = () => {
     stop()
     setStartedAt(null)
+  }
+
+  const sendSteering = async (content: string, anchor: ActivityEvent) => {
+    const trimmed = content.trim()
+    if (!trimmed || status !== 'running' || steeringBusy) return false
+    setSteeringBusy(true)
+    setSteeringError('')
+    try {
+      const response = await fetch('/api/v1/agent/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          action: 'steer',
+          content: trimmed,
+          // 广播给当前运行以及之后的小循环；历史 steering 由控制器持续保留。
+          target_phase: '',
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.detail || '插话未送达，运行可能已经结束')
+
+      const steeringEvent = localActivity(anchor.phase, 'steering', trimmed, {
+        event_type: 'steering',
+        anchor_id: anchor.id,
+        previous_count: steeringHistory.length,
+        content: trimmed,
+      })
+      setActivities(previous => [...previous, steeringEvent].slice(-300))
+      setSelectedId(steeringEvent.id)
+      setSteeringHistory(previous => [...previous, trimmed])
+      setSteerTargetId('')
+      return true
+    } catch (cause) {
+      setSteeringError(cause instanceof Error ? cause.message : '插话未送达')
+      return false
+    } finally {
+      setSteeringBusy(false)
+    }
   }
 
   const resolveAuthorization = async (request: AuthorizationRequest, action: 'approve' | 'deny') => {
@@ -217,6 +414,12 @@ export default function App() {
     }
   }
 
+  const phaseIsExpanded = (group: PhaseGroup) => {
+    const hasPendingAuthorization = group.events.some(activity => authorizationFrom(activity)?.status === 'pending')
+    const hasFailure = group.events.some(activityHasFailure)
+    return expandedPhases[group.id] ?? (group.id === activePhase || hasPendingAuthorization || hasFailure)
+  }
+
   return (
     <>
       <SetupGate />
@@ -236,7 +439,7 @@ export default function App() {
               {PHASES.map(phase => (
                 <button key={phase.id} className={`phase-node phase-node--${phaseStatus(phase.id)}`} onClick={() => selectPhase(phase.id)}>
                   <span className={`phase-code phase-code--${phase.color}`}>{phase.code}</span>
-                  <span className="phase-node-copy"><strong>{phase.label}</strong><small>{phaseStatus(phase.id) === 'active' ? '当前接触' : phaseStatus(phase.id) === 'done' ? '已留证' : '等待'}</small></span>
+                  <span className="phase-node-copy"><strong>{phase.label}</strong><small>{phaseStatus(phase.id) === 'active' ? '当前接触' : phaseStatus(phase.id) === 'waiting' ? '等待授权' : phaseStatus(phase.id) === 'error' ? '需注意' : phaseStatus(phase.id) === 'done' ? '已留证' : '等待'}</small></span>
                   <span className="phase-node-mark" />
                 </button>
               ))}
@@ -253,34 +456,82 @@ export default function App() {
 
             <div className="activity-feed">
               {activities.length === 0 && <div className="empty-state"><span className="empty-cross">+</span><p>尚无活动记录</p><small>输入一个需要探测、计算或改变的真实问题</small></div>}
-              {activities.map((activity, index) => {
-                const isSelected = activity.id === selected?.id
-                const isTool = activity.event_type === 'tool_call'
-                const isAuthorization = activity.event_type?.startsWith('authorization_')
-                const toolResult = (activity.data?.record as Record<string, any> | undefined)?.result as Record<string, any> | undefined
-                const isFailure = toolResult?.status === 'error' || toolResult?.state_classification === 'verification_failed'
+              {phaseGroups.map(group => {
+                const expanded = phaseIsExpanded(group)
+                const groupStatus = phaseStatus(group.id)
+                const lastEvent = group.events[group.events.length - 1]
+                const actionCount = group.events.filter(activity => activity.event_type === 'tool_call' || activity.event_type?.startsWith('authorization_')).length || group.events.length
                 return (
-                  <button key={activity.id} className={`activity-row ${isSelected ? 'activity-row--selected' : ''} ${isAuthorization ? 'activity-row--authorization' : ''} ${isFailure ? 'activity-row--failure' : ''}`} onClick={() => setSelectedId(activity.id)}>
-                    <span className={`activity-index ${isTool || isAuthorization ? 'activity-index--tool' : ''}`}>{(index + 1).toString().padStart(2, '0')}</span>
-                    <span className="activity-bar" />
-                    <span className="activity-copy"><small>{isAuthorization ? 'AUTHORIZATION / ' + String(authorizationFrom(activity)?.tool_name || 'ACTION').toUpperCase() : isTool ? 'ACTION / ' + String((activity.data?.tool || 'TOOL')).toUpperCase() : (PHASE_LABELS[activity.phase] || activity.phase).toUpperCase()}</small><strong>{activity.summary || '状态已更新'}</strong></span>
-                    <span className="activity-arrow">↗</span>
-                  </button>
+                  <section key={group.id} className={`phase-group phase-group--${groupStatus} ${expanded ? 'phase-group--expanded' : 'phase-group--collapsed'}`}>
+                    <button type="button" className="phase-group__head" onClick={() => togglePhase(group.id)} aria-expanded={expanded}>
+                      <span className={`phase-group__icon phase-code--${group.color}`}>{group.icon}</span>
+                      <span className="phase-group__title"><strong>{group.label}</strong><small>{group.subtitle}</small></span>
+                      <span className="phase-group__meta"><b>{actionCount.toString().padStart(2, '0')}</b><small>{groupStatus === 'active' ? '进行中' : groupStatus === 'waiting' ? '等待授权' : groupStatus === 'error' ? '需注意' : '已完成'}</small></span>
+                      <span className="phase-group__summary">{lastEvent?.summary || '等待进入'}</span>
+                      <span className="phase-group__chevron">{expanded ? '−' : '+'}</span>
+                    </button>
+                    {expanded && <div className="phase-group__body">
+                      {group.events.map((activity, index) => {
+                        const isSelected = activity.id === selected?.id
+                        const isTool = activity.event_type === 'tool_call'
+                        const isAuthorization = Boolean(authorizationFrom(activity))
+                        const isSteering = activity.event_type === 'steering'
+                        const isQuestion = activity.event_type === 'user_question'
+                        const label = isSteering
+                          ? 'STEERING'
+                          : isQuestion
+                            ? 'USER QUESTION'
+                            : isAuthorization
+                              ? `AUTHORIZATION / ${String(authorizationFrom(activity)?.tool_name || 'ACTION').toUpperCase()}`
+                              : isTool
+                                ? String(toolNameFrom(activity)).toUpperCase()
+                                : (activity.event_type || 'PHASE').replace(/_/g, ' ').toUpperCase()
+                        return (
+                          <div key={activity.id} className={`event-row-wrap ${isSelected ? 'event-row-wrap--selected' : ''} ${isTool ? 'event-row-wrap--tool' : ''} ${isAuthorization ? 'event-row-wrap--authorization' : ''} ${isSteering ? 'event-row-wrap--steering' : ''} ${activityHasFailure(activity) ? 'event-row-wrap--failure' : ''}`}>
+                            <div
+                              className="event-row"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setSelectedId(activity.id)}
+                              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(activity.id) } }}
+                            >
+                              <span className="event-index">{(index + 1).toString().padStart(2, '0')}</span>
+                              <span className="event-marker" />
+                              <span className="event-copy"><small>{label}</small><strong>{activity.summary || '状态已更新'}</strong><em>{activityStatus(activity)}</em></span>
+                              {status === 'running' && !isSteering && <button type="button" className="event-steer-trigger" onClick={event => { event.stopPropagation(); setSteerTargetId(activity.id); setSteeringError('') }}>插话</button>}
+                              <span className="event-arrow">↗</span>
+                            </div>
+                            {steerTargetId === activity.id && status === 'running' && <SteeringComposer
+                              key={activity.id}
+                              historyCount={steeringHistory.length}
+                              busy={steeringBusy}
+                              error={steeringError}
+                              onCancel={() => setSteerTargetId('')}
+                              onSend={content => sendSteering(content, activity)}
+                            />}
+                          </div>
+                        )
+                      })}
+                    </div>}
+                  </section>
                 )
               })}
             </div>
 
-            {result && <div className={`result-strip ${result.error ? 'result-strip--error' : ''}`}><span className="result-stamp">{result.error ? '!' : '✓'}</span><div><small>OUTPUT / {result.session_id || 'SESSION'}</small><p>{result.error || result.summary}</p></div></div>}
-
             <form className="command-panel" onSubmit={handleSubmit}>
-              <div className="command-label"><span className="square square--yellow" /> 输入下一项现实问题</div>
-              <textarea value={question} onChange={event => setQuestion(event.target.value)} onKeyDown={handleKeyDown} placeholder="描述你希望 Praxic 探测、计算、改变或验证的对象……" rows={3} />
+              <div className="command-label"><span className="square square--yellow" /> {status === 'running' ? '插入当前小循环的 steering' : '输入下一项现实问题'}</div>
+              <textarea value={question} onChange={event => setQuestion(event.target.value)} onKeyDown={handleKeyDown} placeholder={status === 'running' ? '补充方向、纠正判断，或提出一个需要继续回答的问题……（Ctrl+Enter 插话）' : '描述你希望 Praxic 探测、计算、改变或验证的对象……'} rows={3} />
               <div className="command-controls">
                 <input value={context} onChange={event => setContext(event.target.value)} placeholder="背景约束（可选）" aria-label="背景约束" />
                 <input value={projectId} onChange={event => setProjectId(event.target.value)} placeholder="项目 ID" aria-label="项目 ID" />
                 <select value={mode} onChange={event => setMode(event.target.value)} aria-label="运行模式"><option value="standard">标准深度</option><option value="fast">快速探测</option><option value="deep">深度行动</option></select>
-                {status === 'running' ? <button type="button" className="action-button action-button--dark" onClick={stopRun}><span>■</span> 停止</button> : <button type="submit" className="action-button action-button--red" disabled={!question.trim()}><span>→</span> 启动</button>}
+                {status === 'running' ? <div className="command-actions">
+                  <button type="submit" className="action-button action-button--red" disabled={!question.trim() || steeringBusy}><span>↗</span> 插话</button>
+                  <button type="button" className="action-button action-button--dark" onClick={stopRun}><span>■</span> 停止</button>
+                </div> : <button type="submit" className="action-button action-button--red" disabled={!question.trim()}><span>→</span> 启动</button>}
               </div>
+              {steeringError && status === 'running' && <p className="form-error steering-error">{steeringError}</p>}
+              {status === 'running' && steeringHistory.length > 0 && <p className="steering-note">此前已注入 {steeringHistory.length} 条 steering，后续小循环会继续携带。</p>}
             </form>
           </section>
 
@@ -288,7 +539,7 @@ export default function App() {
             <div className="inspector-head"><div><p className="eyebrow">INSPECTOR / EVIDENCE</p><h2>证据面板</h2></div><span className="inspector-mark">+</span></div>
             {!selected && <div className="inspector-empty"><span>00</span><p>选择一条活动</p><small>阶段摘要、工具结果、权限记录和验证证据会在这里展开。</small></div>}
             {selected && <div className="inspector-body">
-              <div className="detail-tag">{selectedAuthorization ? '行动授权' : selected.event_type === 'tool_call' ? '工具行动' : PHASE_LABELS[selected.phase] || selected.phase}</div>
+              <div className="detail-tag">{selectedAuthorization ? '行动授权' : selected.event_type === 'tool_call' ? '工具行动' : selected.event_type === 'steering' ? '插话记录' : selected.event_type === 'user_question' ? '用户问题' : selected.event_type === 'result' || selected.event_type === 'error' ? '运行结果' : PHASE_LABELS[selected.phase] || selected.phase}</div>
               <h3>{selected.summary || '状态已更新'}</h3>
               <p className="detail-time">{new Date(selected.timestamp).toLocaleTimeString()}</p>
               {selectedAuthorization && <>
@@ -310,9 +561,15 @@ export default function App() {
                   {toolResult?.change && <DetailBlock title="变更记录" value={jsonText(toolResult.change)} />}
                   {toolResult?.verification && <DetailBlock title="回读验证" value={jsonText(toolResult.verification)} />}
                   <DetailBlock title="工具输出" value={String(toolResult?.content || toolResult?.error || '无文本输出')} />
-                </>
-              })()}
-              {!selectedAuthorization && selected.event_type !== 'tool_call' && selected.data && <DetailBlock title="结构化阶段数据" value={jsonText(selected.data)} />}
+                 </>
+               })()}
+               {!selectedAuthorization && selected.event_type === 'steering' && <>
+                 <div className="metric-grid"><div><small>插入位置</small><strong>{PHASE_LABELS[selected.phase] || selected.phase}</strong></div><div><small>此前插话</small><strong>{String(selected.data?.previous_count || 0)} 条</strong></div><div><small>传递方式</small><strong>持续携带</strong></div><div><small>状态</small><strong>已送达</strong></div></div>
+                 <DetailBlock title="插话内容" value={String(selected.data?.content || selected.summary)} />
+               </>}
+               {!selectedAuthorization && selected.event_type === 'user_question' && <DetailBlock title="用户问题" value={String(selected.data?.content || selected.summary)} />}
+               {!selectedAuthorization && (selected.event_type === 'result' || selected.event_type === 'error') && <DetailBlock title="最终输出" value={jsonText(selected.data?.result || selected.summary)} />}
+               {!selectedAuthorization && selected.event_type !== 'tool_call' && !['steering', 'user_question', 'result', 'error'].includes(selected.event_type || '') && selected.data && <DetailBlock title="结构化阶段数据" value={jsonText(selected.data)} />}
             </div>}
           </aside>
         </main>
@@ -323,4 +580,39 @@ export default function App() {
 
 function DetailBlock({ title, value }: { title: string; value: string }) {
   return <section className="detail-block"><div className="detail-block-head"><span>{title}</span><b>+</b></div><pre>{value}</pre></section>
+}
+
+function SteeringComposer({
+  historyCount,
+  busy,
+  error,
+  onCancel,
+  onSend,
+}: {
+  historyCount: number
+  busy: boolean
+  error: string
+  onCancel: () => void
+  onSend: (content: string) => Promise<boolean>
+}) {
+  const [content, setContent] = useState('')
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!content.trim() || busy) return
+    const sent = await onSend(content)
+    if (sent) setContent('')
+  }
+
+  return (
+    <form className="steering-composer" onSubmit={submit}>
+      <div className="steering-composer__head"><span>在此小循环后插话</span><small>{historyCount ? `此前 ${historyCount} 条会继续携带` : '插话会进入后续小循环'}</small></div>
+      <textarea value={content} onChange={event => setContent(event.target.value)} autoFocus rows={2} placeholder="补充事实、修正方向，或提出下一步问题……" />
+      <div className="steering-composer__actions">
+        {error && <span className="steering-composer__error">{error}</span>}
+        <button type="button" className="steering-cancel" onClick={onCancel}>取消</button>
+        <button type="submit" className="action-button action-button--red" disabled={!content.trim() || busy}>{busy ? '发送中…' : '注入 steering'}</button>
+      </div>
+    </form>
+  )
 }

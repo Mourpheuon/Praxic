@@ -421,6 +421,92 @@
       }
     }
   </style>
+  <style id="praxic-explicit-event-stream">
+    .praxic-phase-stream {
+      margin: 0 2.5rem .75rem;
+      border-top: 2px solid #1c1916;
+      border-left: 1px solid #c5bfb5;
+      border-right: 1px solid #c5bfb5;
+      background: #fcfaf5;
+    }
+    .praxic-phase-stream__head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .7rem .8rem;
+      color: #1c1916;
+      background: #ede8df;
+      border-bottom: 1px solid #c5bfb5;
+    }
+    .praxic-phase-stream__head strong { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
+    .praxic-phase-stream__head small { color: #6b6560; font-size: .65rem; }
+    .praxic-phase-group { border-bottom: 1px solid #c5bfb5; }
+    .praxic-phase-group:last-child { border-bottom: 0; }
+    .praxic-phase-group__header {
+      width: 100%; display: grid; grid-template-columns: 1.5rem minmax(9rem, 1fr) auto minmax(9rem, 1.6fr) 1.2rem;
+      align-items: center; gap: .6rem; padding: .65rem .75rem; text-align: left;
+      border: 0; background: transparent; color: #1c1916;
+    }
+    .praxic-phase-group__header:hover, .praxic-phase-group--open .praxic-phase-group__header { background: #f3f0e9; }
+    .praxic-phase-group__icon { width: 1.35rem; height: 1.35rem; display: grid; place-items: center; font-size: .78rem; background: #efebe4; }
+    .praxic-phase-group--active .praxic-phase-group__icon { color: #fff; background: #8c271e; box-shadow: 0 0 0 3px rgba(140,39,30,.12); animation: phasePulse 1.2s steps(2,end) infinite; }
+    .praxic-phase-group--done .praxic-phase-group__icon { color: #fff; background: #4a6741; }
+    .praxic-phase-group--waiting .praxic-phase-group__icon, .praxic-phase-group--error .praxic-phase-group__icon { color: #fff; background: #8c271e; }
+    .praxic-phase-group__title strong, .praxic-phase-group__title small { display: block; }
+    .praxic-phase-group__title strong { font-size: .78rem; font-weight: 800; }
+    .praxic-phase-group__title small { margin-top: .12rem; color: #6b6560; font-size: .61rem; }
+    .praxic-phase-group__meta { display: grid; justify-items: end; min-width: 3.3rem; }
+    .praxic-phase-group__meta strong { font: 800 .72rem Consolas, monospace; }
+    .praxic-phase-group__meta small { margin-top: .12rem; color: #6b6560; font-size: .6rem; white-space: nowrap; }
+    .praxic-phase-group--active .praxic-phase-group__meta small, .praxic-phase-group--waiting .praxic-phase-group__meta small, .praxic-phase-group--error .praxic-phase-group__meta small { color: #8c271e; font-weight: 800; }
+    .praxic-phase-group__summary { min-width: 0; overflow: hidden; color: #6b6560; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
+    .praxic-phase-group__chevron { color: #8c271e; font: 800 1rem Consolas, monospace; text-align: center; }
+    .praxic-phase-group__events { margin-left: 1.6rem; padding: .1rem 0 .35rem 1rem; border-left: 1px solid #c5bfb5; }
+    .praxic-event-wrap { border-bottom: 1px solid rgba(197,191,181,.55); }
+    .praxic-event-wrap:last-child { border-bottom: 0; }
+    .praxic-event-row { width: 100%; display: grid; grid-template-columns: 1.5rem 3px minmax(0,1fr) auto 1rem; align-items: center; gap: .55rem; padding: .55rem .55rem .55rem 0; text-align: left; border: 0; background: transparent; }
+    .praxic-event-row:hover, .praxic-event-wrap--selected .praxic-event-row { background: #f3f0e9; }
+    .praxic-event-index { color: #9e7b3a; font: .62rem Consolas, monospace; text-align: right; }
+    .praxic-event-marker { align-self: stretch; min-height: 2rem; background: #4a6741; }
+    .praxic-event-wrap--tool .praxic-event-marker { background: #9e7b3a; }
+    .praxic-event-wrap--authorization .praxic-event-marker, .praxic-event-wrap--error .praxic-event-marker { background: #8c271e; }
+    .praxic-event-wrap--steering .praxic-event-marker { background: #9e7b3a; }
+    .praxic-event-copy { min-width: 0; }
+    .praxic-event-copy small, .praxic-event-copy strong, .praxic-event-copy em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .praxic-event-copy small { color: #6b6560; font: 800 .58rem Consolas, monospace; letter-spacing: .04em; }
+    .praxic-event-copy strong { margin-top: .18rem; color: #1c1916; font-size: .73rem; font-weight: 700; line-height: 1.35; }
+    .praxic-event-copy em { margin-top: .16rem; color: #6b6560; font-size: .59rem; font-style: normal; }
+    .praxic-event-wrap--active .praxic-event-copy em, .praxic-event-wrap--waiting .praxic-event-copy em, .praxic-event-wrap--error .praxic-event-copy em { color: #8c271e; font-weight: 800; }
+    .praxic-event-steer { padding: .25rem .35rem; color: #8c271e; border: 1px solid rgba(140,39,30,.35); background: transparent; font-size: .58rem; font-weight: 800; opacity: 0; }
+    .praxic-event-row:hover .praxic-event-steer, .praxic-event-wrap--selected .praxic-event-steer, .praxic-event-steer:focus-visible { opacity: 1; }
+    .praxic-event-steer:hover { color: #fff; background: #8c271e; }
+    .praxic-event-arrow { color: #8c271e; font-size: .9rem; }
+    .praxic-inline-steer { margin: 0 .55rem .55rem 2.25rem; padding: .6rem; border-left: 3px solid #9e7b3a; background: #f7f4ed; box-shadow: 3px 3px 0 rgba(158,123,58,.25); }
+    .praxic-inline-steer__head { display: flex; justify-content: space-between; gap: .6rem; margin-bottom: .4rem; }
+    .praxic-inline-steer__head strong { font-size: .62rem; }
+    .praxic-inline-steer__head small { color: #6b6560; font-size: .58rem; }
+    .praxic-inline-steer textarea { width: 100%; min-height: 3.1rem; resize: vertical; padding: .45rem; border: 1px solid #c5bfb5; outline: 0; background: #fff; color: #1c1916; font-size: .7rem; line-height: 1.45; }
+    .praxic-inline-steer textarea:focus { border-color: #4a6741; box-shadow: 2px 2px 0 rgba(74,103,65,.18); }
+    .praxic-inline-steer__actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; margin-top: .4rem; }
+    .praxic-inline-steer__actions button { padding: .32rem .5rem; border: 0; font-size: .6rem; }
+    .praxic-inline-steer__cancel { color: #6b6560; background: transparent; }
+    .praxic-inline-steer__submit { color: #fff; background: #8c271e; font-weight: 800; }
+    .praxic-inline-steer__error { margin-right: auto; color: #8c271e; font-size: .58rem; }
+    @keyframes phasePulse { 50% { opacity: .45; } }
+    @media (max-width: 760px) {
+      .praxic-phase-stream { margin-left: .9rem; margin-right: .9rem; }
+      .praxic-phase-group__header { grid-template-columns: 1.35rem minmax(0,1fr) auto 1rem; gap: .4rem; }
+      .praxic-phase-group__summary { display: none; }
+      .praxic-phase-group__events { margin-left: .5rem; padding-left: .65rem; }
+      .praxic-event-row { grid-template-columns: 1.3rem 3px minmax(0,1fr) auto; gap: .4rem; }
+      .praxic-event-arrow { display: none; }
+      .praxic-event-steer { opacity: 1; }
+      .praxic-inline-steer { margin-left: 1.85rem; }
+      .praxic-inline-steer__head { display: block; }
+      .praxic-inline-steer__head small { display: block; margin-top: .18rem; }
+    }
+  </style>
 </head>
 <body class="bg-paper text-ink antialiased">
   <div id="root"></div>
@@ -457,9 +543,9 @@
       { id: 'investigation', icon: '🔍', label: '调查研究', subtitle: '实事求是' },
       { id: 'contradiction',  icon: '⚡', label: '矛盾分析', subtitle: '抓主要矛盾' },
       { id: 'rational',       icon: '🧠', label: '理性认识', subtitle: '去伪存真' },
-      { id: 'decision',       icon: '🎯', label: '决策输出', subtitle: '战略战术' },
+      { id: 'decision',       icon: '🎯', label: '行动编排', subtitle: '战略与风险' },
       { id: 'practice',       icon: '⚙️', label: '实践检验', subtitle: '检验真理' },
-      { id: 'reflection',     icon: '🔄', label: '反思复盘', subtitle: '总结提升' },
+      { id: 'reflection',     icon: '🔄', label: '反思', subtitle: '验证与修正' },
     ];
     const PHASE_LABELS = Object.fromEntries(PHASES.map(p => [p.id, p.label]));
     const PHASE_ICONS = Object.fromEntries(PHASES.map(p => [p.id, p.icon]));
@@ -940,60 +1026,187 @@
       );
     }
 
-    // ── PhaseBlock (inline in turns) ─────────────────────────
-    function PhaseBlock({ phases, activePhase, completedPhases }) {
-      const [expanded, setExpanded] = useState(false);
+    // ── Explicit phase/event stream ─────────────────────────
+    function canonicalPhase(phase, currentPhase) {
+      if (phase === 'action') return 'practice';
+      if (phase === 'authorization') return currentPhase || 'practice';
+      if (phase === 'done') return 'reflection';
+      if (PHASE_LABELS[phase]) return phase;
+      return phase || currentPhase || 'practice';
+    }
+
+    function eventKind(entry) {
+      return String(entry?.data?.event_type || (entry?.phase === 'action' ? 'tool_call' : 'phase'));
+    }
+
+    function eventTool(entry) {
+      return String(entry?.data?.tool || entry?.data?.record?.tool || entry?.data?.tool_name || 'TOOL');
+    }
+
+    function eventFailure(entry) {
+      const result = entry?.data?.record?.result || {};
+      return result.status === 'error'
+        || result.state_classification === 'verification_failed'
+        || result.state_classification === 'tool_error'
+        || entry?.data?.status === 'denied'
+        || entry?.data?.authorization?.status === 'denied'
+        || eventKind(entry) === 'error';
+    }
+
+    function eventStatus(entry) {
+      const kind = eventKind(entry);
+      const authStatus = entry?.data?.status || entry?.data?.authorization?.status;
+      if (kind.startsWith('steering')) return '已注入';
+      if (kind === 'user_question') return '已提交';
+      if (authStatus === 'pending') return '等待授权';
+      if (authStatus === 'approved') return '已授权';
+      if (authStatus === 'denied') return '已拒绝';
+      if (eventFailure(entry)) return '需注意';
+      if ((entry?.summary || '').includes('正在') || (entry?.summary || '').includes('进行中')) return '进行中';
+      return '已完成';
+    }
+
+    function eventLabel(entry) {
+      const kind = eventKind(entry);
+      if (kind === 'tool_call') return eventTool(entry).toUpperCase();
+      if (kind === 'steering') return 'STEERING';
+      if (kind === 'user_question') return 'USER QUESTION';
+      if (kind.startsWith('authorization')) return 'AUTHORIZATION';
+      if (kind === 'result') return 'OUTPUT';
+      if (kind === 'error') return 'ERROR';
+      return kind.replace(/_/g, ' ').toUpperCase();
+    }
+
+    function EventDetail({ entry }) {
+      const kind = eventKind(entry);
+      if (kind === 'tool_call') {
+        const record = entry?.data?.record || {};
+        const result = record.result || {};
+        return (
+          <div className="bg-paper border border-linen/60 p-2 text-[10px] leading-relaxed">
+            <div className="flex flex-wrap gap-2 mb-1.5 text-warmgray"><span>工具：{eventTool(entry)}</span><span>状态：{result.state_classification || result.status || '未知'}</span>{result.duration_ms && <span>耗时：{result.duration_ms}ms</span>}</div>
+            <div className="whitespace-pre-wrap break-words">{result.content || result.error || '无文本输出'}</div>
+            {(result.verification || result.change || result.permission) && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words">{JSON.stringify({ permission: result.permission, change: result.change, verification: result.verification }, null, 2)}</pre>}
+          </div>
+        );
+      }
+      if (kind.startsWith('steering')) {
+        return <div className="bg-paper border border-gold/20 p-2 text-[10px] text-ink whitespace-pre-wrap">{entry?.data?.content || entry?.summary}</div>;
+      }
+      if (kind === 'user_question') {
+        return <div className="bg-paper border border-linen/60 p-2 text-[10px] text-ink whitespace-pre-wrap">{entry?.data?.content || entry?.summary}</div>;
+      }
+      if (kind === 'result' || kind === 'error') {
+        return <div className="bg-paper border border-linen/60 p-2 text-[10px] text-ink whitespace-pre-wrap">{entry?.summary || entry?.data?.result?.summary || entry?.data?.result?.error}</div>;
+      }
+      if (entry?.data) return <div className="bg-paper border border-linen/60 p-2"><PhaseDetail phase={entry.phase} data={entry.data} /></div>;
+      return null;
+    }
+
+    function PhaseBlock({ phases, activePhase, completedPhases, running = false, onSteer, steeringCount = 0 }) {
+      const [expandedPhases, setExpandedPhases] = useState({});
       const [expandedDetail, setExpandedDetail] = useState(new Set());
-      const toggleDetail = (phase) => {
+      const [steerTarget, setSteerTarget] = useState('');
+      const [steerDraft, setSteerDraft] = useState('');
+      const [steerBusy, setSteerBusy] = useState(false);
+      const [steerError, setSteerError] = useState('');
+
+      const normalized = useMemo(() => {
+        let current = '';
+        return (phases || []).map((entry, idx) => {
+          const phase = canonicalPhase(entry.phase, current);
+          if (PHASE_LABELS[phase]) current = phase;
+          return { ...entry, phase, id: entry.id || (phase + '-' + idx) };
+        });
+      }, [phases]);
+
+      const groups = useMemo(() => {
+        const grouped = new Map();
+        normalized.forEach(entry => {
+          const list = grouped.get(entry.phase) || [];
+          list.push(entry);
+          grouped.set(entry.phase, list);
+        });
+        const known = PHASES.map(phase => ({ ...phase, events: grouped.get(phase.id) || [] })).filter(group => group.events.length > 0);
+        const knownIds = new Set(PHASES.map(phase => phase.id));
+        const unknown = [...grouped.entries()].filter(([phase]) => !knownIds.has(phase)).map(([phase, events]) => ({
+          id: phase, icon: PHASE_ICONS[phase] || '•', label: PHASE_LABELS[phase] || phase, subtitle: '运行事件', events,
+        }));
+        return [...known, ...unknown];
+      }, [normalized]);
+
+      const togglePhase = (phase, defaultOpen) => {
+        setExpandedPhases(prev => ({ ...prev, [phase]: !(prev[phase] ?? defaultOpen) }));
+      };
+      const toggleDetail = (id) => {
         setExpandedDetail(prev => {
           const next = new Set(prev);
-          if (next.has(phase)) next.delete(phase); else next.add(phase);
+          if (next.has(id)) next.delete(id); else next.add(id);
           return next;
         });
       };
-      const hasPhases = phases.length > 0;
-      if (!hasPhases && !activePhase) return null;
+      const submitSteer = async (event, entry) => {
+        event.preventDefault();
+        if (!steerDraft.trim() || steerBusy || !onSteer) return;
+        setSteerBusy(true); setSteerError('');
+        try {
+          const sent = await onSteer(steerDraft.trim(), entry);
+          if (!sent) throw new Error('插话未送达，运行可能已经结束');
+          setSteerDraft(''); setSteerTarget('');
+        } catch (error) {
+          setSteerError(error?.message || '插话未送达');
+        } finally { setSteerBusy(false); }
+      };
 
+      if (!groups.length && !activePhase) return null;
       return (
-        <div className="praxic-phase-block mx-10 my-2 bg-cream border border-linen/50 rounded-lg overflow-hidden">
-          <button onClick={() => setExpanded(!expanded)}
-            className="w-full px-3 py-2 flex items-center gap-2 hover:bg-dust/30 transition-colors text-left">
-            <span className="text-[10px] font-semibold text-warmgray">{expanded ? '▲' : '▼'} 认知过程</span>
-            <div className="flex gap-1">
-              {PHASES.map(p => {
-                const isActive = activePhase === p.id;
-                const isDone = completedPhases.has(p.id);
-                let ring = 'border-clay/30';
-                if (isActive) ring = 'border-seal bg-seal-wash';
-                else if (isDone) ring = 'border-olive/50 bg-olivewash';
-                return (
-                  <span key={p.id} className={'w-5 h-5 rounded-full border text-[9px] flex items-center justify-center ' + ring + (isActive ? ' animate-pulse' : '')}>
-                    {p.icon}
-                  </span>
-                );
-              })}
-            </div>
-          </button>
-          {expanded && (
-            <div className="px-3 pb-3 border-t border-linen/30">
-              <div className="space-y-1.5 mt-2">
-                {phases.map((p, idx) => (
-                  <div key={p.phase + '-' + idx}>
-                    <button onClick={() => toggleDetail(idx)}
-                      className="w-full flex items-start gap-2 p-2 rounded hover:bg-dust/40 text-left text-xs">
-                      <span>{PHASE_ICONS[p.phase] || '•'}</span>
-                      <span className="font-medium text-ink whitespace-nowrap flex-shrink-0">{PHASE_LABELS[p.phase]}</span>
-                      <span className="text-warmgray flex-1 truncate">{p.summary}</span>
-                      {p.data && <span className="text-clay">{expandedDetail.has(idx) ? '▲' : '▼'}</span>}
-                    </button>
-                    {expandedDetail.has(idx) && p.data && (
-                      <div className="ml-6 mb-1"><PhaseDetail phase={p.phase} data={p.data} /></div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="praxic-phase-stream">
+          <div className="praxic-phase-stream__head"><strong>认知过程 / 显式事件流</strong><small>{normalized.length} 条事件 · 当前阶段默认展开</small></div>
+          {groups.map(group => {
+            const pending = group.events.some(entry => eventStatus(entry) === '等待授权');
+            const failed = group.events.some(eventFailure);
+            const isActive = running && group.id === activePhase;
+            const status = pending ? 'waiting' : failed ? 'error' : isActive ? 'active' : 'done';
+            const defaultOpen = isActive || pending || failed;
+            const open = expandedPhases[group.id] ?? defaultOpen;
+            const actions = group.events.filter(entry => ['tool_call', 'steering'].includes(eventKind(entry)) || eventKind(entry).startsWith('authorization')).length || group.events.length;
+            const last = group.events[group.events.length - 1];
+            return (
+              <section key={group.id} className={'praxic-phase-group praxic-phase-group--' + status + (open ? ' praxic-phase-group--open' : '')}>
+                <button type="button" className="praxic-phase-group__header" onClick={() => togglePhase(group.id, defaultOpen)} aria-expanded={open}>
+                  <span className="praxic-phase-group__icon">{group.icon}</span>
+                  <span className="praxic-phase-group__title"><strong>{group.label}</strong><small>{group.subtitle}</small></span>
+                  <span className="praxic-phase-group__meta"><strong>{String(actions).padStart(2, '0')}</strong><small>{status === 'active' ? '进行中' : status === 'waiting' ? '等待授权' : status === 'error' ? '需注意' : '已完成'}</small></span>
+                  <span className="praxic-phase-group__summary">{last?.summary || '等待进入'}</span>
+                  <span className="praxic-phase-group__chevron">{open ? '−' : '+'}</span>
+                </button>
+                {open && <div className="praxic-phase-group__events">
+                  {group.events.map((entry, idx) => {
+                    const key = entry.id || (group.id + '-' + idx);
+                    const kind = eventKind(entry);
+                    const selected = expandedDetail.has(key);
+                    return (
+                          <div key={key} className={'praxic-event-wrap ' + (selected ? 'praxic-event-wrap--selected ' : '') + (kind === 'tool_call' ? 'praxic-event-wrap--tool ' : '') + (kind.startsWith('authorization') ? 'praxic-event-wrap--authorization ' : '') + (kind.startsWith('steering') ? 'praxic-event-wrap--steering ' : '') + (eventFailure(entry) ? 'praxic-event-wrap--error' : '')}>
+                        <div className="praxic-event-row" role="button" tabIndex="0" onClick={() => toggleDetail(key)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDetail(key); } }}>
+                          <span className="praxic-event-index">{String(idx + 1).padStart(2, '0')}</span>
+                          <span className="praxic-event-marker" />
+                          <span className="praxic-event-copy"><small>{eventLabel(entry)}</small><strong>{entry.summary || '状态已更新'}</strong><em>{eventStatus(entry)}</em></span>
+                          {running && onSteer && kind !== 'steering' && <button type="button" className="praxic-event-steer" onClick={e => { e.stopPropagation(); setSteerTarget(key); setSteerError(''); }}>插话</button>}
+                          <span className="praxic-event-arrow">↗</span>
+                        </div>
+                        {steerTarget === key && running && onSteer && <form className="praxic-inline-steer" onSubmit={e => submitSteer(e, entry)}>
+                          <div className="praxic-inline-steer__head"><strong>在此小循环后插话</strong><small>{steeringCount ? `此前 ${steeringCount} 条会继续携带` : '插话会进入后续小循环'}</small></div>
+                          <textarea value={steerDraft} onChange={e => setSteerDraft(e.target.value)} autoFocus rows="2" placeholder="补充事实、修正方向，或提出下一步问题…" />
+                          <div className="praxic-inline-steer__actions">{steerError && <span className="praxic-inline-steer__error">{steerError}</span>}<button type="button" className="praxic-inline-steer__cancel" onClick={() => setSteerTarget('')}>取消</button><button type="submit" className="praxic-inline-steer__submit" disabled={steerBusy || !steerDraft.trim()}>{steerBusy ? '发送中…' : '注入 steering'}</button></div>
+                        </form>}
+                        {selected && entry.data && <div className="ml-8 mr-2 mb-2"><EventDetail entry={entry} /></div>}
+                      </div>
+                    );
+                  })}
+                </div>}
+              </section>
+            );
+          })}
         </div>
       );
     }
@@ -2273,6 +2486,7 @@
       const [activePhase, setActivePhase] = useState(null);
       const [completedPhases, setCompletedPhases] = useState(() => new Set());
       const [phaseLogs, setPhaseLogs] = useState([]);
+      const [steeringCount, setSteeringCount] = useState(0);
       const [clarify, setClarify] = useState(null);  // { convId, questions } | null —— 智能体主动提问（澄清）
       const [authorizationByConv, setAuthorizationByConv] = useState({});
       const [authorizationBusy, setAuthorizationBusy] = useState('');
@@ -2319,23 +2533,30 @@
         stop(cid);
         setAuthorizationByConv(prev => ({ ...prev, [cid]: null }));
       }, [stop]);
-      const handleSteer = useCallback(async (content) => {
+      const handleSteer = useCallback(async (content, anchorEntry = null) => {
         const cid = activeConvRef.current;
-        if (!cid) { console.warn('[steer] no active conversation, ignoring'); return; }
-        // Show steer message in conversation
-        setTurns(prev => [...prev, { type: 'turn', question: content, steer: true, running: false, summary: '', actions: [], files: [] }]);
+        if (!cid) { console.warn('[steer] no active conversation, ignoring'); return false; }
         try {
           const r = await fetch('/api/v1/agent/control', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ conversation_id: cid, action: 'steer', content }),
+            body: JSON.stringify({ conversation_id: cid, action: 'steer', content, target_phase: '' }),
           });
           if (!r.ok) {
-            const d = await r.json();
+            const d = await r.json().catch(() => ({}));
             console.warn('[steer] failed:', d.detail);
+            return false;
           } else {
             console.log('[steer] sent to', cid, ':', content.slice(0, 60));
           }
-        } catch (e) { console.error('[steer] error:', e); }
+          const previous = steeringHistoryRef.current.slice();
+          steeringHistoryRef.current = [...previous, content];
+          setSteeringCount(steeringHistoryRef.current.length);
+          recordPhaseEvent(cid, anchorEntry?.phase || activePhaseRef.current || 'practice', '用户插话：' + content, {
+            event_type: 'steering', content, previous_count: previous.length,
+            previous_steering: previous.slice(-5),
+          });
+          return true;
+        } catch (e) { console.error('[steer] error:', e); return false; }
       }, []);
       const submitAnswer = useCallback(async (answer) => {
         const cid = activeConvRef.current;
@@ -2378,6 +2599,9 @@
       turnsRef.current = turns;
       // Ref directly updated in onPhase (NOT via render) to avoid React batching race
       const capturedPhaseLogsRef = useRef([]);
+      const activePhaseRef = useRef(null);
+      activePhaseRef.current = activePhase;
+      const steeringHistoryRef = useRef([]);
       const runningRef = useRef(running);
       runningRef.current = running;
       const renameRef = useRef(rename);
@@ -2392,6 +2616,42 @@
       // Cache conversation UI state for background-running conversations
       const convStateCacheRef = useRef({});
       const recoveryTimerRef = useRef(null);
+
+      // All streamed events remain in chronological order. Only the UI renderer
+      // groups them by phase; this is what keeps WEB_SEARCH/WEB_FETCH inside
+      // 调查研究 instead of flattening them into a second phase label.
+      const recordPhaseEvent = useCallback((cid, phase, summary, data) => {
+        const current = activePhaseRef.current || '';
+        const canonical = canonicalPhase(phase, current);
+        const entry = {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          phase: canonical,
+          summary: cleanPromptLeakage(summary || ''),
+          data: data || null,
+          timestamp: new Date().toISOString(),
+        };
+        const append = previous => [...previous, entry].slice(-300);
+        capturedPhaseLogsRef.current = append(capturedPhaseLogsRef.current);
+
+        const previousPhase = activePhaseRef.current;
+        if (PHASE_LABELS[canonical]) activePhaseRef.current = canonical;
+        const cache = convStateCacheRef.current[cid] || { turns: turnsRef.current, phaseLogs: [], activePhase: null, completedPhases: new Set() };
+        cache.activePhase = PHASE_LABELS[canonical] ? canonical : previousPhase;
+        if (previousPhase && previousPhase !== canonical) cache.completedPhases = new Set([...cache.completedPhases, previousPhase]);
+        cache.phaseLogs = append(cache.phaseLogs || []);
+        convStateCacheRef.current[cid] = cache;
+
+        if (activeConvRef.current !== cid) return;
+        if (PHASE_LABELS[canonical]) {
+          setActivePhase(canonical);
+          setCompletedPhases(previous => {
+            const next = new Set(previous);
+            if (previousPhase && previousPhase !== canonical) next.add(previousPhase);
+            return next;
+          });
+        }
+        setPhaseLogs(previous => append(previous));
+      }, []);
 
       // Load conversation list（按当前项目筛选）——挂载 + 项目切换时刷新
       useEffect(() => { refresh(activeProjectId); }, [activeProjectId, refresh]);
@@ -2554,18 +2814,13 @@
             if (status.status === 'running') {
               console.log('[recovery] SSE stream alive for', recoveringConvId, '— attaching');
               setTurns([...historyEntries, { type: 'turn', question: lastTurn.question, running: true, summary: '', actions: [], files: [] }]);
-              setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set());
+              setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set()); activePhaseRef.current = null;
+              steeringHistoryRef.current = []; setSteeringCount(0);
               capturedPhaseLogsRef.current = [];
               attach(recoveringConvId, {
                 onPhase: (phase, summary, data) => {
                   if (activeConvRef.current !== recoveringConvId) return;
-                  const cleanedSummary = cleanPromptLeakage(summary);
-                  const entry = { phase, summary: cleanedSummary, data };
-                  const replace = (prev) => phase === 'preprocessing' ? [...prev, entry] : [...prev.filter(e => e.phase !== phase), entry];
-                  capturedPhaseLogsRef.current = replace(capturedPhaseLogsRef.current);
-                  setActivePhase(phase);
-                  setCompletedPhases(prev => new Set([...prev, phase]));
-                  setPhaseLogs(prev => replace(prev));
+                  recordPhaseEvent(recoveringConvId, phase, summary, data);
                 },
                 onClarification: (questions) => {
                   setClarify({ convId: recoveringConvId, questions: questions || [] });
@@ -2577,14 +2832,15 @@
                 },
                 onDone: (result) => {
                   if (recoveryTimerRef.current) { clearInterval(recoveryTimerRef.current); recoveryTimerRef.current = null; }
-                  setActivePhase(null);
+                  setActivePhase(null); activePhaseRef.current = null;
                   setClarify(prev => (prev && prev.convId === recoveringConvId) ? null : prev);
                   setAuthorizationByConv(prev => ({ ...prev, [recoveringConvId]: null }));
                   if (result.error === 'attach_failed') { startPolling(); return; }
                   const rawSummary = result.error ? '**运行出错**\n\n' + result.error : (result.summary || '');
                   const summary = cleanPromptLeakage(rawSummary);
                   const actions = result.error ? [] : (result.action_items || []);
-                  const finalPhaseLogs = [...capturedPhaseLogsRef.current];
+                  const resultEntry = { id: `${Date.now()}-result`, phase: 'reflection', summary, data: { event_type: result.error ? 'error' : 'result', result }, timestamp: new Date().toISOString() };
+                  const finalPhaseLogs = [...capturedPhaseLogsRef.current, resultEntry];
                   capturedPhaseLogsRef.current = [];
                   setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, running: false, summary, actions, phaseLogs: finalPhaseLogs } : t));
                   setPhaseLogs([]);
@@ -2673,7 +2929,8 @@
           const fileInfos = (files || []).map(f => typeof f === 'string' ? { name: f, path: f } : f);
           const filePaths = fileInfos.map(f => f.path);
           setTurns(prev => [...prev, { type: 'turn', question, context, mode, reviewStrategy, running: true, summary: '', actions: [], files: fileInfos }]);
-          setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set());
+          setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set()); activePhaseRef.current = null;
+          steeringHistoryRef.current = []; setSteeringCount(0);
           capturedPhaseLogsRef.current = [];  // reset for new turn
           // Release guard now that turns are set
           sendingRef.current = false;
@@ -2683,23 +2940,7 @@
 
           start(question, context, mode, cid, reviewStrategy, model, activeProjectIdRef.current, filePaths, {
             onPhase: (phase, summary, data) => {
-              const cleanedSummary = cleanPromptLeakage(summary);
-              // 替换同阶段旧条目（"正在..."占位 → 完成结果）
-              // 预处理例外：保留两条（意图分析 → 意图结果），turns 静止时前端独立展示
-              const entry = { phase, summary: cleanedSummary, data };
-              const replace = (prev) => phase === 'preprocessing' ? [...prev, entry] : [...prev.filter(e => e.phase !== phase), entry];
-              capturedPhaseLogsRef.current = replace(capturedPhaseLogsRef.current);
-              // Always update cache (for background-switch recovery)
-              const cache = convStateCacheRef.current[cid] || { turns: turnsRef.current, phaseLogs: [], activePhase: null, completedPhases: new Set() };
-              cache.activePhase = phase;
-              cache.completedPhases = new Set([...cache.completedPhases, phase]);
-              cache.phaseLogs = replace(cache.phaseLogs);
-              convStateCacheRef.current[cid] = cache;
-              // Only update UI if this conv is frontmost
-              if (activeConvRef.current !== cid) return;
-              setActivePhase(phase);
-              setCompletedPhases(prev => new Set([...prev, phase]));
-              setPhaseLogs(prev => replace(prev));
+              recordPhaseEvent(cid, phase, summary, data);
             },
             onDone: (result) => {
               const isActive = activeConvRef.current === cid;
@@ -2713,7 +2954,8 @@
               const actions = result.error ? [] : (result.action_items || []);
               const generatedFiles = result.error ? [] : (result.generated_files || []);
               // Capture phase logs from the direct ref (always fresh, no React batching race)
-              const finalPhaseLogs = [...capturedPhaseLogsRef.current];
+              const resultEntry = { id: `${Date.now()}-result`, phase: 'reflection', summary, data: { event_type: result.error ? 'error' : 'result', result }, timestamp: new Date().toISOString() };
+              const finalPhaseLogs = [...capturedPhaseLogsRef.current, resultEntry];
               capturedPhaseLogsRef.current = [];
               setTurns(prev => {
                 const copy = [...prev];
@@ -2884,7 +3126,7 @@
 
                     {/* Phase block: live for running last turn, or stored for completed turns (if setting allows) */}
                     {i === turns.length - 1 && turn.running && phaseLogs.length > 0 && (
-                      <PhaseBlock phases={phaseLogs} activePhase={activePhase} completedPhases={completedPhases} />
+                      <PhaseBlock phases={phaseLogs} activePhase={activePhase} completedPhases={completedPhases} running={true} onSteer={handleSteer} steeringCount={steeringCount} />
                     )}
                     {!turn.running && turn.phaseLogs && turn.phaseLogs.length > 0 && uiSettings.show_thinking_after_answer !== false && (
                       <PhaseBlock phases={turn.phaseLogs} activePhase={null} completedPhases={new Set(turn.phaseLogs.map(p => p.phase))} />

@@ -3,7 +3,7 @@ Praxic Agent —— 认知循环运行时控制器
 支持三种控制操作：
   interrupt  打断：暂停当前阶段，等待用户指令后继续
   stop       终止：立即停止，返回已完成部分的结果
-  steer      引导：注入方向提示，下一阶段开始时生效
+  steer      引导：注入方向提示，下一个小循环/阶段边界开始时生效
 """
 from __future__ import annotations
 
@@ -42,6 +42,7 @@ class SteerMessage:
     steering_type: SteeringType = SteeringType.INFO_SUPPLEMENT          # S线：操控类型
     persistent: bool = False                                            # True = 跨迭代生效，直到用户显式撤回
     iteration_added: int = 0                                            # 记录在第几轮迭代加入
+    applied_phases: set[str] = field(default_factory=set)               # 广播消息已在这些阶段/小循环上下文应用
 
 
 class LoopController:
@@ -90,7 +91,7 @@ class LoopController:
         self._resume_event.set()
 
     def steer(self, content: str, target_phase: str = "") -> None:
-        """注入引导方向（不停止，下一阶段生效）"""
+        """注入引导方向（不停止，在当前运行的下一个检查点生效）"""
         log.info("controller.steer", session=self.session_id, target=target_phase or "all")
         self._steer_queue.put_nowait(
             SteerMessage(content=content, target_phase=target_phase)
@@ -174,7 +175,11 @@ class LoopController:
         while not self._steer_queue.empty():
             msg = self._steer_queue.get_nowait()
             if not msg.target_phase:
-                hints.append(msg.content)
+                # 广播 steering 要跨阶段保留，但同一阶段可能有多个小循环。
+                # 每个消息只在同一阶段第一次被取出时应用，避免每次工具调用都重复注入旧内容。
+                if phase_name not in msg.applied_phases:
+                    hints.append(msg.content)
+                    msg.applied_phases.add(phase_name)
                 temp.append(msg)
             elif msg.target_phase == phase_name:
                 hints.append(msg.content)

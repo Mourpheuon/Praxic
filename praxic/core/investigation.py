@@ -197,7 +197,34 @@ class InvestigationModule:
         question: str,
         additional_context: str = "",
         tools_results: str = "",
+        on_progress: callable = None,
+        steering_checkpoint: callable = None,
     ) -> FactReport:
+        def _notify(tool: str, summary: str, result: dict | None = None) -> None:
+            if not on_progress:
+                return
+            payload = {
+                "event_type": "tool_call",
+                "tool": tool,
+                "record": {
+                    "tool": tool,
+                    "result": result or {"status": "running", "content": summary},
+                },
+            }
+            try:
+                on_progress(tool, summary, payload)
+            except Exception:
+                log.warning("investigation.progress_callback_error", exc_info=True)
+
+        async def _checkpoint(tool: str) -> str:
+            if not steering_checkpoint:
+                return ""
+            try:
+                return str(await steering_checkpoint(tool) or "")
+            except Exception:
+                log.warning("investigation.steering_checkpoint_error", tool=tool, exc_info=True)
+                return ""
+
         log.info("investigation.start", question=question[:80],
                  has_search=self.can_search_web,
                  has_context=bool(additional_context))
@@ -220,7 +247,20 @@ class InvestigationModule:
 
         # 网络搜索 + 网页全文抓取
         if self.can_search_web:
+            _notify("web_search", "WEB_SEARCH · 进行中")
             search_results_text, search_results = await self._do_web_search(question, additional_context, "")
+            _notify(
+                "web_search",
+                "WEB_SEARCH · 已完成",
+                {
+                    "status": "success" if search_results_text else "error",
+                    "content": search_results_text[:500] if search_results_text else "未获得搜索结果",
+                    "n_results": len(search_results),
+                },
+            )
+            steering = await _checkpoint("web_search")
+            if steering:
+                additional_context += "\n" + steering
             if search_results_text:
                 all_external_info += f"\n## 网络搜索结果\n{search_results_text}"
             if self._web_fetch and search_results:
@@ -236,7 +276,20 @@ class InvestigationModule:
                             url_score_pairs.append((url, score))
                             seen_urls.add(url)
                 if url_score_pairs:
+                    _notify("web_fetch", "WEB_FETCH · 进行中", {"status": "running", "n_urls": len(url_score_pairs)})
                     fetched = await self._web_fetch.fetch_urls(url_score_pairs)
+                    _notify(
+                        "web_fetch",
+                        "WEB_FETCH · 已完成",
+                        {
+                            "status": "success" if fetched else "error",
+                            "n_urls": len(url_score_pairs),
+                            "n_fetched": len(fetched),
+                        },
+                    )
+                    steering = await _checkpoint("web_fetch")
+                    if steering:
+                        additional_context += "\n" + steering
                     full_text = WebFetchTool.format_for_llm(fetched)
                     if full_text:
                         all_external_info += f"\n## 网页全文\n{full_text}"
@@ -278,10 +331,19 @@ class InvestigationModule:
             log.info("investigation.second_pass", n_high_gaps=len(high_gaps))
             gap_queries = [g.suggested_query for g in high_gaps if g.suggested_query]
             if gap_queries:
+                _notify("web_search", "WEB_SEARCH · 补充检索中", {"status": "running", "queries": gap_queries[:3]})
                 second_results = await self._multi_search.search_all(gap_queries[:3])
                 combined = "\n\n".join(
                     WebSearchTool.format_for_llm(r) for r in second_results if r.ok
                 )
+                _notify(
+                    "web_search",
+                    "WEB_SEARCH · 补充检索完成",
+                    {"status": "success" if combined else "error", "n_results": len(second_results)},
+                )
+                steering = await _checkpoint("web_search")
+                if steering:
+                    additional_context += "\n" + steering
                 if combined:
                     user_content2 = (
                         f"## 用户问题\n{question}\n\n"

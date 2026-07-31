@@ -113,6 +113,7 @@ class PracticeModule:
         wm = None,
         registry = None,
         decision_report=None,
+        steering_checkpoint: callable = None,
     ) -> Optional[PracticeReport]:
         # 兼容迁移前的第三位置调用：practice(question, trace, decision)
         # 与当前回调签名可以共存，新的调用优先使用关键字参数。
@@ -157,7 +158,8 @@ class PracticeModule:
 
         t0 = time.time()
         r1_steps, r1_outcomes, r1_unexpected, r1_success, r1_failure, r1_log, r1_ok, r1_detail = await self._execute_round(
-            r1_plan, 1, registry, on_progress=on_progress, wm=wm
+            r1_plan, 1, registry, on_progress=on_progress, wm=wm,
+            steering_checkpoint=steering_checkpoint,
         )
         r1_duration = time.time() - t0
 
@@ -202,7 +204,8 @@ class PracticeModule:
 
             t0 = time.time()
             rn_steps, rn_outcomes, rn_unexpected, rn_success, rn_failure, rn_log, rn_ok, rn_detail = await self._execute_round(
-                rn_plan, r, registry, on_progress=on_progress, wm=wm
+                rn_plan, r, registry, on_progress=on_progress, wm=wm,
+                steering_checkpoint=steering_checkpoint,
             )
             rn_duration = time.time() - t0
 
@@ -362,7 +365,7 @@ class PracticeModule:
             log.warning("practice.plan_error", error=str(e))
             return {"round_rationale": f"规划失败: {str(e)[:100]}", "tool_calls": [], "expected_outcomes": []}
 
-    async def _execute_round(self, plan: dict, round_num: int, registry=None, on_progress=None, wm=None) -> tuple:
+    async def _execute_round(self, plan: dict, round_num: int, registry=None, on_progress=None, wm=None, steering_checkpoint=None) -> tuple:
         """Execute tools from plan's tool_calls list."""
         steps, outcomes, unexpected, success, failure, log_parts = [], [], [], [], [], []
         all_ok = True
@@ -410,6 +413,13 @@ class PracticeModule:
                         )
                     except Exception:
                         log.warning("practice.progress_callback_error", exc_info=True)
+                if steering_checkpoint:
+                    try:
+                        steering = await steering_checkpoint(tool_name, result)
+                        if steering:
+                            log_parts.append(f"[用户插话] {steering}")
+                    except Exception:
+                        log.warning("practice.steering_checkpoint_error", tool=tool_name, exc_info=True)
             if result and result.ok:
                 classification = result.state_classification
                 log_parts.append(f"[{tool_name}] {classification}: {(result.content or '')[:200]}")

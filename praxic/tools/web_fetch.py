@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import re
-import structlog
-from typing import Optional
 
 import httpx
+import structlog
 
 from ..config import settings
+from .base import ActionKind, BaseTool, ToolResult, ToolStatus
 
 log = structlog.get_logger(__name__)
 
@@ -70,8 +70,19 @@ def _extract_text_from_html(html: str, url: str) -> str:
     return ""
 
 
-class WebFetchTool:
+class WebFetchTool(BaseTool):
     """并发抓取 URL 全文，提取清洗后的正文"""
+
+    name = "web_fetch"
+    description = "获取指定网页的正文内容，用于读取在线文档和核验事实"
+    requires_network = True
+    action_kind = ActionKind.OBSERVE
+    parameter_schema = {
+        "url": {
+            "type": "string",
+            "description": "要抓取的完整 HTTP 或 HTTPS URL",
+        },
+    }
 
     def __init__(
         self,
@@ -83,10 +94,55 @@ class WebFetchTool:
     ):
         """所有参数从 config 读取，也可显式传入覆盖"""
         self.max_urls = max_urls if max_urls is not None else settings.web_fetch_max_urls
-        self.max_chars_per_page = max_chars_per_page if max_chars_per_page is not None else settings.web_fetch_max_chars_per_page
+        self.max_chars_per_page = (
+            max_chars_per_page
+            if max_chars_per_page is not None
+            else settings.web_fetch_max_chars_per_page
+        )
         self.timeout = timeout if timeout is not None else settings.web_fetch_timeout
         self.min_score = min_score if min_score is not None else settings.web_fetch_min_score
-        self.max_total_chars = max_total_chars if max_total_chars is not None else settings.web_fetch_max_total_chars
+        self.max_total_chars = (
+            max_total_chars
+            if max_total_chars is not None
+            else settings.web_fetch_max_total_chars
+        )
+
+    async def run(self, url: str = "", **kwargs) -> ToolResult:
+        """Fetch one URL through the unified tool-registry contract."""
+        from urllib.parse import urlsplit
+
+        target = (url or "").strip()
+        parsed = urlsplit(target)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return ToolResult(
+                status=ToolStatus.ERROR,
+                content="",
+                error="web_fetch 需要完整的 HTTP 或 HTTPS URL",
+                source=target,
+            )
+
+        result = await self._fetch_one(target, 1.0)
+        if not result.get("fetched"):
+            return ToolResult(
+                status=ToolStatus.ERROR,
+                content="",
+                data=result,
+                error=result.get("error") or "网页抓取失败",
+                source=target,
+            )
+
+        content = self.format_for_llm([result]) or result.get("text", "")
+        return ToolResult(
+            status=ToolStatus.SUCCESS,
+            content=content,
+            data=result,
+            source=result.get("url") or target,
+            metadata={
+                "url": result.get("url") or target,
+                "title": result.get("title", ""),
+                "fetched": True,
+            },
+        )
 
     async def fetch_urls(self, url_score_pairs: list[tuple[str, float]]) -> list[dict]:
         """
@@ -203,7 +259,7 @@ class WebFetchTool:
             base_result["text"] = text
             return base_result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             base_result["error"] = "timeout"
             return base_result
         except httpx.HTTPError as e:
