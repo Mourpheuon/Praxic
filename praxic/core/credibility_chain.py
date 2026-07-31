@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..api.schemas.models import (
-    ContradictionGraph, RationalSynthesis, DecisionReport, FactReport
+    ContradictionGraph, RationalSynthesis, DecisionReport, FactReport, PracticeReport
 )
 
 
@@ -19,10 +19,19 @@ class CredibilityChain:
     investigation_max: float = 0.0       # 调查阶段：取所有事实可信度的加权平均
     contradiction_max: float = 0.0       # 矛盾分析：≤ 其所引用事实的可信度
     rational_max: float = 0.0            # 理性认识：≤ 矛盾分析可信度
-    decision_max: float = 0.0            # 决策：≤ 理性认识可信度
+    practice_max: float = 0.0            # 实践检验：≤ 理性认识可信度
     overall_confidence: float = 0.0      # 整体可信度：全链路最低值
     weakest_link: str = ""               # 可信度链最薄弱环节的描述
     decay_path: list[str] = field(default_factory=list)
+
+    @property
+    def decision_max(self) -> float:
+        """Deprecated compatibility alias for the former decision stage."""
+        return self.practice_max
+
+    @decision_max.setter
+    def decision_max(self, value: float) -> None:
+        self.practice_max = value
 
     @classmethod
     def from_trace(
@@ -30,6 +39,8 @@ class CredibilityChain:
         fact_report: FactReport,
         contradiction_graph: Optional[ContradictionGraph] = None,
         rational_synthesis: Optional[RationalSynthesis] = None,
+        practice_report: Optional[PracticeReport] = None,
+        # Deprecated compatibility input for callers using the former phase.
         decision_report: Optional[DecisionReport] = None,
     ) -> "CredibilityChain":
         chain = cls()
@@ -77,22 +88,32 @@ class CredibilityChain:
             chain.rational_max = chain.contradiction_max * 0.7
         chain.decay_path.append(f"理性认识 → {chain.rational_max:.2f}")
 
-        # Level 3: 决策可信度 ≤ 理性认识可信度 × 决策衰减
-        if decision_report:
-            chain.decision_max = min(
+        # Level 3: 实践检验可信度 ≤ 理性认识可信度。
+        # 直接实践可以提高可信度上限；知性分析仍需保守衰减。
+        if practice_report and practice_report.mode == "executed":
+            chain.practice_max = min(
+                chain.rational_max * 0.9,
+                chain.investigation_max,
+            )
+        elif practice_report and practice_report.mode == "partial":
+            chain.practice_max = chain.rational_max * 0.7
+        elif decision_report:
+            # Keep old standalone callers working while the runtime no longer
+            # creates a separate DecisionReport.
+            chain.practice_max = min(
                 chain.rational_max * 0.85,
                 chain.investigation_max,
             )
         else:
-            chain.decision_max = chain.rational_max * 0.7
-        chain.decay_path.append(f"决策输出 → {chain.decision_max:.2f}")
+            chain.practice_max = chain.rational_max * 0.7
+        chain.decay_path.append(f"实践检验 → {chain.practice_max:.2f}")
 
         # 整体可信度 = 全链路最低值
         chain.overall_confidence = min(
             chain.investigation_max,
             chain.contradiction_max,
             chain.rational_max,
-            chain.decision_max,
+            chain.practice_max,
         )
 
         # 定位最薄弱环节
@@ -100,7 +121,7 @@ class CredibilityChain:
             "调查阶段": chain.investigation_max,
             "矛盾分析": chain.contradiction_max,
             "理性认识": chain.rational_max,
-            "决策输出": chain.decision_max,
+            "实践检验": chain.practice_max,
         }
         chain.weakest_link = min(levels, key=levels.get)
 
@@ -112,6 +133,6 @@ class CredibilityChain:
             f"(调查{self.investigation_max:.2f} → "
             f"矛盾{self.contradiction_max:.2f} → "
             f"理性{self.rational_max:.2f} → "
-            f"决策{self.decision_max:.2f}) | "
+            f"实践{self.practice_max:.2f}) | "
             f"薄弱环节: {self.weakest_link}"
         )

@@ -48,7 +48,7 @@ _SUPERSET = {
     "essence": "用试除法判断质数并累加",
     "patterns": ["试除法"],
     "hypotheses": ["遍历2到sqrt(n)可判断质数"],
-    # decision — practice_feasibility=direct so practice EXECUTES
+    # practice planner fields — direct tool calls make the practice stage execute
     "action_items": [
         {"description": "编写质数求和脚本", "priority": 1, "practice_feasibility": "direct"},
     ],
@@ -124,7 +124,7 @@ async def main():
     loop = CognitiveLoop(llm=fake)
     # Force every phase LLM to the fake
     for attr in ("preprocessor", "investigation", "contradiction", "rational",
-                 "decision", "practice", "reflection", "perspectives"):
+                 "practice", "reflection", "perspectives"):
         obj = getattr(loop, attr, None)
         if obj is not None and hasattr(obj, "llm"):
             obj.llm = fake

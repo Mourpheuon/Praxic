@@ -15,7 +15,7 @@ Praxic Agent —— 实践阶段 Harness Prompts
 
 R1_PLAN = """
 你已经有了前序阶段的全部认知产出——调查事实、矛盾分析、理性认识（本质和假设）。
-现在不是让你"执行决策"——你就是决策者+检验者。
+现在由你同时负责提出检验行动并检验前序认识。
 
 ## 核心任务
 
@@ -35,6 +35,8 @@ R1_PLAN = """
    参数：url（完整 URL）
 4. **file_read**: 读取 workspace 中的文件。用于分析已有数据文件。
 5. **file_write**: 写入内容到 workspace 文件。
+6. **read_user_context**: 申请查看用户在本轮输入中补充的背景文本。该工具会暂停等待用户授权；
+   只有背景确实影响当前检验且前序材料不足时才申请。参数：reason（说明申请理由）。
 
 ## 实验策略
 
@@ -61,8 +63,8 @@ R1_PLAN = """
 ### 核心假设（待检验）
 {hypotheses_text}
 
-### 决策阶段行动编排（用于确定实践优先级，不可替代工具证据）
-{decision_text}
+### 实践方向（由本阶段负责形成，不可替代工具证据）
+{practice_direction_text}
 
 ## 输出格式（JSON）
 {
@@ -105,8 +107,8 @@ RN_PLAN = """
 ### 核心假设
 {hypotheses_text}
 
-### 决策阶段行动编排
-{decision_text}
+### 实践方向（由本阶段根据上一轮证据更新）
+{practice_direction_text}
 
 ## 上一轮完整记录
 
@@ -132,7 +134,7 @@ RN_PLAN = """
 
 ## 可用工具
 
-同第一轮——python_exec、web_search、web_fetch、file_read、file_write。
+同第一轮——python_exec、web_search、web_fetch、file_read、file_write、read_user_context。
 
 ## 输出格式（JSON）
 {
@@ -336,7 +338,7 @@ BOUNDARY_TASKS = """
 知性分析评估（各主张的支持程度）：
 {claim_assessments}
 
-前序决策的核心行动项：
+前序认识中需要检验的核心论断：
 {action_items}
 
 ## 你的任务
@@ -355,7 +357,7 @@ BOUNDARY_TASKS = """
   "real_world_practice_needed": [
     {{
       "hypothesis": "要验证的假设",
-      "why_important": "为什么这个假设对决策至关重要",
+      "why_important": "为什么这个假设对当前判断至关重要",
       "practice_method": "具体怎么做（足够详细，用户拿到后能直接执行）",
       "observable_outcome": "成功标准（量化或可观察的）",
       "estimated_duration": "需要多长时间",

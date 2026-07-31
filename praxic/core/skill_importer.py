@@ -1,7 +1,7 @@
 """
 Praxic Agent -- 技能导入器 (SkillImporter)
 
-把 praxic/skills/ 下的外部 Claude 格式技能（裸露的 SKILL.md）适配为Praxic六阶段
+把 praxic/skills/ 下的外部 Claude 格式技能（裸露的 SKILL.md）适配为Praxic五阶段
 技能系统可用的技能，写入 registry.json。
 
 混合策略：
@@ -29,7 +29,7 @@ log = structlog.get_logger(__name__)
 
 _VALID_PHASES = {
     "investigation", "contradiction", "rational",
-    "decision", "practice", "reflection",
+    "practice", "reflection",
 }
 
 

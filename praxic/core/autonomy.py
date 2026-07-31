@@ -64,23 +64,23 @@ def get_autonomy_instruction(level: AutonomyLevel, phase: str) -> str:
                 + "关于矛盾结构的假设。大胆假设，小心求证。"
             ),
         }
-    elif phase == "decision":
+    elif phase == "practice":
         instructions = {
             AutonomyLevel.READ_ONLY: (
-                base + "产出基于事实的建议列表，不做自主决策。"
+                base + "仅基于前序事实设计可检验的实践行动，不擅自改变外部世界。"
             ),
             AutonomyLevel.SANDBOXED: (
-                base + "以事实为依据形成建议，并标注每项建议的置信度。"
+                base + "以事实和理性认识为依据形成检验方案，并标注每项行动的证据标准。"
             ),
             AutonomyLevel.STANDARD: (
                 base
-                + "在事实基础上形成独立决策。在 autonomous_recommendation 中记录："
-                + "如果没有任何外部信息，纯粹基于你的推理，你会做出什么不同的决策？"
+                + "在事实和矛盾结构基础上独立设计实践方案。先提出可证伪论断，"
+                + "再选择最小、可回读的工具行动来检验它们。"
             ),
             AutonomyLevel.ELEVATED: (
                 base
-                + "以你的独立判断为决策核心。外部信息用于验证而非替代你的判断。"
-                + "当你的判断与外部信息矛盾时，相信你的推理并解释原因。"
+                + "以你的独立判断设计实践检验。外部信息用于验证而非替代你的判断；"
+                + "当工具结果与前序认识矛盾时，保留矛盾并调整下一轮实验。"
             ),
         }
     else:

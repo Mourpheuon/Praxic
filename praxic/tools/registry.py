@@ -155,6 +155,14 @@ class ToolRegistry:
         authorization_timeout = float(
             params.pop("_authorization_timeout_seconds", self.authorization_timeout_seconds)
         )
+        # Runtime-only values are never included in authorization requests or
+        # tool records. The practice phase uses this channel to pass the
+        # already-held background text after approval without exposing it while
+        # the request is waiting in the UI.
+        runtime_user_context = params.pop("_user_context", None)
+        tool_params = dict(params)
+        if runtime_user_context is not None:
+            tool_params["_user_context"] = runtime_user_context
         action_kind = (
             tool.classify_action(params)
             if hasattr(tool, "classify_action")
@@ -169,6 +177,7 @@ class ToolRegistry:
             params=params,
             sandbox_safe=getattr(tool, "sandbox_safe", False),
             requires_authorization=getattr(tool, "requires_authorization", False),
+            authorization_reason=getattr(tool, "authorization_reason", ""),
             requires_network=getattr(tool, "requires_network", False),
             authorization_id=authorization_id,
         )
@@ -271,6 +280,7 @@ class ToolRegistry:
                     params=params,
                     sandbox_safe=getattr(tool, "sandbox_safe", False),
                     requires_authorization=getattr(tool, "requires_authorization", False),
+                    authorization_reason=getattr(tool, "authorization_reason", ""),
                     requires_network=getattr(tool, "requires_network", False),
                     authorization_id=resolved_request.grant_id,
                 )
@@ -304,7 +314,7 @@ class ToolRegistry:
             self._finish_record(name, safe_params, action_kind, result, started)
             return result
         try:
-            result = await tool.run(**params)
+            result = await tool.run(**tool_params)
             if not isinstance(result, ToolResult):
                 result = ToolResult(
                     status=ToolStatus.SUCCESS,

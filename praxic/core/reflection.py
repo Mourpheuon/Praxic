@@ -20,23 +20,23 @@ _REFLECTION_PROMPT = '''
 你的任务：
 1. 基于实践结果，复盘调查研究：哪些事实关键，哪些被高估/低估？信息缺口是否被实践填补？
 2. 检验矛盾分析是否准确：主要矛盾识别对了吗？实践中有没有暴露新的矛盾？
-3. 评估决策质量：哪些行动项经受住了实践检验？哪些被实践证伪？
+3. 评估实践方案质量：哪些检验行动有效？哪些论断被实践削弱或证伪？
 4. 解读实践分析：实践结论（confirmed/challenged/falsified）说明什么？可信度如何变化？
 5. 识别认知偏差和逻辑漏洞
 6. 总结可复用的经验教训
 7. 判断是否需要触发新一轮调查研究，以及收敛度（0.0~1.0）
-   7a. 参考下方【终止判定参考数据】中的子问题覆盖、决策验证、矛盾状态数据——
+   7a. 参考下方【终止判定参考数据】中的子问题覆盖、实践验证、矛盾状态数据——
        这些数据是系统自动收集的结构性事实（非LLM产出），
        用来帮助判断收敛度，但不构成刚性规则。
        如果有未覆盖的子问题但对最终回答不关键，可以不把它当作继续的理由。
 8. 如果实践阶段产出的是【知性分析（边界模式）】而非执行验证：
    - 收敛评分应更保守（偏低 0.1-0.2）
-   - 主动关注：哪些主张被评估为"challenged"？它们是否影响决策方向？
+   - 主动关注：哪些主张被评估为"challenged"？它们是否影响实践方向？
    - 在 focus_hints 中为下一轮 practice 阶段标注：
      "如果用户能提供真实数据或试验结果，应优先将其注入实践阶段"
    - 重要：边界模式下，调查/矛盾分析/理性认识本身就是认知工作的核心产出，
      不要因为实践阶段无法执行代码而否定前序阶段的认知成果。
-     评估收敛度时，重点看矛盾是否清晰、理性认识是否自洽、决策是否有据，
+     评估收敛度时，重点看矛盾是否清晰、理性认识是否自洽、实践方案是否有据，
      而非实践是否产生了可观测结果。
 9. **矛盾追踪**：比较本轮各阶段的矛盾判断
     - 主要矛盾是否发生了变化？是否有矛盾被实践证伪或削弱？
@@ -49,7 +49,7 @@ _REFLECTION_PROMPT = '''
    - 综合调查研究的事实基础（不要跳过事实）
    - 体现矛盾分析的结构（什么矛盾推动了事物的运动？）
    - 纳入理性认识的本质和规律（透过现象看本质）
-   - 结合决策的方向和建议（应该怎么做）
+   - 结合实践阶段形成的行动方向和建议（应该怎么检验或实施）
    - 诚实标注哪些部分已经过实践检验、哪些仍属于知性推断
    - 如果实践阶段为边界模式，明确指出：
      "以下分析基于调查搜索和矛盾分析，属于知性认识层面。
@@ -67,7 +67,7 @@ _REFLECTION_PROMPT = '''
 - skip_phases：仅当某阶段结论已充分稳固时才建议跳过
   重要：如果 should_reinvestigate=true（需要重新调查），则禁止在 skip_phases 中加入 "practice"。
   逻辑是：重新调查意味着新事实新矛盾，上一轮的实践结论随之过时，
-  新一轮决策会产生新的行动项，它们需要新的实践检验。
+  新一轮实践会根据新事实重新设计检验行动。
 - focus_hints：下一轮该阶段执行时额外收到的专项提示
 - recommended_mode：建议运行模式 fast/standard/deep，留空=保持当前
 
@@ -76,7 +76,6 @@ _REFLECTION_PROMPT = '''
   "quality_assessment": "整体质量评估（含0-10评分）",
   "investigation_retrospective": "调查研究复盘",
   "contradiction_retrospective": "矛盾分析复盘",
-  "decision_retrospective": "决策质量复盘",
   "practice_retrospective": "实践检验复盘——结果是否验证了前序结论？",
   "cognitive_biases_found": ["偏差1"],
   "lessons_learned": ["经验1"],
@@ -165,15 +164,17 @@ class ReflectionEngine:
                 for u in sq["uncovered_list"]:
                     lines.append(f"  - [未覆盖] {u}")
         
-        av = evidence.get("action_verification")
-        if av:
-            lines.append(f"\n### 决策验证：{av['verified']}/{av['total']} 已验证")
-            if av.get("unverified_list"):
-                for u in av["unverified_list"]:
-                    lines.append(f"  - [未验证] {u}")
-            if av.get("unverifiable_list"):
-                for u in av["unverifiable_list"]:
-                    lines.append(f"  - [需人工] {u['item']}（{u['why']}）")
+        pv = evidence.get("practice_verification") or evidence.get("action_verification")
+        if pv:
+            lines.append(f"\n### 实践验证：{pv['verified']}/{pv['total']} 已验证")
+            for item in pv.get("pending_list", pv.get("unverified_list", [])):
+                if isinstance(item, dict):
+                    lines.append(
+                        f"  - [待验证] {item.get('claim', item.get('action', ''))}"
+                        f"（{item.get('reason', '')}）"
+                    )
+                else:
+                    lines.append(f"  - [待验证] {item}")
         
         cs = evidence.get("contradiction_status")
         if cs:
@@ -228,15 +229,6 @@ class ReflectionEngine:
                 f"规律：{', '.join(trace.rational_synthesis.patterns[:5])}\n"
                 f"假设：{', '.join(trace.rational_synthesis.hypotheses[:5])}"
             )
-
-        if trace.decision:
-            parts.append(
-                f"【决策方案】{trace.decision.summary or trace.decision.strategic_assessment[:200]}\n"
-                f"行动项（{len(trace.decision.action_items)}项）：" +
-                "；".join(a.description[:80] for a in trace.decision.action_items[:5])
-            )
-            if trace.decision.risks:
-                parts.append(f"风险：{'；'.join(trace.decision.risks[:5])}")
 
         if trace.practice:
             p = trace.practice
@@ -368,6 +360,10 @@ class ReflectionEngine:
             convergence_score=float(conv),
             investigation_retrospective=data.get("investigation_retrospective", ""),
             contradiction_retrospective=data.get("contradiction_retrospective", ""),
+            practice_retrospective=data.get(
+                "practice_retrospective",
+                data.get("decision_retrospective", ""),
+            ),
             decision_retrospective=data.get("decision_retrospective", ""),
             skip_phases=data.get("skip_phases", []),
             focus_hints=data.get("focus_hints", {}),

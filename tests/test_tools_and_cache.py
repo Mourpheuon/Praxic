@@ -9,11 +9,15 @@ from fastapi import HTTPException
 
 from praxic.api.routes import agent as agent_routes
 from praxic.api.routes.agent import _serialize_event
+from praxic.api.schemas.models import CognitiveTrace
 from praxic.core.autonomy import AutonomyLevel
+from praxic.core.cognitive_loop import CognitiveLoop
 from praxic.core.practice import PracticeModule
 from praxic.llm.claude import ClaudeLLM
 from praxic.llm.kv_cache import InMemoryPrefixKVCache, detect_kv_cache_backend
 from praxic.memory.context_cache import ContextBlock, ContextCache, ContextCompiler, estimate_tokens
+from praxic.memory.episodic_memory import EpisodicMemory
+from praxic.memory.working_memory import WorkingMemory
 from praxic.tools.base import ActionKind, BaseTool, ToolResult, ToolStatus
 from praxic.tools.filesystem import FileWriteTool
 from praxic.tools.permissions import PermissionPolicy
@@ -21,6 +25,7 @@ from praxic.tools.python_exec import PythonExecTool
 from praxic.tools.registry import ToolRegistry
 from praxic.tools.shell import ShellTool
 from praxic.tools.web_search import MultiSearchTool
+from praxic.tools.user_context import ReadUserContextTool
 
 
 class ExternalProbeTool(BaseTool):
@@ -173,6 +178,112 @@ async def test_authorization_redacts_nested_parameters():
     assert params["args"] == ["--token", "[REDACTED]", "visible"]
     registry.deny_authorization(requested["request_id"])
     await task
+
+
+@pytest.mark.asyncio
+async def test_user_context_observation_waits_for_authorization_and_hides_text():
+    events: list[dict] = []
+    registry = ToolRegistry(
+        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        event_sink=events.append,
+        authorization_timeout_seconds=1.0,
+    )
+    registry.register(ReadUserContextTool())
+
+    task = asyncio.create_task(
+        registry.call(
+            "read_user_context",
+            reason="需要判断背景是否改变实践检验条件",
+            _user_context="这段背景只应在授权后出现",
+        )
+    )
+    requested = await _wait_for_event(events, "authorization_requested")
+    await asyncio.sleep(0)
+
+    assert not task.done()
+    assert requested["authorization"]["status"] == "pending"
+    assert "这段背景只应在授权后出现" not in json.dumps(requested, ensure_ascii=False)
+
+    registry.approve_authorization(requested["request_id"], ttl_seconds=30)
+    result = await task
+    assert result.status == ToolStatus.SUCCESS
+    assert "这段背景只应在授权后出现" in result.content
+    assert result.permission is not None
+    assert result.permission.authorization_id
+    assert "_user_context" not in registry.records[-1].parameters
+
+
+@pytest.mark.asyncio
+async def test_practice_executor_supplies_context_only_after_approval():
+    events: list[dict] = []
+    registry = ToolRegistry(
+        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        event_sink=events.append,
+        authorization_timeout_seconds=1.0,
+    )
+    registry.register(ReadUserContextTool())
+    wm = WorkingMemory(session_id="practice-context")
+    wm.set("context", "实践检验必须获批后才能看到的条件")
+    practice = PracticeModule(llm=SimpleNamespace(), workspace=None, practice_rounds=1)
+
+    task = asyncio.create_task(
+        practice._execute_round(
+            {
+                "round_rationale": "确认是否需要用户补充背景",
+                "tool_calls": [
+                    {
+                        "tool": "read_user_context",
+                        "params": {"reason": "背景可能改变检验边界"},
+                    }
+                ],
+            },
+            1,
+            registry=registry,
+            wm=wm,
+        )
+    )
+    requested = await _wait_for_event(events, "authorization_requested")
+    assert not task.done()
+    assert "实践检验必须获批后才能看到的条件" not in json.dumps(requested, ensure_ascii=False)
+
+    registry.approve_authorization(requested["request_id"], ttl_seconds=30)
+    steps, *_ = await task
+    assert any("实践检验必须获批后才能看到的条件" in step.observed_result for step in steps)
+
+
+def test_working_memory_hides_user_context_from_practice_prompt():
+    wm = WorkingMemory(session_id="context-gate")
+    wm.set("context", "只允许调查阶段自动读取的背景")
+    wm.set("conversation_history", "前文中有一段必须用于比较的代码")
+
+    assert "只允许调查阶段自动读取的背景" not in wm.get_context_for_phase("practice")
+    assert "只允许调查阶段自动读取的背景" in wm.get_context_for_phase("investigation")
+    assert "前文中有一段必须用于比较的代码" in wm.get_context_for_phase("practice")
+
+
+def test_conversation_history_preserves_concrete_prior_code(tmp_path):
+    memory = EpisodicMemory(db_path=tmp_path / "episodic.db")
+    prior_code = "fn main() { println!(\"76127\"); }\nPRIOR_CODE_TAIL"
+    memory.save_episode(
+        session_id="previous-session",
+        conversation_id="follow-up",
+        question="写一段 Rust 代码计算质数和",
+        summary=prior_code,
+    )
+
+    history = memory.build_conversation_context(
+        conversation_id="follow-up",
+        current_question="这和下面的代码哪个更好？",
+    )
+    loop = object.__new__(CognitiveLoop)
+    final_prompt = loop._summarize_for_answer(
+        "这和下面的代码哪个更好？",
+        CognitiveTrace(),
+        conversation_history=history,
+    )
+
+    assert "PRIOR_CODE_TAIL" in history
+    assert "PRIOR_CODE_TAIL" in final_prompt
 
 
 @pytest.mark.asyncio

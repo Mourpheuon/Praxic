@@ -63,6 +63,9 @@ win:
   target:
     - nsis
   icon: assets/icon.ico
+  # Local builds are unsigned. Skipping executable resource signing avoids
+  # requiring Windows symlink privileges just to unpack winCodeSign.
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false

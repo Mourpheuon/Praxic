@@ -41,7 +41,8 @@ class TestBasic:
         assert t.investigation is not None
         assert t.contradictions is not None
         assert t.rational_synthesis is not None
-        assert t.decision is not None
+        assert t.decision is None
+        assert t.practice is not None
         assert t.reflection is not None
 
     @pytest.mark.asyncio
@@ -51,7 +52,7 @@ class TestBasic:
         r = await loop.run(question="快", mode="fast")
         t = r.full_trace
         assert t.investigation is not None
-        assert t.decision is not None
+        assert t.decision is None
         assert t.practice is None
         assert t.reflection is None
 
@@ -109,7 +110,8 @@ class TestTrace:
         r = await loop.run(question="计时")
         d = r.full_trace.metadata.phase_durations
         assert "investigation" in d
-        assert "decision" in d
+        assert "practice" in d
+        assert "decision" not in d
 
     @pytest.mark.asyncio
     async def test_actions(self, mk):
@@ -118,7 +120,7 @@ class TestTrace:
         loop = CognitiveLoop(llm=mk, web_search_enabled=False)
         r = await loop.run(question="行动")
         # Check that we got action items back in the response
-        assert len(r.action_items) >= 1 or r.full_trace.decision is not None
+        assert len(r.action_items) >= 1 or r.full_trace.practice is not None
 
 class TestCallbacks:
     @pytest.mark.asyncio

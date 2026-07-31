@@ -18,11 +18,32 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 
 # 1. Node.js 检查
-Write-Host "[1/4] Node.js $(node --version)"
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Write-Host "[错误] 未找到 Node.js，请安装 https://nodejs.org" -ForegroundColor Red
+$nodePath = $null
+$nodeOverride = $env:PRAXIC_NODE_PATH
+if ($nodeOverride) {
+    if (Test-Path -LiteralPath $nodeOverride -PathType Leaf) {
+        $nodePath = (Resolve-Path -LiteralPath $nodeOverride).Path
+    } elseif (Test-Path -LiteralPath $nodeOverride -PathType Container) {
+        $candidate = Join-Path $nodeOverride "node.exe"
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { $nodePath = (Resolve-Path -LiteralPath $candidate).Path }
+    }
+}
+if (-not $nodePath) {
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    if ($nodeCommand) { $nodePath = $nodeCommand.Source }
+}
+if (-not $nodePath) {
+    $runtimeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\codex-runtimes"
+    $nodePath = Get-ChildItem -Path $runtimeRoot -Filter node.exe -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match "\\dependencies\\node\\bin\\node\.exe$" } |
+        Select-Object -First 1 -ExpandProperty FullName
+}
+if (-not $nodePath) {
+    Write-Host "[错误] 未找到 Node.js，请安装 Node.js 或设置 PRAXIC_NODE_PATH" -ForegroundColor Red
     exit 1
 }
+$env:Path = "$(Split-Path -Parent $nodePath);$env:Path"
+Write-Host "[1/4] Node.js $(& $nodePath --version)"
 
 # 2. 安装依赖
 Write-Host "[2/4] 安装 npm 依赖..."

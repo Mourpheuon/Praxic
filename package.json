@@ -1,6 +1,6 @@
 {
   "name": "praxic",
-  "version": "0.1.2",
+  "version": "0.1.5",
   "description": "即物穷理 Praxic —— 以辩证唯物主义方法论为认知内核的 AI 智能体",
   "author": "Mourpheuon",
   "license": "MIT",
@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "concurrently -n py,web -c blue,green \"python -m uvicorn praxic.api.server:app --host 127.0.0.1 --port 8000\" \"cd praxic/web && npx vite\"",
     "electron:dev": "concurrently -n py,electron -c blue,magenta \"python -m uvicorn praxic.api.server:app --host 127.0.0.1 --port 8000\" \"npx electron .\"",
-    "electron:build": "cd praxic/web && npx vite build && cd ../.. && npx electron-builder",
+    "electron:build": "cd praxic/web && node node_modules/vite/bin/vite.js build && cd ../.. && node node_modules/electron-builder/cli.js",
     "postinstall": "cd praxic/web && npm install"
   },
   "devDependencies": {

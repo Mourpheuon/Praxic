@@ -15,6 +15,7 @@ from .filesystem import FileReadTool, FileWriteTool, FileListTool, FileDeleteToo
 from .permissions import AuthorizationGrant, AuthorizationRequest, PathGuard, PermissionPolicy
 from .shell import ShellTool
 from .web_search import WebSearchTool, MultiSearchTool, SearchResult
+from .user_context import ReadUserContextTool
 
 __all__ = [
     "BaseTool", "ToolResult", "ToolStatus", "ActionKind", "ToolCallRecord",
@@ -24,4 +25,5 @@ __all__ = [
     "FileReadTool", "FileWriteTool", "FileListTool", "FileDeleteTool",
     "WorkspaceToolkit",
     "WebSearchTool", "MultiSearchTool", "SearchResult",
+    "ReadUserContextTool",
 ]

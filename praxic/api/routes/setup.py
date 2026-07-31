@@ -13,6 +13,8 @@ import datetime as dt
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -575,14 +577,132 @@ class BuildRequest(BaseModel):
     skip_build: bool = False   # skip npm build, go straight to release (existing .exe must be present)
 
 
+def _resolve_node() -> str | None:
+    """Find a usable Node.js executable for builds started by the API process.
+
+    The desktop app may inherit a reduced PATH, while npm.cmd still exists on
+    PATH and then fails internally with ``node is not recognized``. Support an
+    explicit override, normal Windows installations, and bundled runtimes.
+    """
+    def candidate_path(value: str) -> Path | None:
+        if not value:
+            return None
+        path = Path(os.path.expandvars(value)).expanduser()
+        if path.is_file() and path.name.lower() in {"node", "node.exe"}:
+            return path
+        if path.is_dir():
+            candidate = path / ("node.exe" if sys.platform == "win32" else "node")
+            if candidate.is_file():
+                return candidate
+        return None
+
+    configured = candidate_path(os.environ.get("PRAXIC_NODE_PATH", "").strip())
+    if configured:
+        return str(configured)
+
+    for command in ("node", "node.exe"):
+        found = shutil.which(command)
+        if found:
+            return found
+
+    if sys.platform != "win32":
+        return None
+
+    standard_roots = [
+        os.environ.get("ProgramFiles", ""),
+        os.environ.get("ProgramFiles(x86)", ""),
+        os.environ.get("LOCALAPPDATA", ""),
+    ]
+    candidates = [Path(root) / "nodejs" / "node.exe" for root in standard_roots if root]
+
+    # npm may be available without its sibling node.exe. A runtime supplied by
+    # the host application can still satisfy npm when its directory is added
+    # to PATH.
+    npm_path = shutil.which("npm.cmd") or shutil.which("npm")
+    if npm_path:
+        candidates.append(Path(npm_path).parent / "node.exe")
+
+    # Codex and other desktop hosts commonly keep a private Node runtime here.
+    runtime_root = Path.home() / ".cache" / "codex-runtimes"
+    if runtime_root.is_dir():
+        candidates.extend(runtime_root.glob("*/dependencies/node/bin/node.exe"))
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _resolve_npm_cli(script_name: str) -> str | None:
+    """Locate npm's JavaScript entrypoint independently of ``npm.cmd``."""
+    candidates: list[Path] = []
+    npm_path = shutil.which("npm.cmd") or shutil.which("npm")
+    if npm_path:
+        npm_dir = Path(npm_path).parent
+        candidates.append(npm_dir / "node_modules" / "npm" / "bin" / script_name)
+
+    node_path = _resolve_node()
+    if node_path:
+        node_dir = Path(node_path).parent
+        candidates.append(node_dir / "node_modules" / "npm" / "bin" / script_name)
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _build_env(env: dict | None = None) -> dict:
+    """Return a child environment with Node's directory available on PATH."""
+    child_env = os.environ.copy()
+    if env:
+        child_env.update(env)
+    node_path = _resolve_node()
+    if node_path:
+        node_dir = str(Path(node_path).parent)
+        current_path = child_env.get("PATH", "")
+        existing = {
+            os.path.normcase(os.path.normpath(item))
+            for item in current_path.split(os.pathsep)
+            if item
+        }
+        if os.path.normcase(os.path.normpath(node_dir)) not in existing:
+            child_env["PATH"] = node_dir + os.pathsep + current_path
+    return child_env
+
+
 async def _run_cmd(*args, cwd: str = None, check: bool = False, **kwargs) -> asyncio.subprocess.Process:
-    """Spawn a subprocess. On Windows, use shell mode so .cmd wrappers are resolved."""
+    """Spawn a subprocess with a reliable Windows PATH and .cmd handling."""
+    command_args = [str(arg) for arg in args]
+    child_env = _build_env(kwargs.pop("env", None))
+    kwargs.pop("check", None)
     if sys.platform == "win32":
-        # Shell mode: quote args with spaces, join into one string
-        cmd = " ".join(f'"{a}"' if " " in a else a for a in args)
-        return await asyncio.create_subprocess_shell(cmd, cwd=cwd, **kwargs)
+        command_name = command_args[0].lower() if command_args else ""
+        if command_name in {"npm", "npm.cmd"}:
+            node_path = _resolve_node()
+            npm_cli = _resolve_npm_cli("npm-cli.js")
+            if not node_path or not npm_cli:
+                raise FileNotFoundError("Node.js 或 npm CLI 未找到")
+            command_args = [node_path, npm_cli, *command_args[1:]]
+        elif command_name in {"npx", "npx.cmd"}:
+            node_path = _resolve_node()
+            npx_cli = _resolve_npm_cli("npx-cli.js")
+            if not node_path or not npx_cli:
+                raise FileNotFoundError("Node.js 或 npx CLI 未找到")
+            command_args = [node_path, npx_cli, *command_args[1:]]
+
+        executable = Path(command_args[0])
+        if executable.suffix.lower() in {".cmd", ".bat"}:
+            # Windows cannot execute batch files through CreateProcess directly.
+            command_line = subprocess.list2cmdline(command_args)
+            comspec = os.environ.get("COMSPEC", "cmd.exe")
+            return await asyncio.create_subprocess_exec(
+                comspec, "/d", "/s", "/c", command_line,
+                cwd=cwd, env=child_env, **kwargs,
+            )
+        return await asyncio.create_subprocess_exec(*command_args, cwd=cwd, env=child_env, **kwargs)
     else:
-        return await asyncio.create_subprocess_exec(*args, cwd=cwd, **kwargs)
+        return await asyncio.create_subprocess_exec(*command_args, cwd=cwd, env=child_env, **kwargs)
 
 
 def _resolve_gh() -> str | None:
@@ -744,6 +864,17 @@ async def build_electron(req: BuildRequest = BuildRequest()):
             yield _sse({"type": "log", "line": "📦 开始构建 Electron 包壳…"})
             yield _sse({"type": "log", "line": f"📂 工作目录: {cwd}"})
             yield _sse({"type": "status", "phase": "building"})
+
+            node_path = _resolve_node()
+            if sys.platform == "win32" and not node_path:
+                if version_backup:
+                    _restore_versions(version_backup)
+                message = "未找到 Node.js，请安装 Node.js 或设置 PRAXIC_NODE_PATH"
+                yield _sse({"type": "error", "message": message})
+                yield _sse({"type": "result", "ok": False, "error": message})
+                return
+            if node_path:
+                yield _sse({"type": "log", "line": f"Node.js: {node_path}"})
 
             try:
                 process = await _run_cmd("npm", "run", "electron:build",

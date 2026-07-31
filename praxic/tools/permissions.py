@@ -229,6 +229,7 @@ class PermissionPolicy:
         params: dict,
         sandbox_safe: bool = False,
         requires_authorization: bool = False,
+        authorization_reason: str = "",
         requires_network: bool = False,
         authorization_id: str = "",
     ) -> PermissionRecord:
@@ -236,9 +237,6 @@ class PermissionPolicy:
 
         if requires_network and not self.allow_network:
             return self._record(PermissionDecision.DENY, "网络工具已被策略禁用", target)
-
-        if action_kind in (ActionKind.OBSERVE, ActionKind.COMPUTE, ActionKind.VERIFY):
-            return self._record(PermissionDecision.ALLOW, "读取、计算或验证操作自动允许", target)
 
         grant = self._grants.get(authorization_id) if authorization_id else None
         if grant is not None and grant.active():
@@ -254,6 +252,19 @@ class PermissionPolicy:
                     PermissionDecision.ALLOW, "使用了有效授权", target, authorization_id
                 )
 
+        # An explicitly gated observation must wait for approval before the
+        # automatic allow for ordinary observations. Keep the historical
+        # compute and sandbox-change behavior intact for existing tools.
+        if requires_authorization and action_kind == ActionKind.OBSERVE:
+            return self._record(
+                PermissionDecision.REQUIRE_AUTHORIZATION,
+                authorization_reason or "该工具需要用户授权后才能执行",
+                target,
+            )
+
+        if action_kind in (ActionKind.OBSERVE, ActionKind.COMPUTE, ActionKind.VERIFY):
+            return self._record(PermissionDecision.ALLOW, "读取、计算或验证操作自动允许", target)
+
         if (
             action_kind == ActionKind.CHANGE
             and sandbox_safe
@@ -268,8 +279,15 @@ class PermissionPolicy:
             if self.autonomy_level >= AutonomyLevel.SANDBOXED:
                 return self._record(PermissionDecision.ALLOW, "限定在工作区内的沙箱变更", target)
 
+        if requires_authorization:
+            return self._record(
+                PermissionDecision.REQUIRE_AUTHORIZATION,
+                authorization_reason or "该工具需要用户授权后才能执行",
+                target,
+            )
+
         reason = "外部副作用需要授权" if action_kind == ActionKind.EXTERNAL else "变更操作需要授权"
-        if requires_authorization or action_kind in (ActionKind.CHANGE, ActionKind.EXTERNAL):
+        if action_kind in (ActionKind.CHANGE, ActionKind.EXTERNAL):
             return self._record(PermissionDecision.REQUIRE_AUTHORIZATION, reason, target)
 
         return self._record(PermissionDecision.DENY, "当前自主级别不允许该操作", target)

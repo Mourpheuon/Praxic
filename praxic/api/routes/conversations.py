@@ -38,9 +38,11 @@ def _get_episodic() -> EpisodicMemory:
 class TurnItem(BaseModel):
     session_id: str
     question: str
+    context: str = ""
     summary: str = ""
     action_items: list[str] = []
     created_at: str = ""
+    phase_logs: list[dict] = []
 
 
 class ConversationSummary(BaseModel):
@@ -50,6 +52,7 @@ class ConversationSummary(BaseModel):
     last_question: str = ""
     last_active: str = ""
     project_id: str = ""
+    pinned: bool = False
 
 
 class ConversationDetail(BaseModel):
@@ -65,6 +68,10 @@ class CreateConversationRequest(BaseModel):
 
 class RenameRequest(BaseModel):
     name: str
+
+
+class PinRequest(BaseModel):
+    pinned: bool = True
 
 
 class ProjectSummary(BaseModel):
@@ -85,10 +92,10 @@ class CreateProjectRequest(BaseModel):
 # ── Routes ───────────────────────────────────────────────────
 
 @router.get("/conversations")
-async def list_conversations(project_id: Optional[str] = None):
-    """列出对话（按最近活动排序）。project_id 省略=全部；''=默认项目；'x'=指定项目。"""
+async def list_conversations():
+    """列出全部对话，供侧栏排序和按项目分组。"""
     episodic = _get_episodic()
-    rows = episodic.list_conversations(project_id=project_id)
+    rows = episodic.list_conversations()
     conversations = []
     for row in rows:
         cid = row.get("conversation_id", "")
@@ -102,6 +109,7 @@ async def list_conversations(project_id: Optional[str] = None):
             last_question=row.get("last_question", "") or "",
             last_active=row.get("last_active", ""),
             project_id=row.get("project_id", ""),
+            pinned=bool(row.get("pinned", 0)),
         ))
     return {"conversations": conversations}
 
@@ -117,9 +125,11 @@ async def get_conversation(conversation_id: str):
         TurnItem(
             session_id=t.get("session_id", ""),
             question=t.get("question", ""),
+            context=t.get("context", "") or "",
             summary=t.get("summary", ""),
             action_items=t.get("action_items", []),
             created_at=t.get("created_at", ""),
+            phase_logs=t.get("phase_logs", []),
         )
         for t in turns_data
     ]
@@ -133,7 +143,7 @@ async def create_conversation(req: CreateConversationRequest):
     name = req.name.strip() if req.name else "新对话"
     episodic = _get_episodic()
     episodic.set_conversation_name(conversation_id, name)
-    # 立即把新对话归到当前项目（project_id="" 即默认项目），使侧栏按项目筛选时立刻可见
+    # 先持久化项目归属，使新对话可以立即参与按项目分组。
     episodic.set_conversation_project(conversation_id, req.project_id or "")
     return {
         "conversation_id": conversation_id,
@@ -150,6 +160,13 @@ async def rename_conversation(conversation_id: str, req: RenameRequest):
         raise HTTPException(status_code=400, detail="名称不能为空")
     _get_episodic().set_conversation_name(conversation_id, req.name.strip())
     return {"ok": True, "conversation_id": conversation_id, "name": req.name.strip()}
+
+
+@router.patch("/conversations/{conversation_id}/pin")
+async def pin_conversation(conversation_id: str, req: PinRequest):
+    """更新对话的置顶状态。"""
+    _get_episodic().set_conversation_pinned(conversation_id, req.pinned)
+    return {"ok": True, "conversation_id": conversation_id, "pinned": req.pinned}
 
 
 @router.delete("/conversations/{conversation_id}")
@@ -248,25 +265,3 @@ async def create_project(req: CreateProjectRequest):
         workspace = project_dir / "workspace"
 
     return {"project_id": pid, "name": req.name.strip(), "workspace_dir": str(workspace)}
-
-
-@router.post("/projects/open-folder")
-async def open_folder(request: dict):
-    """在系统文件管理器中打开指定目录。"""
-    import subprocess, sys
-    path = request.get("path", "").strip()
-    if not path:
-        raise HTTPException(status_code=400, detail="path 不能为空")
-    folder = Path(path)
-    if not folder.exists():
-        raise HTTPException(status_code=404, detail=f"目录不存在：{path}")
-    try:
-        if sys.platform == "win32":
-            subprocess.Popen(["explorer", str(folder)])
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(folder)])
-        else:
-            subprocess.Popen(["xdg-open", str(folder)])
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"无法打开目录：{e}")
-    return {"ok": True, "path": str(folder)}

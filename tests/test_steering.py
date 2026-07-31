@@ -22,7 +22,7 @@ async def main():
     results = {}
     # 1. targeted steer
     hits.clear(); fake = SF(); loop = CognitiveLoop(llm=fake)
-    for a in ("preprocessor","preprocessing","investigation","contradiction","rational","decision","practice","reflection","perspectives"):
+    for a in ("preprocessor","preprocessing","investigation","contradiction","rational","practice","reflection","perspectives"):
         o = getattr(loop,a,None)
         if o and hasattr(o,"llm"): o.llm = fake
     CONV="st1"; done=False
@@ -37,7 +37,7 @@ async def main():
 
     # 2. broadcast steer
     hits.clear(); fake2 = SF(); loop2 = CognitiveLoop(llm=fake2)
-    for a in ("preprocessor","preprocessing","investigation","contradiction","rational","decision","practice","reflection","perspectives"):
+    for a in ("preprocessor","preprocessing","investigation","contradiction","rational","practice","reflection","perspectives"):
         o=getattr(loop2,a,None)
         if o and hasattr(o,"llm"): o.llm = fake2
     CONV="st2"; done=False
@@ -52,7 +52,7 @@ async def main():
 
     # 3. interrupt + resume
     hits.clear(); fake3 = SF(); loop3 = CognitiveLoop(llm=fake3)
-    for a in ("preprocessor","preprocessing","investigation","contradiction","rational","decision","practice","reflection","perspectives"):
+    for a in ("preprocessor","preprocessing","investigation","contradiction","rational","practice","reflection","perspectives"):
         o=getattr(loop3,a,None)
         if o and hasattr(o,"llm"): o.llm = fake3
     CONV="st3"; state={"int":False,"res":False}

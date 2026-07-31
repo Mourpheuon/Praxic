@@ -3,9 +3,8 @@ export const PHASES = [
   { id: 'investigation', label: '调查研究', subtitle: '事实与证据', icon: '□', code: '01', color: 'blue' },
   { id: 'contradiction', label: '矛盾分析', subtitle: '张力与驱动', icon: '×', code: '02', color: 'yellow' },
   { id: 'rational', label: '理性认识', subtitle: '关系与规律', icon: '△', code: '03', color: 'blue' },
-  { id: 'decision', label: '行动编排', subtitle: '选择与风险', icon: '→', code: '04', color: 'red' },
-  { id: 'practice', label: '实践检验', subtitle: '工具与变更', icon: '＋', code: '05', color: 'yellow' },
-  { id: 'reflection', label: '反思', subtitle: '验证与修正', icon: '↻', code: '06', color: 'blue' },
+  { id: 'practice', label: '实践检验', subtitle: '行动与验证', icon: '＋', code: '04', color: 'yellow' },
+  { id: 'reflection', label: '反思', subtitle: '验证与修正', icon: '↻', code: '05', color: 'blue' },
 ] as const
 
 export type PhaseId = typeof PHASES[number]['id']

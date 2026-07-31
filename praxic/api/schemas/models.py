@@ -59,7 +59,6 @@ class CognitivePhaseName(str, Enum):
     INVESTIGATION = "investigation"
     CONTRADICTION = "contradiction"
     RATIONAL      = "rational"
-    DECISION      = "decision"
     PRACTICE      = "practice"
     REFLECTION    = "reflection"
 
@@ -109,7 +108,6 @@ class PreprocessedQuestion(BaseModel):
     investigation_necessity: str = "required"
     contradiction_necessity: str = "required"
     rational_necessity: str = "required"
-    decision_necessity: str = "required"
     practice_necessity: str = "required"
     reflection_necessity: str = "required"
     # ── 是否需调查：LLM 能否仅凭自身知识直接回答？false → 跳过全部阶段，直接答
@@ -323,6 +321,8 @@ class ReflectionReport(BaseModel):
     lessons_learned: list[str] = Field(default_factory=list); should_reinvestigate: bool = True
     reinvestigation_focus: str = ""; convergence_score: float = 0.5
     investigation_retrospective: str = ""; contradiction_retrospective: str = ""
+    practice_retrospective: str = ""
+    # 兼容旧版反思结果；当前主循环不再生成独立决策阶段。
     decision_retrospective: str = ""
     skip_phases: list[str] = Field(default_factory=list)
     focus_hints: dict[str, str] = Field(default_factory=dict); recommended_mode: str = ""
@@ -353,6 +353,7 @@ class CognitiveTrace(BaseModel):
     investigation: Optional[FactReport] = None
     contradictions: Optional[ContradictionGraph] = None
     rational_synthesis: Optional[RationalSynthesis] = None
+    # 兼容历史会话和外部调用；当前运行链路不再填充该字段。
     decision: Optional[DecisionReport] = None
     perspectives: Optional[PerspectiveSynthesis] = None
     practice: Optional[PracticeReport] = None

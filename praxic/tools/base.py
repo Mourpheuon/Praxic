@@ -198,6 +198,7 @@ class BaseTool(ABC):
     requires_network: bool = False
     action_kind: ActionKind = ActionKind.COMPUTE
     requires_authorization: bool = False
+    authorization_reason: str = ""
     sandbox_safe: bool = False
     parameter_schema: dict[str, dict[str, Any]] = {}
 

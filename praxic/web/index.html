@@ -33,7 +33,7 @@
           colors: {
             paper: '#F7F4ED', cream: '#FCFAF5', linen: '#EDE8DF',
             ink: '#1C1916', warmgray: '#6B6560',
-            seal: { DEFAULT: '#8C271E', light: '#B85450', wash: '#FFF5F3' },
+            seal: { DEFAULT: '#8C0000', light: '#B85450', wash: '#FFF5F3' },
             gold: '#9E7B3A', olive: '#4A6741', olivewash: '#F0F5EE',
             clay: '#C5BFB5', dust: '#EFEBE4',
           },
@@ -56,17 +56,17 @@
     .fade-in { animation: fadeIn 0.3s ease-in-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes buildSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    .build-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(140,39,30,0.2); border-top-color: #8C271E; border-radius: 50%; animation: buildSpin 0.7s linear infinite; vertical-align: middle; margin-right: 4px; }
+    .build-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(140,0,0,0.2); border-top-color: #8C0000; border-radius: 50%; animation: buildSpin 0.7s linear infinite; vertical-align: middle; margin-right: 4px; }
   </style>
 
   <style id="praxic-constructivist">
     :root {
       --construct-paper: #f7f4ed;
       --construct-surface: #fcfaf5;
-      --construct-ink: #1c1916;
+      --construct-ink: #1C1916;
       --construct-muted: #6b6560;
       --construct-line: #c5bfb5;
-      --construct-red: #8c271e;
+      --construct-red: #8C0000;
       --construct-blue: #4a6741;
       --construct-yellow: #9e7b3a;
     }
@@ -163,7 +163,12 @@
       background: var(--construct-surface) !important;
     }
     .praxic-inputbar button, .praxic-inputbar input, .praxic-inputbar select {
-      border-radius: 2px !important;
+      border-radius: 5px !important;
+    }
+    .praxic-inputbar > div:last-child button,
+    .praxic-inputbar > div:last-child select {
+      min-height: 30px;
+      font-size: 12px !important;
     }
     .praxic-inputbar button.bg-seal {
       box-shadow: 3px 3px 0 var(--construct-blue);
@@ -270,7 +275,7 @@
       line-height: 1;
     }
     .praxic-welcome h2 {
-      color: #1c1916;
+      color: #1C1916;
       font-family: Arial, "Microsoft YaHei", sans-serif !important;
       font-size: clamp(2.25rem, 7vw, 5.25rem) !important;
       font-weight: 900 !important;
@@ -284,7 +289,7 @@
       width: 74px;
       height: 12px;
       margin-bottom: 18px;
-      background: #8c271e;
+      background: #8C0000;
       box-shadow: 18px 0 0 #9e7b3a;
     }
     .praxic-welcome > div:first-child {
@@ -303,7 +308,7 @@
     }
     .praxic-flow .praxic-user-bubble,
     .praxic-flow .praxic-agent-bubble {
-      border-radius: 2px !important;
+      border-radius: 8px !important;
       box-shadow: 5px 5px 0 #c5bfb5;
     }
     .praxic-flow .praxic-user-bubble {
@@ -311,8 +316,233 @@
       font-size: 15px;
       line-height: 1.45;
     }
+    .praxic-user-message {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      max-width: 75%;
+    }
+    .praxic-user-message .praxic-user-bubble {
+      max-width: 100%;
+    }
+    .praxic-user-context {
+      margin-top: .45rem;
+      padding-top: .35rem;
+      color: rgba(255,255,255,.76);
+      border-top: 1px solid rgba(255,255,255,.28);
+      font-size: 11px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .praxic-user-context__label {
+      margin-right: .3rem;
+      color: rgba(255,255,255,.58);
+      font-size: 10px;
+    }
+    .praxic-user-bubble.bg-cream .praxic-user-context {
+      color: #6b6560;
+      border-top-color: rgba(197,191,181,.7);
+    }
+    .praxic-user-bubble.bg-cream .praxic-user-context__label { color: #9e7b3a; }
+    .praxic-user-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 2px;
+      min-height: 14px;
+      margin-top: 6px;
+      padding-top: 0;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-2px);
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .praxic-user-message:hover .praxic-user-actions,
+    .praxic-user-message:focus-within .praxic-user-actions {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+    .praxic-user-actions button {
+      width: 14px;
+      height: 14px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      padding: 0;
+      color: #1C1916;
+      border: 0;
+      background: transparent;
+      font-size: 10px;
+      line-height: 1;
+      transition: color .15s ease, transform .15s ease;
+    }
+    .praxic-user-actions svg {
+      width: 11px;
+      height: 11px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.7;
+    }
+    .praxic-user-action-check {
+      font: 700 11px/1 Arial, sans-serif;
+    }
+    .praxic-user-actions button:hover,
+    .praxic-user-actions button:focus-visible { color: #8C0000; text-decoration: none; transform: translateY(-1px); }
+    .praxic-user-actions button:disabled { cursor: not-allowed; opacity: .42; text-decoration: none; }
+    .praxic-inline-editor {
+      display: flex;
+      flex-direction: column;
+      gap: .55rem;
+      width: 100%;
+    }
+    .praxic-inline-editor textarea {
+      width: 100%;
+      min-height: 2.55rem;
+      max-height: 14rem;
+      resize: none;
+      padding: .45rem .55rem;
+      color: #fff;
+      background: rgba(28, 25, 22, .16);
+      border: 1px solid rgba(255, 255, 255, .62);
+      border-radius: 4px;
+      outline: 0;
+      font-size: .9rem;
+      font-weight: 500;
+      line-height: 1.5;
+      overflow-y: auto;
+    }
+    .praxic-inline-editor textarea::placeholder { color: rgba(255, 255, 255, .7); }
+    .praxic-inline-editor textarea:focus {
+      border-color: rgba(255, 255, 255, .95);
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, .16);
+    }
+    .praxic-inline-editor__context {
+      padding-top: .45rem;
+      color: rgba(255, 255, 255, .78);
+      border-top: 1px solid rgba(255, 255, 255, .25);
+      font-size: .68rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .praxic-inline-editor__context-label {
+      margin-right: .3rem;
+      color: rgba(255, 255, 255, .58);
+      font-size: .62rem;
+    }
+    .praxic-inline-editor__files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .25rem;
+    }
+    .praxic-inline-editor__file {
+      padding: .16rem .35rem;
+      color: rgba(255, 255, 255, .78);
+      border: 1px solid rgba(255, 255, 255, .24);
+      border-radius: 3px;
+      font-size: .62rem;
+      line-height: 1.25;
+    }
+    .praxic-inline-editor__footer {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: .35rem;
+      min-height: 1.05rem;
+      padding-top: .35rem;
+      border-top: 1px solid rgba(255, 255, 255, .25);
+    }
+    .praxic-inline-editor__hint {
+      margin-right: auto;
+      color: rgba(255, 255, 255, .58);
+      font-size: .62rem;
+    }
+    .praxic-inline-editor__button {
+      display: inline-grid;
+      place-items: center;
+      width: 1.35rem;
+      height: 1.35rem;
+      padding: 0;
+      color: rgba(255, 255, 255, .78);
+      border: 1px solid rgba(255, 255, 255, .36);
+      border-radius: 3px;
+      background: transparent;
+      transition: color .15s ease, border-color .15s ease, background-color .15s ease, transform .15s ease;
+    }
+    .praxic-inline-editor__button svg {
+      width: .78rem;
+      height: .78rem;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+    .praxic-inline-editor__button:hover,
+    .praxic-inline-editor__button:focus-visible {
+      color: #fff;
+      border-color: rgba(255, 255, 255, .82);
+      background: rgba(255, 255, 255, .12);
+      transform: translateY(-1px);
+    }
+    .praxic-inline-editor__button:disabled { cursor: not-allowed; opacity: .42; transform: none; }
     .praxic-flow .praxic-agent-bubble {
-      border-left: 7px solid #4a6741 !important;
+      position: relative;
+      width: 100%;
+      max-width: 100% !important;
+      overflow: hidden;
+      border: 1px solid #d8cfc2 !important;
+      border-top: 3px solid #1C1916 !important;
+      border-left: 7px solid #8C0000 !important;
+      background-color: #fbf8ef !important;
+      background-image: repeating-linear-gradient(0deg, rgba(120, 94, 62, .035) 0, rgba(120, 94, 62, .035) 1px, transparent 1px, transparent 5px);
+      font-family: 'Noto Serif SC', 'Songti SC', serif;
+    }
+    .praxic-flow .praxic-agent-bubble > * {
+      position: relative;
+      z-index: 1;
+    }
+    .praxic-agent-heading {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .75rem;
+      margin-bottom: .6rem;
+      padding: 0 0 .45rem;
+      color: #1C1916;
+      border: 0;
+      border-bottom: 1px solid #c5bfb5;
+      background: transparent;
+      text-align: left;
+      font: 700 12px/1.25 'Noto Serif SC', 'Songti SC', serif;
+    }
+    .praxic-agent-heading:hover { color: #8C0000; }
+    .praxic-agent-heading__chevron {
+      color: #8C0000;
+      font: 800 15px/1 Consolas, monospace;
+    }
+    .praxic-agent-process .praxic-phase-stream {
+      margin: .75rem 0 0;
+      border-right: 0;
+      border-left: 0;
+      box-shadow: none;
+    }
+    .praxic-agent-process .praxic-phase-stream__head strong,
+    .praxic-agent-process .praxic-phase-stream__head small,
+    .praxic-agent-process .praxic-event-copy strong,
+    .praxic-agent-process .praxic-event-copy em {
+      font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+    }
+    .praxic-agent-answer--separated {
+      margin-top: .9rem;
+      padding-top: .8rem;
+      border-top: 2px solid #1C1916;
     }
     .praxic-flow .markdown-body {
       font-size: 14px;
@@ -321,7 +551,7 @@
     .praxic-flow .markdown-body h2,
     .praxic-flow .markdown-body h3,
     .praxic-flow .markdown-body h4 {
-      border-left: 5px solid #8c271e;
+      border-left: 5px solid #8C0000;
       padding-left: 9px;
       font-weight: 900;
       line-height: 1.05;
@@ -330,14 +560,14 @@
     .praxic-flow .markdown-body h3 { font-size: 21px; }
     .praxic-flow .markdown-body h4 { font-size: 17px; }
     .praxic-flow .markdown-body blockquote {
-      border-left-color: #8c271e;
+      border-left-color: #8C0000;
       color: #4a6741;
       font-weight: 600;
     }
     .praxic-flow .markdown-body pre {
-      border: 3px solid #1c1916;
+      border: 3px solid #1C1916;
       border-radius: 0 !important;
-      background: #1c1916 !important;
+      background: #1C1916 !important;
       color: #fcfaf5;
     }
     .praxic-phase-block {
@@ -351,17 +581,17 @@
       background: rgba(28, 25, 22, .42) !important;
     }
     .praxic-settings {
-      border: 3px solid #1c1916 !important;
+      border: 3px solid #1C1916 !important;
       border-radius: 2px !important;
       background: #fcfaf5 !important;
-      box-shadow: 10px 10px 0 #8c271e !important;
+      box-shadow: 10px 10px 0 #8C0000 !important;
     }
     .praxic-settings > div:nth-of-type(4) {
       min-height: 68px;
       display: flex;
       align-items: center;
-      border-bottom: 4px solid #8c271e;
-      background: #1c1916;
+      border-bottom: 4px solid #8C0000;
+      background: #1C1916;
     }
     .praxic-settings > div:nth-of-type(4) h2 {
       color: #fcfaf5 !important;
@@ -379,7 +609,7 @@
       font-weight: 900;
     }
     .praxic-settings > div:nth-of-type(5) > div:first-child {
-      border-right: 2px solid #1c1916 !important;
+      border-right: 2px solid #1C1916 !important;
       background: #ede8df !important;
     }
     .praxic-settings button,
@@ -402,7 +632,7 @@
       font-weight: 900 !important;
     }
     .praxic-settings > div:last-child {
-      border-top: 2px solid #1c1916 !important;
+      border-top: 2px solid #1C1916 !important;
       background: #ede8df !important;
     }
     @media (max-width: 760px) {
@@ -410,21 +640,21 @@
       .praxic-toolbar::after { font-size: 16px; }
       .praxic-welcome { padding: 28px 18px !important; }
       .praxic-welcome h2 { font-size: clamp(2.4rem, 14vw, 4.2rem) !important; }
-      .praxic-flow .praxic-user-bubble,
-      .praxic-flow .praxic-agent-bubble { max-width: 94% !important; }
+      .praxic-flow .praxic-user-bubble { max-width: 94% !important; }
+      .praxic-flow .praxic-agent-bubble { max-width: 100% !important; }
       .praxic-settings-overlay { padding-top: 2vh !important; }
       .praxic-settings {
         width: 96vw !important;
         height: 94vh !important;
         margin: 0 !important;
-        box-shadow: 6px 6px 0 #8c271e !important;
+        box-shadow: 6px 6px 0 #8C0000 !important;
       }
     }
   </style>
   <style id="praxic-explicit-event-stream">
     .praxic-phase-stream {
       margin: 0 2.5rem .75rem;
-      border-top: 2px solid #1c1916;
+      border-top: 2px solid #1C1916;
       border-left: 1px solid #c5bfb5;
       border-right: 1px solid #c5bfb5;
       background: #fcfaf5;
@@ -434,8 +664,8 @@
       align-items: baseline;
       justify-content: space-between;
       gap: 1rem;
-      padding: .7rem .8rem;
-      color: #1c1916;
+      padding: .55rem .8rem;
+      color: #1C1916;
       background: #ede8df;
       border-bottom: 1px solid #c5bfb5;
     }
@@ -444,67 +674,737 @@
     .praxic-phase-group { border-bottom: 1px solid #c5bfb5; }
     .praxic-phase-group:last-child { border-bottom: 0; }
     .praxic-phase-group__header {
-      width: 100%; display: grid; grid-template-columns: 1.5rem minmax(9rem, 1fr) auto minmax(9rem, 1.6fr) 1.2rem;
-      align-items: center; gap: .6rem; padding: .65rem .75rem; text-align: left;
-      border: 0; background: transparent; color: #1c1916;
+      width: 100%; display: grid; grid-template-columns: 1.15rem minmax(11rem, 1fr) auto minmax(7rem, 1.4fr) 1rem;
+      align-items: center; gap: .55rem; padding: .42rem .75rem; text-align: left;
+      border: 0; background: transparent; color: #1C1916;
     }
     .praxic-phase-group__header:hover, .praxic-phase-group--open .praxic-phase-group__header { background: #f3f0e9; }
-    .praxic-phase-group__icon { width: 1.35rem; height: 1.35rem; display: grid; place-items: center; font-size: .78rem; background: #efebe4; }
-    .praxic-phase-group--active .praxic-phase-group__icon { color: #fff; background: #8c271e; box-shadow: 0 0 0 3px rgba(140,39,30,.12); animation: phasePulse 1.2s steps(2,end) infinite; }
-    .praxic-phase-group--done .praxic-phase-group__icon { color: #fff; background: #4a6741; }
-    .praxic-phase-group--waiting .praxic-phase-group__icon, .praxic-phase-group--error .praxic-phase-group__icon { color: #fff; background: #8c271e; }
-    .praxic-phase-group__title strong, .praxic-phase-group__title small { display: block; }
-    .praxic-phase-group__title strong { font-size: .78rem; font-weight: 800; }
-    .praxic-phase-group__title small { margin-top: .12rem; color: #6b6560; font-size: .61rem; }
-    .praxic-phase-group__meta { display: grid; justify-items: end; min-width: 3.3rem; }
-    .praxic-phase-group__meta strong { font: 800 .72rem Consolas, monospace; }
-    .praxic-phase-group__meta small { margin-top: .12rem; color: #6b6560; font-size: .6rem; white-space: nowrap; }
-    .praxic-phase-group--active .praxic-phase-group__meta small, .praxic-phase-group--waiting .praxic-phase-group__meta small, .praxic-phase-group--error .praxic-phase-group__meta small { color: #8c271e; font-weight: 800; }
+    .praxic-phase-group__icon { position: relative; width: 1.05rem; height: 1.05rem; display: grid; place-items: center; border: 2px solid #1C1916; background: #fcfaf5; }
+    .praxic-phase-group__icon::before { content: ""; width: .62rem; height: 2px; background: #1C1916; transform: rotate(-45deg); }
+    .praxic-phase-group--active .praxic-phase-group__icon { border-color: #8C0000; box-shadow: 0 0 0 3px rgba(140,0,0,.12); animation: phasePulse 1.2s steps(2,end) infinite; }
+    .praxic-phase-group--active .praxic-phase-group__icon::before { background: #8C0000; }
+    .praxic-phase-group--done .praxic-phase-group__icon { border-color: #4a6741; }
+    .praxic-phase-group--done .praxic-phase-group__icon::before { background: #4a6741; }
+    .praxic-phase-group--waiting .praxic-phase-group__icon, .praxic-phase-group--error .praxic-phase-group__icon { border-color: #8C0000; }
+    .praxic-phase-group--waiting .praxic-phase-group__icon::before, .praxic-phase-group--error .praxic-phase-group__icon::before { background: #8C0000; }
+    .praxic-phase-group__title { min-width: 0; overflow: hidden; }
+    .praxic-phase-group__title strong { display: block; overflow: hidden; font-size: .76rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .praxic-phase-group__title small { margin-left: .25rem; color: #6b6560; font-size: .61rem; font-weight: 500; }
+    .praxic-phase-group__meta { display: flex; align-items: baseline; justify-content: flex-end; gap: .28rem; min-width: 4.8rem; white-space: nowrap; }
+    .praxic-phase-group__meta strong { font: 800 .7rem Consolas, monospace; }
+    .praxic-phase-group__meta small { color: #6b6560; font-size: .6rem; }
+    .praxic-phase-group--active .praxic-phase-group__meta small, .praxic-phase-group--waiting .praxic-phase-group__meta small, .praxic-phase-group--error .praxic-phase-group__meta small { color: #8C0000; font-weight: 800; }
     .praxic-phase-group__summary { min-width: 0; overflow: hidden; color: #6b6560; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
-    .praxic-phase-group__chevron { color: #8c271e; font: 800 1rem Consolas, monospace; text-align: center; }
+    .praxic-phase-group__chevron { color: #8C0000; font: 800 1rem Consolas, monospace; text-align: center; }
     .praxic-phase-group__events { margin-left: 1.6rem; padding: .1rem 0 .35rem 1rem; border-left: 1px solid #c5bfb5; }
     .praxic-event-wrap { border-bottom: 1px solid rgba(197,191,181,.55); }
     .praxic-event-wrap:last-child { border-bottom: 0; }
-    .praxic-event-row { width: 100%; display: grid; grid-template-columns: 1.5rem 3px minmax(0,1fr) auto 1rem; align-items: center; gap: .55rem; padding: .55rem .55rem .55rem 0; text-align: left; border: 0; background: transparent; }
+    .praxic-event-row { width: 100%; display: grid; grid-template-columns: 1.5rem 3px minmax(0,1fr) auto auto 1rem; align-items: center; gap: .55rem; padding: .24rem .55rem .24rem 0; text-align: left; border: 0; background: transparent; }
     .praxic-event-row:hover, .praxic-event-wrap--selected .praxic-event-row { background: #f3f0e9; }
     .praxic-event-index { color: #9e7b3a; font: .62rem Consolas, monospace; text-align: right; }
-    .praxic-event-marker { align-self: stretch; min-height: 2rem; background: #4a6741; }
+    .praxic-event-marker { align-self: stretch; min-height: 1.2rem; background: #4a6741; }
     .praxic-event-wrap--tool .praxic-event-marker { background: #9e7b3a; }
-    .praxic-event-wrap--authorization .praxic-event-marker, .praxic-event-wrap--error .praxic-event-marker { background: #8c271e; }
+    .praxic-event-wrap--authorization .praxic-event-marker, .praxic-event-wrap--error .praxic-event-marker { background: #8C0000; }
     .praxic-event-wrap--steering .praxic-event-marker { background: #9e7b3a; }
     .praxic-event-copy { min-width: 0; }
-    .praxic-event-copy small, .praxic-event-copy strong, .praxic-event-copy em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .praxic-event-copy small { color: #6b6560; font: 800 .58rem Consolas, monospace; letter-spacing: .04em; }
-    .praxic-event-copy strong { margin-top: .18rem; color: #1c1916; font-size: .73rem; font-weight: 700; line-height: 1.35; }
-    .praxic-event-copy em { margin-top: .16rem; color: #6b6560; font-size: .59rem; font-style: normal; }
-    .praxic-event-wrap--active .praxic-event-copy em, .praxic-event-wrap--waiting .praxic-event-copy em, .praxic-event-wrap--error .praxic-event-copy em { color: #8c271e; font-weight: 800; }
-    .praxic-event-steer { padding: .25rem .35rem; color: #8c271e; border: 1px solid rgba(140,39,30,.35); background: transparent; font-size: .58rem; font-weight: 800; opacity: 0; }
+    .praxic-event-copy__line { min-width: 0; display: flex; align-items: baseline; gap: .45rem; line-height: 1.1; }
+    .praxic-event-copy small, .praxic-event-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .praxic-event-copy small { flex: 0 0 auto; color: #6b6560; font: 800 .58rem Consolas, monospace; letter-spacing: .04em; }
+    .praxic-event-copy strong { min-width: 0; color: #1C1916; font-size: .73rem; font-weight: 700; line-height: 1.1; }
+    .praxic-event-status { justify-self: end; color: #6b6560; font-size: .57rem; line-height: 1; white-space: nowrap; }
+    .praxic-event-wrap--error .praxic-event-status, .praxic-event-wrap--authorization .praxic-event-status { color: #8C0000; font-weight: 800; }
+    .praxic-event-steer { padding: .16rem .28rem; color: #8C0000; border: 1px solid rgba(140,0,0,.35); background: transparent; font-size: .56rem; font-weight: 800; opacity: 0; }
     .praxic-event-row:hover .praxic-event-steer, .praxic-event-wrap--selected .praxic-event-steer, .praxic-event-steer:focus-visible { opacity: 1; }
-    .praxic-event-steer:hover { color: #fff; background: #8c271e; }
-    .praxic-event-arrow { color: #8c271e; font-size: .9rem; }
+    .praxic-event-steer:hover { color: #fff; background: #8C0000; }
+    .praxic-event-arrow { color: #8C0000; font-size: .9rem; }
     .praxic-inline-steer { margin: 0 .55rem .55rem 2.25rem; padding: .6rem; border-left: 3px solid #9e7b3a; background: #f7f4ed; box-shadow: 3px 3px 0 rgba(158,123,58,.25); }
     .praxic-inline-steer__head { display: flex; justify-content: space-between; gap: .6rem; margin-bottom: .4rem; }
     .praxic-inline-steer__head strong { font-size: .62rem; }
     .praxic-inline-steer__head small { color: #6b6560; font-size: .58rem; }
-    .praxic-inline-steer textarea { width: 100%; min-height: 3.1rem; resize: vertical; padding: .45rem; border: 1px solid #c5bfb5; outline: 0; background: #fff; color: #1c1916; font-size: .7rem; line-height: 1.45; }
+    .praxic-inline-steer textarea { width: 100%; min-height: 3.1rem; resize: vertical; padding: .45rem; border: 1px solid #c5bfb5; outline: 0; background: #fff; color: #1C1916; font-size: .7rem; line-height: 1.45; }
     .praxic-inline-steer textarea:focus { border-color: #4a6741; box-shadow: 2px 2px 0 rgba(74,103,65,.18); }
     .praxic-inline-steer__actions { display: flex; align-items: center; justify-content: flex-end; gap: .45rem; margin-top: .4rem; }
     .praxic-inline-steer__actions button { padding: .32rem .5rem; border: 0; font-size: .6rem; }
     .praxic-inline-steer__cancel { color: #6b6560; background: transparent; }
-    .praxic-inline-steer__submit { color: #fff; background: #8c271e; font-weight: 800; }
-    .praxic-inline-steer__error { margin-right: auto; color: #8c271e; font-size: .58rem; }
+    .praxic-inline-steer__submit { color: #fff; background: #8C0000; font-weight: 800; }
+    .praxic-inline-steer__error { margin-right: auto; color: #8C0000; font-size: .58rem; }
     @keyframes phasePulse { 50% { opacity: .45; } }
     @media (max-width: 760px) {
       .praxic-phase-stream { margin-left: .9rem; margin-right: .9rem; }
-      .praxic-phase-group__header { grid-template-columns: 1.35rem minmax(0,1fr) auto 1rem; gap: .4rem; }
+      .praxic-phase-group__header { grid-template-columns: 1.05rem minmax(0,1fr) auto 1rem; gap: .4rem; }
       .praxic-phase-group__summary { display: none; }
       .praxic-phase-group__events { margin-left: .5rem; padding-left: .65rem; }
-      .praxic-event-row { grid-template-columns: 1.3rem 3px minmax(0,1fr) auto; gap: .4rem; }
+      .praxic-event-row { grid-template-columns: 1.3rem 3px minmax(0,1fr) auto auto; gap: .4rem; }
       .praxic-event-arrow { display: none; }
       .praxic-event-steer { opacity: 1; }
       .praxic-inline-steer { margin-left: 1.85rem; }
       .praxic-inline-steer__head { display: block; }
       .praxic-inline-steer__head small { display: block; margin-top: .18rem; }
+    }
+  </style>
+  <style id="praxic-preserve-theme">
+    /* Keep the existing Praxic visual system while the sidebar structure changes. */
+    .praxic-sidebar {
+      width: 17rem !important;
+      flex: 0 0 auto;
+      min-width: 0;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+      background: #ede8df !important;
+      border-right: 2px solid #1C1916 !important;
+    }
+
+    .praxic-sidebar--collapsed { width: 54px !important; }
+
+    .praxic-sidebar-head {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+      padding: 0 14px;
+    }
+
+    .praxic-sidebar-title {
+      display: flex;
+      align-items: center;
+      flex: 0 0 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .praxic-sidebar-title .praxic-brand-mark {
+      display: block;
+      width: 30px !important;
+      height: 30px !important;
+    }
+
+    .praxic-sidebar-actions {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .praxic-sidebar-actions button {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      flex: 0 0 28px;
+      place-items: center;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .praxic-sidebar-body {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 12px 11px 10px;
+      background: #ede8df;
+    }
+
+    .praxic-sidebar-context {
+      display: flex;
+      flex: 0 0 auto;
+      min-width: 0;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .praxic-sidebar-context__item {
+      width: 100%;
+      min-width: 0;
+      min-height: 37px;
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr) 7px;
+      align-items: center;
+      gap: 8px;
+      padding: 0 9px;
+      text-align: left;
+      border: 1px solid #c5bfb5;
+      border-radius: 2px;
+    }
+
+    .praxic-sidebar-context__icon,
+    .praxic-sidebar-link > span:first-child {
+      width: 20px;
+      display: grid;
+      place-items: center;
+      color: #9e7b3a;
+      font-family: Consolas, monospace;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .praxic-sidebar-context__item .truncate {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    .praxic-sidebar-context__dot {
+      width: 7px;
+      height: 7px;
+      display: block;
+      border-radius: 50%;
+      background: #4a6741;
+    }
+
+    .praxic-sidebar-link {
+      width: 100%;
+      min-width: 0;
+      min-height: 31px;
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      padding: 6px 9px;
+      text-align: left;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      line-height: 1.2;
+    }
+
+    .praxic-sidebar-search {
+      width: 100%;
+      min-width: 0;
+      min-height: 34px;
+      display: grid;
+      flex: 0 0 auto;
+      grid-template-columns: 18px minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+      margin-top: 13px;
+      padding: 0 9px;
+      border: 1px solid #c5bfb5;
+      border-radius: 2px;
+    }
+
+    .praxic-sidebar-search > span {
+      display: grid;
+      place-items: center;
+      color: #9e7b3a;
+      font-family: Consolas, monospace;
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    .praxic-sidebar-search input {
+      width: 100%;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .praxic-sidebar-search:focus-within {
+      border-color: #8C0000;
+      outline: 0;
+      box-shadow: 3px 3px 0 rgba(140, 0, 0, .14);
+    }
+
+    .praxic-sidebar-search input:focus {
+      outline: 0;
+      box-shadow: none;
+    }
+
+    .praxic-sidebar-list {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      gap: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      margin-top: 14px;
+      padding-right: 2px;
+    }
+
+    .praxic-sidebar-section-head {
+      min-width: 0;
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .praxic-sidebar-section-head .praxic-sidebar-section-label {
+      min-width: 0;
+    }
+
+    .praxic-sidebar-section-head select {
+      max-width: 94px;
+      padding: 2px 0 2px 3px;
+      color: #6b6560;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      font-size: 10px;
+      cursor: pointer;
+    }
+
+    .praxic-sidebar-section-head select:focus-visible {
+      outline: 2px solid #4a6741;
+      outline-offset: 1px;
+    }
+
+    .praxic-sidebar-group {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      margin-top: 6px;
+      padding: 5px 7px 3px;
+      color: #6b6560;
+      border-right: 0;
+      border-bottom: 0;
+      border-left: 0;
+      border-top: 1px solid #c5bfb5;
+      outline: 0;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+      font: 800 11px Consolas, monospace;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .praxic-sidebar-group:hover,
+    .praxic-sidebar-group:focus-visible {
+      color: #1c1916;
+    }
+
+    .praxic-sidebar-group:focus-visible {
+      outline: 2px solid #9e7b3a;
+      outline-offset: -2px;
+    }
+
+    .praxic-sidebar-group__icon {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 14px;
+      color: #8c8579;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.35;
+    }
+
+    .praxic-sidebar-group:hover .praxic-sidebar-group__icon,
+    .praxic-sidebar-group:focus-visible .praxic-sidebar-group__icon {
+      color: #8c0000;
+    }
+
+    .praxic-sidebar-group__label {
+      min-width: 0;
+      flex: 1 1 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .praxic-sidebar-section-label {
+      flex: 0 0 auto;
+      padding: 0 7px 5px;
+      font: 800 12px Consolas, monospace;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .praxic-sidebar-empty {
+      padding: 10px 7px;
+      font-size: 11px;
+    }
+
+    .praxic-session-item {
+      width: 100%;
+      min-width: 0;
+      min-height: 35px;
+      display: grid;
+      flex: 0 0 auto;
+      grid-template-columns: minmax(0, 1fr) 22px 22px;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 7px;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid #c5bfb5;
+      border-radius: 0;
+      line-height: 1.25;
+      cursor: pointer;
+    }
+
+    .praxic-session-item__select {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 14px minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 6px;
+      padding: 0;
+      color: inherit;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      line-height: 1.25;
+      cursor: pointer;
+    }
+
+    .praxic-session-item__mark {
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .praxic-session-item__name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+    }
+
+    .praxic-session-item__count {
+      min-width: 14px;
+      text-align: right;
+      font: 700 10px Consolas, monospace;
+    }
+
+    .praxic-session-item__age {
+      color: #8c8579;
+      white-space: nowrap;
+      font: 500 9px/1 Consolas, monospace;
+    }
+
+    .praxic-session-item__pin,
+    .praxic-session-item__delete {
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      opacity: .25;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font: 700 14px/1 Arial, sans-serif;
+      cursor: pointer;
+    }
+
+    .praxic-session-item__pin.is-pinned,
+    .praxic-session-item:hover .praxic-session-item__pin,
+    .praxic-session-item--active .praxic-session-item__pin,
+    .praxic-session-item:hover .praxic-session-item__delete,
+    .praxic-session-item--active .praxic-session-item__delete { opacity: 1; }
+
+    .praxic-session-item__pin:hover,
+    .praxic-session-item__delete:hover { color: #8C0000; }
+
+    .praxic-sidebar--collapsed .praxic-sidebar-head {
+      justify-content: center;
+      padding: 0 8px;
+    }
+
+    .praxic-sidebar--collapsed .praxic-sidebar-title,
+    .praxic-sidebar--collapsed .praxic-sidebar-actions button:not(:last-child) {
+      display: none;
+    }
+
+    .praxic-sidebar--collapsed .praxic-sidebar-actions {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .praxic-project-overlay {
+      background: rgba(28, 25, 22, .38);
+      padding: 14px;
+    }
+
+    .praxic-project-dialog {
+      width: min(430px, calc(100vw - 28px));
+      max-height: min(620px, calc(100vh - 28px));
+      overflow-y: auto;
+      padding: 18px;
+      border: 2px solid #1C1916;
+      border-radius: 2px;
+      background: #fcfaf5;
+      box-shadow: 8px 8px 0 #8C0000;
+    }
+
+    .praxic-project-dialog__head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #8C0000;
+    }
+
+    .praxic-project-dialog__head h2 {
+      margin: 3px 0 0;
+      color: #1C1916;
+      font-size: 20px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .praxic-project-dialog__head button {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      color: #8C0000;
+      border: 1px solid #c5bfb5;
+      border-radius: 2px;
+      background: #f7f4ed;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .praxic-project-dialog__eyebrow {
+      color: #9e7b3a;
+      font: 800 9px Consolas, monospace;
+      letter-spacing: .12em;
+    }
+
+    .praxic-project-dialog__field {
+      display: grid;
+      gap: 5px;
+      margin-top: 12px;
+    }
+
+    .praxic-project-dialog__field label {
+      color: #6b6560;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .praxic-project-dialog__field input,
+    .praxic-project-dialog__field select {
+      width: 100%;
+      min-width: 0;
+      min-height: 34px;
+      padding: 7px 9px;
+      color: #1C1916;
+      border: 1px solid #c5bfb5;
+      border-radius: 2px;
+      outline: 0;
+      background: #f7f4ed;
+      font-size: 12px;
+    }
+
+    .praxic-project-dialog__field input:focus,
+    .praxic-project-dialog__field select:focus {
+      border-color: #4a6741;
+      box-shadow: 2px 2px 0 rgba(74, 103, 65, .18);
+    }
+
+    .praxic-project-dialog__path {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+    }
+
+    .praxic-project-dialog__path button,
+    .praxic-project-dialog__switch {
+      min-height: 30px;
+      padding: 5px 8px;
+      color: #8C0000;
+      border: 1px solid rgba(140, 0, 0, .28);
+      border-radius: 2px;
+      background: transparent;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .praxic-project-dialog__switch {
+      width: 100%;
+      margin-top: 12px;
+      text-align: left;
+      border-style: dashed;
+    }
+
+    .praxic-project-dialog__switch:hover,
+    .praxic-project-dialog__path button:hover {
+      color: #fff;
+      background: #8C0000;
+    }
+
+    .praxic-project-dialog__mode {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .praxic-project-dialog__mode button {
+      min-height: 31px;
+      padding: 5px 7px;
+      color: #6b6560;
+      border: 1px solid #c5bfb5;
+      border-radius: 2px;
+      background: #f7f4ed;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .praxic-project-dialog__mode button.is-active {
+      color: #fff;
+      border-color: #8C0000;
+      background: #8C0000;
+    }
+
+    .praxic-project-dialog__actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 1px solid #c5bfb5;
+    }
+
+    .praxic-project-dialog__actions button {
+      min-height: 36px;
+      padding: 7px 10px;
+      color: #6b6560;
+      border: 1px solid #c5bfb5;
+      border-radius: 2px;
+      background: #f7f4ed;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .praxic-project-dialog__actions button.is-primary {
+      color: #fff;
+      border-color: #8C0000;
+      background: #8C0000;
+      box-shadow: 3px 3px 0 #4a6741;
+    }
+
+    .praxic-project-dialog__actions button.is-primary:disabled {
+      cursor: not-allowed;
+      opacity: .45;
+      box-shadow: none;
+    }
+
+    .praxic-sidebar > div:first-child.praxic-sidebar-head {
+      min-height: 60px;
+      color: #f8f8f4 !important;
+      background: #1C1916 !important;
+      border-bottom: 4px solid #8C0000 !important;
+    }
+
+    .praxic-sidebar > div:first-child.praxic-sidebar-head > .praxic-sidebar-title {
+      color: #f8f8f4 !important;
+      font-family: Arial, "Microsoft YaHei", sans-serif !important;
+      font-size: 19px !important;
+      font-weight: 900 !important;
+    }
+
+    .praxic-sidebar > div:first-child.praxic-sidebar-head .praxic-sidebar-actions button {
+      color: #1C1916 !important;
+      border: 1px solid #9e7b3a !important;
+      background: #9e7b3a !important;
+      box-shadow: 3px 3px 0 #8C0000 !important;
+    }
+
+    .praxic-sidebar > div:first-child.praxic-sidebar-head .praxic-sidebar-actions button:hover {
+      color: #1C1916 !important;
+      background: #b08d4a !important;
+    }
+
+    .praxic-sidebar-body { background: #ede8df; }
+    .praxic-sidebar-context__item { color: #1C1916 !important; background: #fcfaf5 !important; border-color: #c5bfb5 !important; }
+    .praxic-sidebar-link { color: #6b6560 !important; }
+    .praxic-sidebar-link:hover, .praxic-sidebar-link--active { color: #1C1916 !important; background: #efebe4 !important; }
+    .praxic-sidebar-search { color: #6b6560; border-color: #c5bfb5; background: #fcfaf5; }
+    .praxic-sidebar-search input { color: #1C1916; }
+    .praxic-sidebar-section-label, .praxic-sidebar-empty { color: #6b6560; }
+    .praxic-sidebar .praxic-session-item {
+      color: #6b6560 !important;
+      border: 0 !important;
+      border-bottom: 1px solid #c5bfb5 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+    }
+    .praxic-session-item:hover,
+    .praxic-session-item--active {
+      color: #1C1916 !important;
+      border-bottom-color: #c5bfb5 !important;
+      background: transparent !important;
+    }
+    .praxic-session-item--active { box-shadow: inset 3px 0 0 #8C0000; }
+    .praxic-session-item__mark { color: #4a6741; }
+    .praxic-session-item__count, .praxic-session-item__pin, .praxic-session-item__delete { color: #9e7b3a; }
+    .praxic-session-item__pin.is-pinned { color: #8C0000; }
+
+    .praxic-toolbar {
+      min-height: 52px;
+      color: #fcfaf5 !important;
+      background: #1C1916 !important;
+      border-bottom: 4px solid #8C0000 !important;
+    }
+
+    .praxic-toolbar::before {
+      display: block !important;
+      content: "PRAXIC";
+      margin-right: auto;
+      color: #fcfaf5;
+      font-size: 25px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .praxic-toolbar::after {
+      display: block !important;
+      content: "01";
+      margin-left: 14px;
+      color: #9e7b3a;
+      font-family: Consolas, monospace;
+      font-size: 22px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .praxic-toolbar button {
+      color: #1C1916 !important;
+      border-color: #9e7b3a !important;
+      background: #9e7b3a !important;
+      box-shadow: 3px 3px 0 #4a6741 !important;
+    }
+
+    .praxic-flow { background: #f7f4ed !important; }
+    .praxic-inputbar { background: #efebe4 !important; border-top: 2px solid #1C1916 !important; }
+    .praxic-inputbar textarea, .praxic-inputbar input, .praxic-inputbar select { background: #fcfaf5 !important; border-color: #c5bfb5 !important; }
+
+    @media (max-width: 760px) {
+      .praxic-sidebar, .praxic-sidebar--collapsed { width: 100% !important; }
+      .praxic-sidebar { flex-basis: 42dvh; height: 42dvh; min-height: 260px; }
+      .praxic-sidebar--collapsed { flex-basis: 54px; height: 54px; min-height: 54px; }
+      .praxic-sidebar > div:first-child.praxic-sidebar-head { min-height: 54px; }
+      .praxic-sidebar-body { padding: 8px 10px; }
+      .praxic-sidebar-context { gap: 2px; }
+      .praxic-sidebar-context__item { min-height: 29px; }
+      .praxic-sidebar-link { min-height: 24px; padding-top: 2px; padding-bottom: 2px; }
+      .praxic-sidebar-search { min-height: 32px; margin-top: 9px; }
+      .praxic-sidebar-list { margin-top: 10px; }
+      .praxic-toolbar::before { font-size: 20px; }
+      .praxic-toolbar::after { font-size: 16px; }
     }
   </style>
 </head>
@@ -543,8 +1443,7 @@
       { id: 'investigation', icon: '🔍', label: '调查研究', subtitle: '实事求是' },
       { id: 'contradiction',  icon: '⚡', label: '矛盾分析', subtitle: '抓主要矛盾' },
       { id: 'rational',       icon: '🧠', label: '理性认识', subtitle: '去伪存真' },
-      { id: 'decision',       icon: '🎯', label: '行动编排', subtitle: '战略与风险' },
-      { id: 'practice',       icon: '⚙️', label: '实践检验', subtitle: '检验真理' },
+      { id: 'practice',       icon: '⚙️', label: '实践检验', subtitle: '行动与验证' },
       { id: 'reflection',     icon: '🔄', label: '反思', subtitle: '验证与修正' },
     ];
     const PHASE_LABELS = Object.fromEntries(PHASES.map(p => [p.id, p.label]));
@@ -622,6 +1521,52 @@
       return t;
     }
 
+    function conversationLabel(conversation) {
+      const name = String(conversation?.name || '').trim();
+      const looksLikeTitlePlaceholder = /^<\s*\d+\s*-\s*\d+\s+chines?/i.test(name)
+        || /\bchinese\s+characters?\b/i.test(name);
+      if (name && !looksLikeTitlePlaceholder) return name;
+      const fallback = String(conversation?.last_question || '').trim().replace(/\s+/g, ' ');
+      return fallback ? fallback.slice(0, 24) : '新对话';
+    }
+
+    function relativeConversationTime(value, now = Date.now()) {
+      const timestamp = Date.parse(String(value || ''));
+      if (!Number.isFinite(timestamp)) return '';
+      const elapsed = Math.max(0, now - timestamp);
+      const minute = 60 * 1000;
+      const hour = 60 * minute;
+      const day = 24 * hour;
+      const week = 7 * day;
+      const month = 30 * day;
+      const year = 365 * day;
+      if (elapsed < minute) return 'now';
+      if (elapsed < hour) return `${Math.floor(elapsed / minute)}m ago`;
+      if (elapsed < day) return `${Math.floor(elapsed / hour)}h ago`;
+      if (elapsed < week) return `${Math.floor(elapsed / day)}d ago`;
+      if (elapsed < month) return `${Math.floor(elapsed / week)}w ago`;
+      if (elapsed < year) return `${Math.floor(elapsed / month)}mon ago`;
+      return `${Math.floor(elapsed / year)}y ago`;
+    }
+
+    function historyTurnFromApi(turn) {
+      const interrupted = turn?.summary === '[...]';
+      const phaseLogs = turn?.phase_logs || turn?.phaseLogs || [];
+      return {
+        type: 'history',
+        sessionId: turn?.session_id || turn?.sessionId || '',
+        question: turn?.question || '',
+        context: turn?.context || '',
+        summary: interrupted
+          ? '**认知循环已中断**\n\n这轮运行没有形成最终答复，已发生的过程仍保留在下方。'
+          : (turn?.summary || ''),
+        actions: turn?.action_items || turn?.actions || [],
+        generatedFiles: turn?.generated_files || turn?.generatedFiles || [],
+        phaseLogs,
+        createdAt: turn?.created_at || turn?.createdAt || '',
+      };
+    }
+
     // ── useLocalStore ────────────────────────────────────────
     function useLocalStore() {
       const load = useCallback(() => {
@@ -640,35 +1585,28 @@
       const [list, setList] = useState([]);
       const [loading, setLoading] = useState(false);
       const store = useLocalStore();
-      // 记住最近一次的项目过滤，使内部触发的 refresh（rename/remove）沿用当前项目，而非退回全部
-      const lastProjectRef = useRef(undefined);
-
-      const refresh = useCallback(async (projectId, { _retry = 0, _maxRetries = 3 } = {}) => {
-        if (projectId !== undefined) lastProjectRef.current = projectId;
-        const pid = (projectId !== undefined) ? projectId : lastProjectRef.current;
+      const refresh = useCallback(async ({ _retry = 0, _maxRetries = 3 } = {}) => {
         setLoading(true);
         try {
-          let url = '/api/v1/conversations';
-          if (pid !== undefined && pid !== null) url += '?project_id=' + encodeURIComponent(pid);
-          const r = await fetch(url);
+          const r = await fetch('/api/v1/conversations');
           if (!r.ok && _retry < _maxRetries) {
             console.log('[refresh] HTTP', r.status, 'retrying', _retry + 1, '/', _maxRetries);
             setLoading(false);
             await new Promise(res => setTimeout(res, 1000 * (_retry + 1)));
-            return refresh(projectId, { _retry: _retry + 1, _maxRetries });
+            return refresh({ _retry: _retry + 1, _maxRetries });
           }
           const data = await r.json();
           const convs = data.conversations || [];
           console.log('[refresh] got', convs.length, 'conversations:', convs.map(c => c.id));
           setList(convs);
-          store.save({ conversations: convs.map(c => ({ id: c.id, name: c.name, question_count: c.question_count, last_active: c.last_active })) });
+          store.save({ conversations: convs.map(c => ({ id: c.id, name: c.name, last_question: c.last_question || '', question_count: c.question_count, last_active: c.last_active, project_id: c.project_id || '', pinned: !!c.pinned })) });
         } catch (e) {
           console.error('[refresh] error:', e);
           if (_retry < _maxRetries) {
             console.log('[refresh] retrying', _retry + 1, '/', _maxRetries);
             setLoading(false);
             await new Promise(res => setTimeout(res, 1000 * (_retry + 1)));
-            return refresh(projectId, { _retry: _retry + 1, _maxRetries });
+            return refresh({ _retry: _retry + 1, _maxRetries });
           }
           // 最后一次重试也失败了——不清空列表，用 localStorage 缓存兜底
           const cached = store.load();
@@ -682,7 +1620,7 @@
         finally { setLoading(false); }
       }, [store]);
 
-      const create = useCallback(async (name, projectId) => {
+      const create = useCallback(async (name, projectId = '') => {
         console.log('[create] POST with name:', name, 'project:', projectId);
         const r = await fetch('/api/v1/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name || '新对话', project_id: projectId || '' }) });
         const data = await r.json();
@@ -699,6 +1637,17 @@
 
       const remove = useCallback(async (id) => {
         await fetch('/api/v1/conversations/' + id, { method: 'DELETE' });
+        await refresh();
+      }, [refresh]);
+
+      const pin = useCallback(async (id, pinned) => {
+        const r = await fetch('/api/v1/conversations/' + id + '/pin', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pinned: !!pinned }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || '置顶状态更新失败');
         await refresh();
       }, [refresh]);
 
@@ -722,7 +1671,7 @@
         }
       }, []);
 
-      return { list, setList, loading, refresh, create, rename, remove, loadTurns };
+      return { list, setList, loading, refresh, create, rename, remove, pin, loadTurns };
     }
 
     // ── useSSE ───────────────────────────────────────────────
@@ -744,7 +1693,7 @@
         }
       }, []);
 
-      const start = useCallback((question, context, mode, conversationId, reviewStrategy, model, projectId, files, { onPhase, onDone, onTitle, onClarification, onAuthorization }) => {
+      const start = useCallback((question, context, mode, conversationId, reviewStrategy, model, projectId, files, { onPhase, onDone, onTitle, onClarification, onAuthorization, replaceSessionId = '' }) => {
         // Don't re-start if already running for this conv
         if (esMapRef.current[conversationId]) return;
         cbMapRef.current[conversationId] = { onPhase, onDone, onTitle, onClarification, onAuthorization };
@@ -757,6 +1706,7 @@
           + '&model=' + encodeURIComponent(model || '')
           + '&project_id=' + encodeURIComponent(projectId || '')
           + '&files=' + encodeURIComponent((files && files.length) ? files.join(',') : '')
+          + '&replace_session_id=' + encodeURIComponent(replaceSessionId || '')
           + '&dev_trace=1';
         const es = new EventSource(url);
         esMapRef.current[conversationId] = es;
@@ -837,71 +1787,95 @@
       return { runningConvs, start, stop, attach };
     }
 
-    // ── NewProjectDialog ─────────────────────────────────────
-    function NewProjectDialog({ onConfirm, onCancel }) {
-      const [mode, setMode] = useState('new');      // 'new' | 'link'
+    // ── Project / conversation dialog ──────────────────────────
+    function ProjectDialog({ projects, initialProjectId = '', onConfirm, onCancel }) {
+      const [createNew, setCreateNew] = useState(false);
+      const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId || '');
+      const [projectMode, setProjectMode] = useState('new');
       const [name, setName] = useState('');
       const [folderPath, setFolderPath] = useState('');
 
+      const canConfirm = createNew
+        ? name.trim() && (projectMode === 'new' || folderPath.trim())
+        : true;
+
       const handlePickFolder = async () => {
         const pickFn = window.praxic?.pickFolder || window.praxic?.selectFolder;
-        if (pickFn) {
-          try {
-            const picked = await pickFn();
-            if (picked) {
-              setFolderPath(picked);
-              if (!name) setName(picked.split(/[\\/]/).pop());
-            }
-          } catch (e) { console.error('[pickFolder] error:', e); }
-        }
+        if (!pickFn) return;
+        try {
+          const picked = await pickFn();
+          if (picked) {
+            setFolderPath(picked);
+            if (!name.trim()) setName(picked.split(/[\\/]/).pop() || '');
+          }
+        } catch (e) { console.error('[pickFolder] error:', e); }
       };
 
-      const canConfirm = name.trim() && (mode === 'new' || folderPath.trim());
+      const submit = () => {
+        if (!canConfirm) return;
+        onConfirm({
+          projectId: selectedProjectId,
+          newProject: createNew ? { name: name.trim(), folderPath: projectMode === 'link' ? folderPath.trim() : '' } : null,
+        });
+      };
 
       return (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-paper rounded-xl shadow-xl p-5 w-80">
-            <div className="font-semibold text-ink mb-3">新建项目</div>
-            <div className="flex gap-2 mb-4">
-              {['new', 'link'].map(m => (
-                <button key={m} onClick={() => setMode(m)}
-                  className={'flex-1 py-1.5 rounded text-xs font-medium border transition-colors ' +
-                    (mode === m ? 'bg-seal text-white border-seal' : 'bg-white text-warmgray border-linen/60 hover:bg-dust/40')}>
-                  {m === 'new' ? '新建文件夹' : '关联现有文件夹'}
-                </button>
-              ))}
+        <div className="praxic-project-overlay fixed inset-0 z-50 flex items-center justify-center" onClick={onCancel}>
+          <div className="praxic-project-dialog" onClick={e => e.stopPropagation()}>
+            <div className="praxic-project-dialog__head">
+              <div>
+                <div className="praxic-project-dialog__eyebrow">PROJECT / SESSION</div>
+                <h2>新建对话</h2>
+              </div>
+              <button type="button" onClick={onCancel} aria-label="关闭">×</button>
             </div>
-            <div className="mb-3">
-              <div className="text-[10px] text-warmgray mb-1">项目名称</div>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="项目名称" autoFocus
-                className="w-full bg-white border border-linen/60 rounded px-3 py-1.5 text-xs focus:outline-none focus:border-seal/50" />
-            </div>
-            {mode === 'link' && (
-              <div className="mb-3">
-                <div className="text-[10px] text-warmgray mb-1">本地文件夹路径</div>
-                <div className="flex gap-1.5">
-                  <input value={folderPath} onChange={e => setFolderPath(e.target.value)}
-                    placeholder="C:\Users\...\MyProject"
-                    className="flex-1 bg-white border border-linen/60 rounded px-3 py-1.5 text-xs focus:outline-none focus:border-seal/50" />
-                  {(window.praxic?.pickFolder || window.praxic?.selectFolder) && (
-                    <button onClick={handlePickFolder}
-                      className="px-2 py-1.5 rounded border border-linen/60 bg-dust/60 text-xs hover:bg-dust">
-                      选择
-                    </button>
-                  )}
-                </div>
+
+            {!createNew && (
+              <div className="praxic-project-dialog__field">
+                <label htmlFor="conversation-project">所属项目</label>
+                <select id="conversation-project" value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)}>
+                  {(projects || []).map(project => (
+                    <option key={project.id || '__default__'} value={project.id}>{project.name}</option>
+                  ))}
+                </select>
               </div>
             )}
-            <div className="flex gap-2 mt-4">
-              <button onClick={onCancel}
-                className="flex-1 py-1.5 rounded border border-linen/60 text-xs text-warmgray hover:bg-dust/40">
-                取消
-              </button>
-              <button onClick={() => canConfirm && onConfirm({ name, folderPath: mode === 'link' ? folderPath : '' })}
-                disabled={!canConfirm}
-                className={'flex-1 py-1.5 rounded text-xs font-semibold text-white transition-colors ' +
-                  (canConfirm ? 'bg-seal hover:bg-seal-light cursor-pointer' : 'bg-dust text-warmgray cursor-not-allowed')}>
-                创建
+
+            <button type="button" className="praxic-project-dialog__switch" onClick={() => setCreateNew(true)}>
+              + 新建项目并归入此对话
+            </button>
+
+            {createNew && (
+              <>
+                <div className="praxic-project-dialog__mode">
+                  <button type="button" className={projectMode === 'new' ? 'is-active' : ''} onClick={() => setProjectMode('new')}>新建工作区</button>
+                  <button type="button" className={projectMode === 'link' ? 'is-active' : ''} onClick={() => setProjectMode('link')}>关联已有文件夹</button>
+                </div>
+                <div className="praxic-project-dialog__field">
+                  <label htmlFor="project-name">项目名称</label>
+                  <input id="project-name" value={name} onChange={e => setName(e.target.value)} placeholder="例如：研究项目" autoFocus />
+                </div>
+                {projectMode === 'link' && (
+                  <div className="praxic-project-dialog__field">
+                    <label htmlFor="project-folder">文件夹路径</label>
+                    <div className="praxic-project-dialog__path">
+                      <input id="project-folder" value={folderPath} onChange={e => setFolderPath(e.target.value)} placeholder="C:\\Users\\...\\Project" />
+                      {(window.praxic?.pickFolder || window.praxic?.selectFolder) && (
+                        <button type="button" onClick={handlePickFolder}>选择</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <button type="button" className="praxic-project-dialog__switch" onClick={() => setCreateNew(false)}>
+                  返回已有项目
+                </button>
+              </>
+            )}
+
+            <div className="praxic-project-dialog__actions">
+              <button type="button" onClick={onCancel}>取消</button>
+              <button type="button" className="is-primary" disabled={!canConfirm} onClick={submit}>
+                {createNew ? '创建并开始' : '开始对话'}
               </button>
             </div>
           </div>
@@ -909,120 +1883,127 @@
       );
     }
 
-    // ── Sidebar（Codex 式单栏：项目选择 + 会话列表 合一）─────────
-    function Sidebar({ projects, activeProjectId, onSelectProject, onNewProject,
-                       conversations, activeId, onSelect, onDelete, onNewSession,
-                       workspaceDir, animTitleId, runningConvs,
-                       sessionSort, onSortChange }) {
-      const [projOpen, setProjOpen] = useState(false);
-      const [ctxMenu, setCtxMenu] = useState(null); // { x, y, workspaceDir, label }
-      const activeProject = (projects || []).find(p => p.id === activeProjectId) || (projects || [])[0];
+    // ── Sidebar（对话导航：会话是主入口，运行细节在中间展开）──────
+    function Sidebar({ conversations, activeId, onSelect, onDelete, onPin, onNewSession,
+                       animTitleId, runningConvs, onSettings, sessionSort, onSortChange }) {
+      const [collapsed, setCollapsed] = useState(false);
+      const [collapsedProjects, setCollapsedProjects] = useState({});
+      const [query, setQuery] = useState('');
+      const [relativeNow, setRelativeNow] = useState(() => Date.now());
+      useEffect(() => {
+        const timer = setInterval(() => setRelativeNow(Date.now()), 60 * 1000);
+        return () => clearInterval(timer);
+      }, []);
+      const filteredConversations = useMemo(() => {
+        const normalized = query.trim().toLowerCase();
+        if (!normalized) return conversations || [];
+        return (conversations || []).filter(c =>
+          c.type !== 'group_header' && conversationLabel(c).toLowerCase().includes(normalized),
+        );
+      }, [conversations, query]);
+      const pinnedConversations = filteredConversations.filter(c => c.type !== 'group_header' && c.pinned);
+      const regularConversations = filteredConversations.filter(c => c.type === 'group_header' || !c.pinned);
+      const regularCount = regularConversations.filter(c => c.type !== 'group_header').length;
+      const activeConversation = (conversations || []).find(c => c.id === activeId);
+      const showRelativeTime = sessionSort !== 'by_project';
+      const visibleRegularConversations = useMemo(() => {
+        let currentProjectId = null;
+        return regularConversations.filter(c => {
+          if (c.type === 'group_header') {
+            currentProjectId = c.pid;
+            return true;
+          }
+          return currentProjectId === null || !collapsedProjects[currentProjectId];
+        });
+      }, [regularConversations, collapsedProjects]);
+      const toggleProject = pid => setCollapsedProjects(prev => ({ ...prev, [pid]: !prev[pid] }));
 
-      const openFolder = async (dir) => {
-        try { await fetch('/api/v1/projects/open-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: dir }) }); }
-        catch (e) { console.error('[open-folder]', e); }
-        setCtxMenu(null);
-      };
-
-      const handleGroupCtx = (e, c) => {
-        e.preventDefault();
-        const proj = (projects || []).find(p => p.id === c.pid);
-        const dir = proj?.workspace_dir || '';
-        if (!dir) return;
-        setCtxMenu({ x: e.clientX, y: e.clientY, workspaceDir: dir, label: c.label });
-      };
-      return (
-        <React.Fragment>
-        <aside className="praxic-sidebar w-60 bg-linen/60 flex flex-col flex-shrink-0 border-r border-clay/30">
-          {/* 品牌 + 新建对话 */}
-          <div className="px-3 py-3 flex items-center justify-between border-b border-clay/20">
-            <span className="text-sm font-semibold text-ink font-display flex items-center gap-2"><BrandMark size={22} />即物穷理</span>
-            <button onClick={onNewSession} title="新建对话"
-              className="w-6 h-6 rounded-lg bg-seal text-white text-sm flex items-center justify-center hover:bg-seal-light transition-colors">＋</button>
-          </div>
-          {/* 项目选择器 */}
-          <div className="px-2 py-2 border-b border-clay/20">
-            <button onClick={() => setProjOpen(v => !v)}
-              className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-dust/50 transition-colors">
-              <span className="flex items-center gap-1.5 min-w-0">
-                <span className="text-xs">📁</span>
-                <span className="truncate text-xs font-medium text-ink">{activeProject ? activeProject.name : '默认项目'}</span>
-              </span>
-              <span className="text-clay text-[9px] flex-shrink-0">{projOpen ? '▲' : '▼'}</span>
+      const renderSession = c => {
+        const age = showRelativeTime ? relativeConversationTime(c.last_active, relativeNow) : '';
+        return (
+          <div key={c.id} className={'praxic-session-item group ' + (c.id === activeId ? 'praxic-session-item--active' : '')}>
+            <button type="button" className="praxic-session-item__select" onClick={() => onSelect(c.id)}>
+              <span className="praxic-session-item__mark">{runningConvs && runningConvs.has(c.id) ? '●' : '•'}</span>
+              <span className={'praxic-session-item__name ' + (c.id === animTitleId ? 'title-fade-in' : '')}>{conversationLabel(c)}</span>
+              {age && <span className="praxic-session-item__age" title={c.last_active || ''}>{age}</span>}
+              <span className="praxic-session-item__count">{c.question_count || 0}</span>
             </button>
-            {projOpen && (
-              <div className="mt-1 space-y-0.5">
-                {(projects || []).map(p => (
-                  <button key={p.id || '__default__'} onClick={() => { onSelectProject(p.id); setProjOpen(false); }}
-                    className={'w-full text-left px-2 py-1 rounded text-xs flex items-center justify-between gap-1 ' + (p.id === activeProjectId ? 'bg-paper border border-clay/30 shadow-sm' : 'hover:bg-dust/40')}>
-                    <span className="truncate text-ink">{p.name}</span>
-                    <span className="text-[10px] text-clay flex-shrink-0">{p.conversation_count || 0}</span>
-                  </button>
-                ))}
-                <button onClick={onNewProject}
-                  className="w-full text-left px-2 py-1 rounded text-xs text-seal hover:bg-seal-wash transition-colors">＋ 新建项目</button>
-              </div>
-            )}
+            <button type="button" className={'praxic-session-item__pin ' + (c.pinned ? 'is-pinned' : '')}
+              onClick={e => { e.stopPropagation(); onPin(c.id, !c.pinned); }}
+              title={c.pinned ? '取消置顶' : '置顶对话'} aria-label={c.pinned ? '取消置顶对话' : '置顶对话'} aria-pressed={!!c.pinned}>
+              {c.pinned ? '★' : '☆'}
+            </button>
+            <button type="button" className="praxic-session-item__delete"
+              onClick={e => { e.stopPropagation(); onDelete(c.id); }} aria-label="删除对话" title="删除对话">×</button>
           </div>
-          {/* 会话列表 */}
-          <div className="px-2 pt-2 pb-1 flex items-center justify-between">
-            <span className="text-[10px] font-semibold text-warmgray uppercase tracking-wide">对话</span>
-            <select value={sessionSort} onChange={e => onSortChange(e.target.value)}
-              className="text-[10px] text-warmgray bg-transparent border-none outline-none cursor-pointer hover:text-ink">
-              <option value="recent">最近优先</option>
-              <option value="oldest">最早优先</option>
-              <option value="by_project">按项目分组</option>
-            </select>
-          </div>
-          <div className="flex-1 overflow-y-auto scrollbar-thin px-1 space-y-0.5">
-            {(!conversations || !conversations.length) && (
-              <div className="p-3 text-xs text-warmgray text-center mt-6">暂无对话</div>
-            )}
-            {(conversations || []).map((c, idx) => {
-              if (c.type === 'group_header') {
-                return (
-                  <div key={'hdr-' + c.pid + '-' + idx}
-                    onContextMenu={(e) => handleGroupCtx(e, c)}
-                    className="px-2 pt-3 pb-1 text-[10px] font-semibold text-warmgray/60 uppercase tracking-wide select-none cursor-context-menu flex items-center justify-between">
-                    <span>{c.label}</span>
-                    {(projects || []).find(p => p.id === c.pid)?.workspace_dir && (
-                      <span className="text-[9px] text-clay/50 font-normal normal-case">右键打开</span>
-                    )}
-                  </div>
-                );
-              }
-              return (
-                <button key={c.id} onClick={() => onSelect(c.id)}
-                  className={'w-full text-left px-2.5 py-2 rounded-lg text-xs transition-colors group ' + (c.id === activeId ? 'bg-paper border border-clay/30 shadow-sm' : 'hover:bg-dust/50')}>
-                  <div className="flex items-center gap-1.5">
-                    {runningConvs && runningConvs.has(c.id) && (
-                      <span className="w-2.5 h-2.5 rounded-full border-2 border-seal animate-pulse flex-shrink-0" title="后台运行中" />
-                    )}
-                    <span className={'font-medium text-ink truncate ' + (c.id === animTitleId ? 'title-fade-in' : '')}>{c.name || c.id}</span>
-                  </div>
-                  <div className="text-[10px] text-warmgray mt-0.5 flex justify-between items-center">
-                    <span>{c.question_count || 0} 轮</span>
-                    <span onClick={e => { e.stopPropagation(); onDelete(c.id); }}
-                      className="opacity-0 group-hover:opacity-100 text-clay hover:text-seal transition-opacity">×</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
-        {/* 右键菜单 */}
-        {ctxMenu && (
-          <div className="fixed z-50" style={{ top: ctxMenu.y, left: ctxMenu.x }}
-            onMouseLeave={() => setCtxMenu(null)}>
-            <div className="bg-paper border border-clay/30 rounded-lg shadow-lg py-1 min-w-[140px]">
-              <button onClick={() => openFolder(ctxMenu.workspaceDir)}
-                className="w-full text-left px-3 py-1.5 text-xs text-ink hover:bg-dust/60 flex items-center gap-2">
-                <span>📂</span><span>打开项目文件夹</span>
-              </button>
+        );
+      };
+
+      return (
+        <aside className={'praxic-sidebar flex flex-col flex-shrink-0 ' + (collapsed ? 'praxic-sidebar--collapsed' : '')}>
+          <div className="praxic-sidebar-head">
+            <span className="praxic-sidebar-title"><BrandMark size={30} variant="red" /></span>
+            <div className="praxic-sidebar-actions">
+              <button onClick={onNewSession} title="新建对话" aria-label="新建对话">＋</button>
+              <button onClick={onSettings} title="设置" aria-label="设置">⚙</button>
+              <button onClick={() => setCollapsed(v => !v)} title={collapsed ? '展开侧栏' : '收起侧栏'} aria-label={collapsed ? '展开侧栏' : '收起侧栏'}>{collapsed ? '›' : '‹'}</button>
             </div>
           </div>
-        )}
-        </React.Fragment>
+
+          {!collapsed && <div className="praxic-sidebar-body">
+            <div className="praxic-sidebar-context">
+              <button className="praxic-sidebar-context__item" onClick={() => activeId && onSelect(activeId)}>
+                <span className="praxic-sidebar-context__icon">◌</span>
+                <span className="truncate">{activeConversation ? conversationLabel(activeConversation) : 'Praxic Agent'}</span>
+                <span className="praxic-sidebar-context__dot" />
+              </button>
+            </div>
+
+            <label className="praxic-sidebar-search">
+              <span>⌕</span>
+              <input value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索聊天记录" aria-label="搜索聊天记录" />
+            </label>
+
+            <div className="praxic-sidebar-list scrollbar-thin">
+              <div className="praxic-sidebar-section-head praxic-sidebar-section-head--pinned">
+                <div className="praxic-sidebar-section-label">置顶</div>
+              </div>
+              {pinnedConversations.map(renderSession)}
+              <div className="praxic-sidebar-section-head">
+                <div className="praxic-sidebar-section-label">对话</div>
+                <select value={sessionSort} onChange={e => onSortChange(e.target.value)} aria-label="对话排序">
+                  <option value="recent">最近优先</option>
+                  <option value="oldest">最早优先</option>
+                  <option value="by_project">按项目分组</option>
+                </select>
+              </div>
+              {!regularCount && !pinnedConversations.length && <div className="praxic-sidebar-empty">暂无对话</div>}
+              {visibleRegularConversations.map(c => (
+                c.type === 'group_header' ? (
+                  <button
+                    key={'group-' + c.pid}
+                    type="button"
+                    className="praxic-sidebar-group"
+                    onClick={() => toggleProject(c.pid)}
+                    aria-expanded={!collapsedProjects[c.pid]}
+                    title={collapsedProjects[c.pid] ? '展开项目对话' : '折叠项目对话'}
+                  >
+                    <svg className="praxic-sidebar-group__icon" viewBox="0 0 14 14" aria-hidden="true">
+                      {collapsedProjects[c.pid] ? (
+                        <path d="M1.5 4.5h4.1l1.3 1.2h5.6v6.2H1.5z" fill="none" />
+                      ) : (
+                        <path d="M1.5 5.2h4.1l1.2 1.1h5.7l-1.4 5.2H2.2z" fill="none" />
+                      )}
+                    </svg>
+                    <span className="praxic-sidebar-group__label">{c.label}</span>
+                  </button>
+                ) : (
+                  renderSession(c)
+                )
+              ))}
+            </div>
+          </div>}
+        </aside>
       );
     }
 
@@ -1053,16 +2034,18 @@
         || eventKind(entry) === 'error';
     }
 
-    function eventStatus(entry) {
+    function eventStatus(entry, context = {}) {
       const kind = eventKind(entry);
       const authStatus = entry?.data?.status || entry?.data?.authorization?.status;
       if (kind.startsWith('steering')) return '已注入';
       if (kind === 'user_question') return '已提交';
+      if (kind === 'interrupt') return '已打断';
+      if (kind === 'stop') return '已终止';
       if (authStatus === 'pending') return '等待授权';
       if (authStatus === 'approved') return '已授权';
       if (authStatus === 'denied') return '已拒绝';
       if (eventFailure(entry)) return '需注意';
-      if ((entry?.summary || '').includes('正在') || (entry?.summary || '').includes('进行中')) return '进行中';
+      if (context.running && context.active && context.latest) return '进行中';
       return '已完成';
     }
 
@@ -1095,6 +2078,9 @@
       }
       if (kind === 'user_question') {
         return <div className="bg-paper border border-linen/60 p-2 text-[10px] text-ink whitespace-pre-wrap">{entry?.data?.content || entry?.summary}</div>;
+      }
+      if (kind === 'interrupt' || kind === 'stop') {
+        return <div className="bg-paper border border-linen/60 p-2 text-[10px] text-ink whitespace-pre-wrap">{entry?.summary}</div>;
       }
       if (kind === 'result' || kind === 'error') {
         return <div className="bg-paper border border-linen/60 p-2 text-[10px] text-ink whitespace-pre-wrap">{entry?.summary || entry?.data?.result?.summary || entry?.data?.result?.error}</div>;
@@ -1174,8 +2160,8 @@
             return (
               <section key={group.id} className={'praxic-phase-group praxic-phase-group--' + status + (open ? ' praxic-phase-group--open' : '')}>
                 <button type="button" className="praxic-phase-group__header" onClick={() => togglePhase(group.id, defaultOpen)} aria-expanded={open}>
-                  <span className="praxic-phase-group__icon">{group.icon}</span>
-                  <span className="praxic-phase-group__title"><strong>{group.label}</strong><small>{group.subtitle}</small></span>
+                  <span className="praxic-phase-group__icon" aria-hidden="true" />
+                  <span className="praxic-phase-group__title"><strong>{group.label}<small>{' · '}{group.subtitle}</small></strong></span>
                   <span className="praxic-phase-group__meta"><strong>{String(actions).padStart(2, '0')}</strong><small>{status === 'active' ? '进行中' : status === 'waiting' ? '等待授权' : status === 'error' ? '需注意' : '已完成'}</small></span>
                   <span className="praxic-phase-group__summary">{last?.summary || '等待进入'}</span>
                   <span className="praxic-phase-group__chevron">{open ? '−' : '+'}</span>
@@ -1190,7 +2176,8 @@
                         <div className="praxic-event-row" role="button" tabIndex="0" onClick={() => toggleDetail(key)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDetail(key); } }}>
                           <span className="praxic-event-index">{String(idx + 1).padStart(2, '0')}</span>
                           <span className="praxic-event-marker" />
-                          <span className="praxic-event-copy"><small>{eventLabel(entry)}</small><strong>{entry.summary || '状态已更新'}</strong><em>{eventStatus(entry)}</em></span>
+                          <span className="praxic-event-copy"><span className="praxic-event-copy__line"><small>{eventLabel(entry)}</small><strong>{entry.summary || '状态已更新'}</strong></span></span>
+                          <span className="praxic-event-status">{eventStatus(entry, { running, active: isActive, latest: idx === group.events.length - 1 })}</span>
                           {running && onSteer && kind !== 'steering' && <button type="button" className="praxic-event-steer" onClick={e => { e.stopPropagation(); setSteerTarget(key); setSteerError(''); }}>插话</button>}
                           <span className="praxic-event-arrow">↗</span>
                         </div>
@@ -1249,7 +2236,148 @@
     }
 
     // ── InputBar ──────────────────────────────────────────────
-    function InputBar({ onSend, running, onStop, onSteer, model, availableModels, onModelChange, projectId, files, setFiles, uploading, handleFiles, awaitingClarification, onAnswer }) {
+    function UserActionIcon({ kind }) {
+      if (kind === 'edit') {
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 16.5V20h3.5L18.8 8.7a2.1 2.1 0 0 0-3-3L4 16.5z" />
+            <path d="m14.5 7.5 2 2" />
+          </svg>
+        );
+      }
+      if (kind === 'resend') {
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 11a8 8 0 0 0-13.7-5.7L4 7.6" />
+            <path d="M4 4.2v3.4h3.4" />
+            <path d="M4 13a8 8 0 0 0 13.7 5.7L20 16.4" />
+            <path d="M20 19.8v-3.4h-3.4" />
+          </svg>
+        );
+      }
+      if (kind === 'cancel') {
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m6 6 12 12" />
+            <path d="m18 6-12 12" />
+          </svg>
+        );
+      }
+      if (kind === 'send') {
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m4 12 16-8-4 16-4.5-6.5L4 12z" />
+            <path d="M11.5 13.5 20 4" />
+          </svg>
+        );
+      }
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="8" y="8" width="11" height="11" rx="1" />
+          <path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8" />
+        </svg>
+      );
+    }
+
+    function UserMessageActions({ turn, onEdit, onResend, onCopy, copied, busy }) {
+      if (!turn || turn.steer) return null;
+      return (
+        <div className="praxic-user-actions" aria-label="消息操作">
+          <button type="button" onClick={() => onEdit(turn)} disabled={busy} title="重新编辑并发送" aria-label="重新编辑并发送"><UserActionIcon kind="edit" /></button>
+          <button type="button" onClick={() => onResend(turn)} disabled={busy} title="直接重新发送" aria-label="直接重新发送"><UserActionIcon kind="resend" /></button>
+          <button type="button" onClick={() => onCopy(turn)} title={copied ? '已复制消息' : '复制消息'} aria-label={copied ? '已复制消息' : '复制消息'}>{copied ? <span className="praxic-user-action-check" aria-hidden="true">✓</span> : <UserActionIcon kind="copy" />}</button>
+        </div>
+      );
+    }
+
+    function InlineUserEditor({ turn, onCancel, onSend }) {
+      const [question, setQuestion] = useState(turn?.question || '');
+      const [sending, setSending] = useState(false);
+      const textareaRef = useRef(null);
+
+      const resizeTextarea = useCallback(() => {
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 41), 224)}px`;
+      }, []);
+
+      useEffect(() => {
+        const frame = requestAnimationFrame(() => {
+          resizeTextarea();
+          const textarea = textareaRef.current;
+          if (textarea) {
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+          }
+        });
+        return () => cancelAnimationFrame(frame);
+      }, [resizeTextarea]);
+
+      const submit = useCallback(() => {
+        const value = question.trim();
+        if (!value || sending) return;
+        setSending(true);
+        onSend(
+          value,
+          String(turn?.context || '').trim(),
+          turn?.mode || 'deep',
+          turn?.reviewStrategy || 'off',
+          turn?.model || '',
+          turn?.files || [],
+        );
+      }, [question, sending, onSend, turn]);
+
+      const handleKeyDown = useCallback((event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          onCancel();
+          return;
+        }
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          submit();
+        }
+      }, [onCancel, submit]);
+
+      const files = Array.isArray(turn?.files) ? turn.files : [];
+      return (
+        <div className="praxic-inline-editor">
+          <textarea
+            ref={textareaRef}
+            value={question}
+            onChange={event => { setQuestion(event.target.value); resizeTextarea(); }}
+            onKeyDown={handleKeyDown}
+            rows={1}
+            aria-label="编辑问题"
+            placeholder="编辑问题…"
+          />
+          {turn?.context && (
+            <div className="praxic-inline-editor__context">
+              <span className="praxic-inline-editor__context-label">背景</span>{turn.context}
+            </div>
+          )}
+          {files.length > 0 && (
+            <div className="praxic-inline-editor__files" aria-label="附件">
+              {files.map((file, index) => (
+                <span key={index} className="praxic-inline-editor__file">📎 {file.name || file.path || file}</span>
+              ))}
+            </div>
+          )}
+          <div className="praxic-inline-editor__footer">
+            <span className="praxic-inline-editor__hint">Ctrl/Cmd + Enter 发送</span>
+            <button type="button" className="praxic-inline-editor__button" onClick={onCancel} title="取消编辑" aria-label="取消编辑">
+              <UserActionIcon kind="cancel" />
+            </button>
+            <button type="button" className="praxic-inline-editor__button" onClick={submit} disabled={!question.trim() || sending} title="发送编辑后的消息" aria-label="发送编辑后的消息">
+              <UserActionIcon kind="send" />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    function InputBar({ onSend, running, onStop, onSteer, model, availableModels, onModelChange, files, setFiles, uploading, handleFiles, awaitingClarification, onAnswer }) {
       const [question, setQuestion] = useState('');
       const [context, setContext] = useState('');
       const [mode, setMode] = useState('deep');
@@ -1272,7 +2400,7 @@
         setQuestion('');
         setContext('');
         setFiles([]);
-      }, [question, context, mode, reviewStrategy, model, running, onSend, onSteer, files, awaitingClarification, onAnswer]);
+      }, [question, context, mode, reviewStrategy, model, running, onSend, onSteer, files, awaitingClarification, onAnswer, setFiles]);
 
       const handleKeyDown = useCallback(e => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -1311,10 +2439,10 @@
             )}
           </div>
           <div className="flex items-center gap-2 mt-1.5">
-            <button onClick={() => setShowContext(!showContext)} className="text-[10px] text-warmgray hover:text-seal">{showContext ? '收起' : '+ 背景'}</button>
+            <button onClick={() => setShowContext(!showContext)} className="text-xs text-warmgray hover:text-seal">{showContext ? '收起' : '+ 背景'}</button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={e => { handleFiles(e.target.files); e.target.value = ''; }} />
             <button onClick={() => fileRef.current && fileRef.current.click()} disabled={running || uploading}
-              className="text-[10px] text-warmgray hover:text-seal disabled:opacity-40" title="上传文件（作为本轮提问的资料）">{uploading ? '上传中…' : '📎 附件'}</button>
+              className="text-xs text-warmgray hover:text-seal disabled:opacity-40" title="上传文件（作为本轮提问的资料）">{uploading ? '上传中…' : '📎 附件'}</button>
             {showContext && (
               <input value={context} onChange={e => setContext(e.target.value)} placeholder="背景上下文（可选）"
                 className="flex-1 bg-paper border border-linen/40 rounded px-2 py-1 text-xs text-ink placeholder:text-clay focus:outline-none focus:border-seal/40" />
@@ -1570,7 +2698,6 @@
         case 'investigation': return <InvestigationDetail data={data} />;
         case 'contradiction':  return <ContradictionDetail data={data} />;
         case 'rational':       return <RationalDetail data={data} />;
-        case 'decision':       return <DecisionDetail data={data} />;
         case 'perspectives':   return <PerspectivesDetail data={data} />;
         case 'practice':       return <PracticeDetail data={data} />;
         case 'reflection':     return <ReflectionDetail data={data} />;
@@ -2375,7 +3502,7 @@
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-seal font-display"><BrandMark size={56} className="mx-auto mb-3" />Praxic</h1>
               <p className="text-sm text-warmgray mt-2 font-display">Agent</p>
-              <p className="text-xs text-warmgray mt-4">以毛泽东思想方法论为认知内核的 AI 智能体<br/>首次使用，请配置 LLM 连接</p>
+              <p className="text-xs text-warmgray mt-4">Praxic AI 智能体<br/>首次使用，请配置 LLM 连接</p>
             </div>
             <div className="bg-cream border border-linen/50 rounded-xl p-6 space-y-5 shadow-lg">
               <div><label className="block text-xs font-semibold text-warmgray mb-2 uppercase">服务商</label>
@@ -2415,26 +3542,28 @@
         catch { return false; }
       });
       const [showSettings, setShowSettings] = useState(false);
-      const [workspaceDir, setWorkspaceDir] = useState('');
       const [uiSettings, setUiSettings] = useState({ font_family: 'system', font_size: 'medium', page_zoom: 100, show_thinking_after_answer: true, agent_persona: '', custom_knowledge: '' });
       const [animTitleId, setAnimTitleId] = useState(null);  // conversation id that just got a title
       const [selectedModel, setSelectedModel] = useState(() => { try { return localStorage.getItem('praxic_selected_model') || '智能路由'; } catch { return '智能路由'; } });
       const [availableModels, setAvailableModels] = useState(['智能路由']);
       const [projects, setProjects] = useState([]);
-      const [activeProjectId, setActiveProjectId] = useState(() => { try { return JSON.parse(localStorage.getItem(LS_KEY))?.activeProjectId || ''; } catch { return ''; } });
-      const [showNewProject, setShowNewProject] = useState(false);
+      const [activeProjectId, setActiveProjectId] = useState(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem(LS_KEY)) || {};
+          return Object.prototype.hasOwnProperty.call(saved, 'activeProjectId') ? saved.activeProjectId : null;
+        } catch { return null; }
+      });
       const [sessionSort, setSessionSort] = useState(() => {
         try { return localStorage.getItem('praxic_session_sort') || 'recent'; } catch { return 'recent'; }
       });
-      useEffect(() => {
-        try { localStorage.setItem('praxic_session_sort', sessionSort); } catch {}
-      }, [sessionSort]);
+      const [projectDialog, setProjectDialog] = useState(null);
 
       // ── File upload (lifted to App for page-wide drag-and-drop) ──
       const [files, setFiles] = useState([]);
       const [uploading, setUploading] = useState(false);
       const [dragOver, setDragOver] = useState(false);
       const dragCounterRef = useRef(0);
+      const activeProjectRef = useRef('');
 
       const handleFiles = useCallback(async (fileList) => {
         const arr = Array.from(fileList || []);
@@ -2445,7 +3574,7 @@
             try {
               const fd = new FormData();
               fd.append('file', f);
-              fd.append('project_id', activeProjectIdRef.current || '');
+              fd.append('project_id', activeProjectRef.current || '');
               const r = await fetch('/api/v1/agent/upload-file', { method: 'POST', body: fd });
               if (!r.ok) {
                 const errText = await r.text().catch(() => String(r.status));
@@ -2486,39 +3615,83 @@
       const [activePhase, setActivePhase] = useState(null);
       const [completedPhases, setCompletedPhases] = useState(() => new Set());
       const [phaseLogs, setPhaseLogs] = useState([]);
+      const [historyProcessOpen, setHistoryProcessOpen] = useState({});
+      const [editRequest, setEditRequest] = useState(null);
+      const [copiedTurnKey, setCopiedTurnKey] = useState('');
+      const copyResetRef = useRef(null);
       const [steeringCount, setSteeringCount] = useState(0);
       const [clarify, setClarify] = useState(null);  // { convId, questions } | null —— 智能体主动提问（澄清）
       const [authorizationByConv, setAuthorizationByConv] = useState({});
       const [authorizationBusy, setAuthorizationBusy] = useState('');
       const [authorizationError, setAuthorizationError] = useState('');
 
-      const { list, setList: setListDirect, refresh, create, rename, remove, loadTurns } = useConversations();
+      useEffect(() => {
+        setEditRequest(null);
+      }, [activeConvId]);
+
+      useEffect(() => () => {
+        if (copyResetRef.current) clearTimeout(copyResetRef.current);
+      }, []);
+
+      const { list, setList: setListDirect, refresh, create, rename, remove, pin, loadTurns } = useConversations();
       const { runningConvs, start, stop, attach } = useSSE();
       const running = runningConvs.has(activeConvId);
       const activeAuthorization = authorizationByConv[activeConvId] || null;
-      // ── 排序/分组后的会话列表 ──
+      const refreshProjects = useCallback(async () => {
+        try {
+          const r = await fetch('/api/v1/projects');
+          if (!r.ok) return [];
+          const data = await r.json();
+          const next = data?.projects || [];
+          setProjects(next);
+          return next;
+        } catch (e) {
+          console.error('[projects] refresh error:', e);
+          return [];
+        }
+      }, []);
+
+      useEffect(() => {
+        try { localStorage.setItem('praxic_session_sort', sessionSort); } catch {}
+      }, [sessionSort]);
+
+      useEffect(() => { refreshProjects(); }, [refreshProjects]);
+
+      const activeConversation = (list || []).find(c => c.id === activeConvId);
+      activeProjectRef.current = activeConversation?.project_id || (activeProjectId === null ? '' : activeProjectId);
+
       const sortedConversations = useMemo(() => {
         const convs = [...(list || [])];
-        if (sessionSort === 'by_project') {
-          const groups = {};
-          for (const c of convs) {
-            const pid = c.project_id || '';
-            if (!groups[pid]) groups[pid] = [];
-            groups[pid].push(c);
-          }
-          const result = [];
-          for (const [pid, items] of Object.entries(groups)) {
-            const proj = (projects || []).find(p => p.id === pid);
-            result.push({ type: 'group_header', pid, label: proj?.name || (pid ? '未知项目' : '默认项目') });
-            for (const c of items) result.push({ ...c, type: 'conv' });
-          }
-          return result;
-        } else if (sessionSort === 'oldest') {
-          return convs.reverse();
+        const pinned = convs.filter(c => c.pinned);
+        const regular = convs.filter(c => !c.pinned);
+        if (sessionSort === 'oldest') return [...pinned, ...regular.reverse()];
+        if (sessionSort !== 'by_project') return [...pinned, ...regular];
+
+        const projectMap = new Map((projects || []).map(project => [project.id, project]));
+        const grouped = new Map();
+        for (const conversation of regular) {
+          const pid = conversation.project_id || '';
+          if (!grouped.has(pid)) grouped.set(pid, []);
+          grouped.get(pid).push(conversation);
         }
-        // recent: API 已按 last_active DESC 返回，直接用
-        return convs;
-      }, [list, sessionSort, projects]);
+        const orderedIds = [
+          ...(projects || []).map(project => project.id),
+          ...Array.from(grouped.keys()).filter(pid => !(projects || []).some(project => project.id === pid)),
+        ];
+        const result = [];
+        for (const pid of orderedIds) {
+          const items = grouped.get(pid);
+          if (!items?.length) continue;
+          const project = projectMap.get(pid);
+          result.push({
+            type: 'group_header',
+            pid,
+            label: project?.name || (pid ? '未命名项目' : '默认项目'),
+          });
+          result.push(...items);
+        }
+        return [...pinned, ...result];
+      }, [list, projects, sessionSort]);
       const stopCurrent = useCallback(async () => {
         const cid = activeConvRef.current;
         if (!cid) return;
@@ -2578,7 +3751,7 @@
           const r = await fetch('/api/v1/agent/authorizations/' + encodeURIComponent(request.request_id), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action, project_id: activeProjectIdRef.current || '' }),
+            body: JSON.stringify({ action }),
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.detail || '授权状态更新失败');
@@ -2608,8 +3781,6 @@
       renameRef.current = rename;
       const refreshRef = useRef(refresh);
       refreshRef.current = refresh;
-      const activeProjectIdRef = useRef(activeProjectId);
-      activeProjectIdRef.current = activeProjectId;
       const prevActiveConvIdRef = useRef('');
       // Track whether we're mid-send (programmatic setActiveConvId from handleSend)
       const sendingRef = useRef(false);
@@ -2653,25 +3824,9 @@
         setPhaseLogs(previous => append(previous));
       }, []);
 
-      // Load conversation list（按当前项目筛选）——挂载 + 项目切换时刷新
-      useEffect(() => { refresh(activeProjectId); }, [activeProjectId, refresh]);
-
-      // Load projects（项目列表 + 当前项目的工作空间目录）
-      const refreshProjects = useCallback(async () => {
-        try {
-          const r = await fetch('/api/v1/projects');
-          const data = await r.json();
-          const ps = data?.projects || [];
-          setProjects(ps);
-          return ps;
-        } catch { return []; }
-      }, []);
-      useEffect(() => { refreshProjects(); }, [refreshProjects]);
-      // 工作空间目录跟随当前项目
-      useEffect(() => {
-        const p = projects.find(x => x.id === activeProjectId) || projects[0];
-        if (p && p.workspace_dir) setWorkspaceDir(p.workspace_dir);
-      }, [projects, activeProjectId]);
+      // The sidebar always shows every conversation; projects are used for
+      // assignment and grouping rather than as a persistent list filter.
+      useEffect(() => { refresh(); }, [refresh]);
 
       // Load available models
       useEffect(() => {
@@ -2745,7 +3900,7 @@
           }
           // Filter out placeholder entries ([...]) — they're internal markers
           const cleanTurns = historyTurns.filter(t => t.summary !== '[...]');
-          setTurns(cleanTurns.map(t => ({ type: 'history', question: t.question, summary: t.summary, action_items: t.action_items || [], files: [] })));
+          setTurns(cleanTurns.map(historyTurnFromApi));
           setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set());
         });
       }, [activeConvId]);
@@ -2761,18 +3916,15 @@
           if (!lastTurn || lastTurn.summary !== '[...]') return;
           if (recoveryTimerRef.current) { clearInterval(recoveryTimerRef.current); recoveryTimerRef.current = null; }
           if (!runningConvs.has(activeConvId)) {
-            // Backend is no longer running — orphaned [...], remove it
-            console.log('[recovery] orphaned [...] — showing history without it');
-            const clean = historyTurns.filter(t => t.summary !== '[...]');
-            setTurns(clean.map(t => {
-              if (t.summary === '[...]') return null;
-              return { type: 'history', question: t.question, summary: t.summary || '(已终止)', action_items: t.action_items || [], files: [] };
-            }).filter(Boolean));
+            // Backend is no longer running — keep the orphaned turn so its
+            // persisted phase logs and steering messages remain inspectable.
+            console.log('[recovery] orphaned [...] — showing preserved process');
+            setTurns(historyTurns.map(historyTurnFromApi));
             setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set());
             return;
           }
 
-          const historyEntries = historyTurns.slice(0, -1).map(t => ({ type: 'history', question: t.question, summary: t.summary, action_items: t.action_items || [], files: [] }));
+          const historyEntries = historyTurns.slice(0, -1).map(historyTurnFromApi);
           const recoveringConvId = activeConvId;
 
           const startPolling = () => {
@@ -2786,9 +3938,9 @@
                 recoveryTimerRef.current = null;
                 // Give up — show whatever history we have, clean up the stuck turn
                 console.log('[recovery] polling gave up after', attempts, 'attempts');
-                setTurns([...historyEntries, { type: 'history', question: lastTurn?.question || '(恢复超时)', summary: '**会话恢复超时**\n\n后台响应超过 2 分钟，已停止等待。你可以新建对话或重新提问。', action_items: [], files: [] }]);
+                setTurns([...historyEntries, { ...historyTurnFromApi(lastTurn || {}), summary: '**会话恢复超时**\n\n后台响应超过 2 分钟，已停止等待。此前已发生的过程仍保留在下方。' }]);
                 setPhaseLogs([]);
-                refreshRef.current(activeProjectIdRef.current);
+                refreshRef.current();
                 return;
               }
               loadTurns(recoveringConvId).then(fresh => {
@@ -2797,10 +3949,10 @@
                   console.log('[recovery] backend finished via polling');
                   clearInterval(recoveryTimerRef.current);
                   recoveryTimerRef.current = null;
-                  const clean = fresh.filter(t => t.summary !== '[...]');
-                  setTurns(clean.map(t => ({ type: 'history', question: t.question, summary: t.summary, action_items: t.action_items || [], files: [] })));
+                   const clean = fresh.filter(t => t.summary !== '[...]');
+                   setTurns(clean.map(historyTurnFromApi));
                   setPhaseLogs([]);
-                  refreshRef.current(activeProjectIdRef.current);
+                  refreshRef.current();
                 }
               });
             };
@@ -2844,7 +3996,7 @@
                   capturedPhaseLogsRef.current = [];
                   setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, running: false, summary, actions, phaseLogs: finalPhaseLogs } : t));
                   setPhaseLogs([]);
-                  refreshRef.current(activeProjectIdRef.current);
+                refreshRef.current();
                 },
               });
               return; // SSE attached — skip polling
@@ -2904,31 +4056,35 @@
         if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
       }, [turns, phaseLogs]);
 
-      const handleSend = useCallback((question, context, mode, reviewStrategy, model, files) => {
+      const handleSend = useCallback((question, context, mode, reviewStrategy, model, files, replaceTurnIndex = null, replaceSessionId = '') => {
         console.log('[handleSend] activeConvRef.current:', activeConvRef.current, 'turns.length:', turnsRef.current.length);
         let cid = activeConvRef.current;
+        const projectIdForRun = activeConversation ? (activeConversation.project_id || '') : activeProjectRef.current;
         // Prevent double-send on a conversation that's already running
         if (cid && runningConvs.has(cid)) {
           console.log('[handleSend] conv already running, skipping:', cid);
           return;
         }
+        const shouldReplaceTurn = Boolean(cid) && Number.isInteger(replaceTurnIndex)
+          && replaceTurnIndex >= 0 && replaceTurnIndex < turnsRef.current.length;
+        const turnIdx = shouldReplaceTurn ? replaceTurnIndex : turnsRef.current.length;
         sendingRef.current = true;
         const ensureConv = async () => {
           if (!cid) {
-            cid = await create(question.slice(0,24), activeProjectIdRef.current);
+            cid = await create(question.slice(0,24), projectIdForRun);
             console.log('[handleSend] created new conv:', cid);
             // Optimistic: insert into sidebar list before refresh completes
-            const optimisticEntry = { id: cid, name: question.slice(0, 24), question_count: 0, last_active: new Date().toISOString() };
+            const optimisticEntry = { id: cid, name: question.slice(0, 24), question_count: 0, last_active: new Date().toISOString(), project_id: projectIdForRun };
             setListDirect(prev => [optimisticEntry, ...prev]);
             setActiveConvId(cid);
           } else {
             setActiveConvId(cid);
           }
           // Add user bubble
-          const turnIdx = turnsRef.current.length;
           const fileInfos = (files || []).map(f => typeof f === 'string' ? { name: f, path: f } : f);
           const filePaths = fileInfos.map(f => f.path);
-          setTurns(prev => [...prev, { type: 'turn', question, context, mode, reviewStrategy, running: true, summary: '', actions: [], files: fileInfos }]);
+          const nextTurn = { type: 'turn', question, context, mode, reviewStrategy, model, running: true, summary: '', actions: [], files: fileInfos };
+          setTurns(prev => shouldReplaceTurn ? [...prev.slice(0, turnIdx), nextTurn] : [...prev, nextTurn]);
           setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set()); activePhaseRef.current = null;
           steeringHistoryRef.current = []; setSteeringCount(0);
           capturedPhaseLogsRef.current = [];  // reset for new turn
@@ -2938,7 +4094,7 @@
           // Flush React render (sidebar entry + user bubble) before SSE events arrive
           await new Promise(r => setTimeout(r, 30));
 
-          start(question, context, mode, cid, reviewStrategy, model, activeProjectIdRef.current, filePaths, {
+          start(question, context, mode, cid, reviewStrategy, model, projectIdForRun, filePaths, {
             onPhase: (phase, summary, data) => {
               recordPhaseEvent(cid, phase, summary, data);
             },
@@ -2959,14 +4115,16 @@
               capturedPhaseLogsRef.current = [];
               setTurns(prev => {
                 const copy = [...prev];
-                if (copy[turnIdx]) copy[turnIdx] = { ...copy[turnIdx], running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs };
+                if (copy[turnIdx]) copy[turnIdx] = { ...copy[turnIdx], sessionId: result.session_id || copy[turnIdx].sessionId || '', running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs };
                 return copy;
               });
               // Also update cache for background-switch recovery
               if (convStateCacheRef.current[cid]) {
-                convStateCacheRef.current[cid].turns = convStateCacheRef.current[cid].turns.map((t, i) =>
-                  i === turnIdx ? { ...t, running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs } : t
-                );
+                const cachedTurns = convStateCacheRef.current[cid].turns || [];
+                const update = t => ({ ...t, sessionId: result.session_id || t.sessionId || '', running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs });
+                convStateCacheRef.current[cid].turns = shouldReplaceTurn
+                  ? [...cachedTurns.slice(0, turnIdx), update(cachedTurns[turnIdx] || {})]
+                  : cachedTurns.map((t, i) => i === turnIdx ? update(t) : t);
               }
               // Trigger MathJax if this conv is active
               if (isActive) {
@@ -2976,7 +4134,7 @@
                   }
                 }, 100);
               }
-              refreshRef.current(activeProjectIdRef.current);  // always refresh list (question_count, etc.)
+              refreshRef.current();  // always refresh list (question_count, etc.)
             },
             onClarification: (questions) => {
               setClarify({ convId: cid, questions: questions || [] });
@@ -2986,6 +4144,7 @@
                 setAuthorizationByConv(prev => ({ ...prev, [cid]: authorization }));
               }
             },
+            replaceSessionId: shouldReplaceTurn ? replaceSessionId : '',
             onTitle: (title, cid) => {
               console.log('[onTitle] title:', title, 'cid:', cid);
               if (cid) {
@@ -2999,16 +4158,108 @@
           });
         };
         ensureConv();
-      }, [start, create, runningConvs]);  // runningConvs guards against double-send
+      }, [start, create, runningConvs, activeConversation]);  // runningConvs guards against double-send
       // refresh/rename accessed via refs — no need in deps
 
-      const handleNewSession = useCallback(async () => {
-        console.log('[handleNewSession] creating in project', activeProjectId);
-        const newId = await create('新对话', activeProjectId);
-        console.log('[handleNewSession] done, newId:', newId);
-        await refresh(activeProjectId);
-        setActiveConvId(newId); setTurns([]);
-      }, [create, refresh, activeProjectId]);
+      const requestEdit = useCallback((turn, turnIndex) => {
+        if (!turn || turn.steer || running) return;
+        setEditRequest({
+          key: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          turnIndex,
+        });
+      }, [running]);
+
+      const sendEditedTurn = useCallback((question, context, mode, reviewStrategy, model, files) => {
+        setEditRequest(null);
+        handleSend(question, context, mode, reviewStrategy, model || selectedModel, files);
+      }, [handleSend, selectedModel]);
+
+      const resendTurn = useCallback((turn, turnIndex) => {
+        if (running || !turn.question?.trim()) return;
+        handleSend(
+          turn.question.trim(),
+          (turn.context || '').trim(),
+          turn.mode || 'deep',
+          turn.reviewStrategy || 'off',
+          turn.model || selectedModel,
+          turn.files || [],
+          turnIndex,
+          turn.sessionId || '',
+        );
+      }, [handleSend, running, selectedModel]);
+
+      const copyTurn = useCallback(async (turn, key) => {
+        const text = String(turn.question || '');
+        if (!text) return;
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            throw new Error('clipboard API unavailable');
+          }
+        } catch {
+          try {
+            const area = document.createElement('textarea');
+            area.value = text;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            const copied = document.execCommand('copy');
+            area.remove();
+            if (!copied) throw new Error('copy failed');
+          } catch (error) {
+            console.error('[copy] failed:', error);
+            return;
+          }
+        }
+        setCopiedTurnKey(key);
+        if (copyResetRef.current) clearTimeout(copyResetRef.current);
+        copyResetRef.current = setTimeout(() => setCopiedTurnKey(''), 1600);
+      }, []);
+
+      const handleNewSession = useCallback(() => {
+        setProjectDialog({
+          initialProjectId: activeConversation ? (activeConversation.project_id || '') : (activeProjectId === null ? '' : activeProjectId),
+        });
+      }, [activeConversation, activeProjectId]);
+
+      const handleProjectDialogConfirm = useCallback(async ({ projectId, newProject }) => {
+        try {
+          let targetProjectId = projectId || '';
+          if (newProject) {
+            const response = await fetch('/api/v1/projects', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newProject.name, folder_path: newProject.folderPath || '' }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.detail || '创建项目失败');
+            targetProjectId = data.project_id || '';
+          }
+
+          await refreshProjects();
+          setActiveProjectId(targetProjectId);
+          try { store.save({ activeProjectId: targetProjectId }); } catch {}
+          await refresh();
+
+          const newId = await create('新对话', targetProjectId);
+          const optimisticEntry = {
+            id: newId,
+            name: '新对话',
+            question_count: 0,
+            last_active: new Date().toISOString(),
+            project_id: targetProjectId,
+          };
+          setListDirect(prev => [optimisticEntry, ...prev]);
+          setActiveConvId(newId);
+          setTurns([]);
+          setProjectDialog(null);
+        } catch (e) {
+          console.error('[project-dialog] error:', e);
+          alert(e.message || '项目操作失败');
+        }
+      }, [create, refresh, refreshProjects, setListDirect, store]);
 
       const handleDeleteSession = useCallback(async (id) => {
         stop(id);  // stop background SSE if this conv is running
@@ -3016,49 +4267,25 @@
         if (id === activeConvId) { setActiveConvId(list.length > 1 ? list.find(c => c.id !== id)?.id || '' : ''); setTurns([]); }
       }, [remove, activeConvId, list, stop]);
 
+      const handlePinSession = useCallback(async (id, pinned) => {
+        try {
+          await pin(id, pinned);
+        } catch (e) {
+          console.error('[pin] error:', e);
+          alert(e.message || '置顶状态更新失败');
+        }
+      }, [pin]);
+
       const handleSelectSession = useCallback((id) => {
         if (id === activeConvId) return;
         // Don't stop background SSE — just switch the view
         setActiveConvId(id);
       }, [activeConvId]);
 
-      const handleSelectProject = useCallback((pid) => {
-        if (pid === activeProjectId) return;
-        setActiveProjectId(pid);
-        store.save({ activeProjectId: pid });
-        setActiveConvId(''); setTurns([]);
-      }, [activeProjectId, store]);
-
-      const handleNewProject = useCallback(() => {
-        setShowNewProject(true);
-      }, []);
-
-      const handleNewProjectConfirm = useCallback(async ({ name, folderPath }) => {
-        setShowNewProject(false);
-        try {
-          const r = await fetch('/api/v1/projects', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, folder_path: folderPath }),
-          });
-          if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            alert(err.detail || '创建项目失败');
-            return;
-          }
-          const data = await r.json();
-          await refreshProjects();
-          setActiveProjectId(data.project_id);
-          store.save({ activeProjectId: data.project_id });
-          setActiveConvId(''); setTurns([]);
-        } catch (e) { console.error('[newProject] error:', e); }
-      }, [refreshProjects, store]);
-
       return (
         <div className="praxic-shell flex h-screen overflow-hidden" onDragOver={handleDragOver} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-          <Sidebar projects={projects} activeProjectId={activeProjectId} onSelectProject={handleSelectProject} onNewProject={handleNewProject}
-                   conversations={sortedConversations} activeId={activeConvId} onSelect={handleSelectSession} onDelete={handleDeleteSession} onNewSession={handleNewSession}
-                   workspaceDir={workspaceDir} animTitleId={animTitleId} runningConvs={runningConvs}
+          <Sidebar conversations={sortedConversations} activeId={activeConvId} onSelect={handleSelectSession} onDelete={handleDeleteSession} onPin={handlePinSession} onNewSession={handleNewSession}
+                   animTitleId={animTitleId} runningConvs={runningConvs} onSettings={() => setShowSettings(true)}
                    sessionSort={sessionSort} onSortChange={setSessionSort} />
           <div className="w-px bg-clay/30 flex-shrink-0" />
           <div className="flex-1 flex flex-col min-w-0">
@@ -3066,7 +4293,6 @@
             <div className="praxic-toolbar px-4 py-2 border-b border-linen/60 bg-cream flex items-center justify-end">
               <div className="flex items-center gap-2">
                 {devMode && <span className="text-[10px] px-2 py-0.5 rounded bg-seal-wash text-seal">DEV</span>}
-                <button onClick={() => setShowSettings(true)} className="text-xs px-2 py-1 rounded bg-dust text-warmgray hover:bg-clay/30">设置</button>
               </div>
             </div>
 
@@ -3078,15 +4304,14 @@
                     <div className="praxic-welcome text-center space-y-4 max-w-md mx-auto p-8">
                       <div className="text-5xl animate-pulse">🔄</div>
                       <h2 className="text-lg font-semibold text-ink font-display">正在恢复会话…</h2>
-                      <p className="text-sm text-warmgray">后端可能仍在启动或处理中，请稍候。<br/>如果长时间无响应，可以新建对话。</p>
-                      <button onClick={handleNewSession} className="mt-4 px-6 py-2 rounded-lg bg-seal text-white text-sm font-medium hover:bg-seal-light transition-colors">新建对话</button>
+                      <p className="text-sm text-warmgray">后端可能仍在启动或处理中，请稍候。<br/>如果长时间无响应，可从左上角＋重新开始。</p>
                     </div>
                   ) : (
                   <div className="text-center space-y-4 max-w-md mx-auto p-8">
                     <BrandMark size={72} className="mx-auto" variant="red" />
                     <h2 className="text-xl font-bold text-ink font-display">Praxic Agent</h2>
-                    <p className="text-sm text-warmgray">以毛泽东思想方法论为认知内核<br/>提出一个问题，开始认知循环</p>
-                    {activeConvId && <p className="text-xs text-amber-600 mt-2">会话加载异常，可尝试新建对话</p>}
+                   <p className="text-sm text-warmgray">提出一个问题，开始认知循环</p>
+                    {activeConvId && <p className="text-xs text-amber-600 mt-2">会话加载异常，可从左上角＋重新开始</p>}
                   </div>
                   )}
                 </div>
@@ -3106,20 +4331,41 @@
                     {/* User bubble */}
                     {turn.type !== 'recovering' && (
                     <div className="flex justify-end">
-                      <div className={'praxic-user-bubble max-w-[75%] rounded-2xl rounded-tr-md px-5 py-3 ' + (turn.steer ? 'bg-cream border border-clay/20 text-ink' : 'bg-seal text-white')}>
-                        {turn.steer && <div className="text-[10px] text-olive font-semibold uppercase tracking-wide mb-0.5">引导</div>}
-                        <div className="text-sm font-medium">{turn.question}</div>
-                        {turn.files && turn.files.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {turn.files.map((f, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] text-white/80">
-                                📎 {f.name}
-                              </span>
-                            ))}
-                          </div>
+                      <div className="praxic-user-message group">
+                        <div className={'praxic-user-bubble max-w-full rounded-2xl rounded-tr-md px-5 py-3 ' + (turn.steer ? 'bg-cream border border-clay/20 text-ink' : 'bg-seal text-white')}>
+                          {editRequest?.turnIndex === i ? (
+                            <InlineUserEditor key={editRequest.key} turn={turn} onCancel={() => setEditRequest(null)} onSend={sendEditedTurn} />
+                          ) : (
+                            <>
+                              {turn.steer && <div className="text-[10px] text-olive font-semibold uppercase tracking-wide mb-0.5">引导</div>}
+                              <div className="text-sm font-medium">{turn.question}</div>
+                              {turn.files && turn.files.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {turn.files.map((f, i) => (
+                                    <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] text-white/80">
+                                      📎 {f.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {turn.context && (
+                                <div className="praxic-user-context">
+                                  <span className="praxic-user-context__label">背景</span>{turn.context}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        {!turn.steer && editRequest?.turnIndex !== i && (
+                          <UserMessageActions
+                            turn={turn}
+                            onEdit={message => requestEdit(message, i)}
+                            onResend={message => resendTurn(message, i)}
+                            onCopy={message => copyTurn(message, 'turn-' + i)}
+                            copied={copiedTurnKey === 'turn-' + i}
+                            busy={running}
+                          />
                         )}
-                        {turn.context && <div className="text-[11px] text-white/70 mt-1">{turn.context}</div>}
-                        {!turn.steer && <div className="text-[10px] text-white/50 mt-1">{turn.mode || 'standard'} 模式</div>}
                       </div>
                     </div>
                     )}
@@ -3128,17 +4374,27 @@
                     {i === turns.length - 1 && turn.running && phaseLogs.length > 0 && (
                       <PhaseBlock phases={phaseLogs} activePhase={activePhase} completedPhases={completedPhases} running={true} onSteer={handleSteer} steeringCount={steeringCount} />
                     )}
-                    {!turn.running && turn.phaseLogs && turn.phaseLogs.length > 0 && uiSettings.show_thinking_after_answer !== false && (
-                      <PhaseBlock phases={turn.phaseLogs} activePhase={null} completedPhases={new Set(turn.phaseLogs.map(p => p.phase))} />
-                    )}
-
                     {/* Agent bubble */}
                     {!turn.running && turn.summary && (
                       <div className="flex justify-start">
                         <div className="praxic-agent-bubble max-w-[80%] bg-cream border border-linen/50 rounded-2xl rounded-tl-md px-5 py-3">
-                          <div className="text-xs font-semibold text-warmgray mb-1 flex items-center gap-1.5"><BrandMark size={16} />Praxic分析</div>
-                          <div className="text-sm text-ink leading-relaxed markdown-body"
-                            dangerouslySetInnerHTML={{__html: renderMarkdown(turn.summary)}} />
+                          {turn.phaseLogs && turn.phaseLogs.length > 0 && uiSettings.show_thinking_after_answer !== false ? (
+                            <button type="button" className="praxic-agent-heading" onClick={() => setHistoryProcessOpen(prev => ({ ...prev, [i]: !prev[i] }))}
+                              aria-expanded={!!historyProcessOpen[i]} aria-controls={'history-process-' + i} title={historyProcessOpen[i] ? '收起历史思维过程' : '展开历史思维过程'}>
+                              <span className="flex items-center gap-1.5"><BrandMark size={16} />Praxic分析</span>
+                              <span className="praxic-agent-heading__chevron" aria-hidden="true">{historyProcessOpen[i] ? '−' : '+'}</span>
+                            </button>
+                          ) : (
+                            <div className="praxic-agent-heading"><span className="flex items-center gap-1.5"><BrandMark size={16} />Praxic分析</span></div>
+                           )}
+                           {historyProcessOpen[i] && turn.phaseLogs && turn.phaseLogs.length > 0 && (
+                             <div id={'history-process-' + i} className="praxic-agent-process">
+                               <PhaseBlock phases={turn.phaseLogs} activePhase={null} completedPhases={new Set(turn.phaseLogs.map(p => p.phase))} />
+                             </div>
+                           )}
+                           <div className={'praxic-agent-answer' + (historyProcessOpen[i] && turn.phaseLogs && turn.phaseLogs.length > 0 ? ' praxic-agent-answer--separated' : '')}>
+                             <div className="text-sm text-ink leading-relaxed markdown-body"
+                               dangerouslySetInnerHTML={{__html: renderMarkdown(turn.summary)}} />
                           {turn.actions && turn.actions.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-linen/40">
                               <div className="text-xs font-semibold text-olive mb-1.5">✅ 行动建议</div>
@@ -3177,18 +4433,11 @@
                               </div>
                             </div>
                           )}
-                        </div>
+                           </div>
+                         </div>
                       </div>
                     )}
 
-                    {/* Running indicator */}
-                    {turn.running && (
-                      <div className="flex justify-start">
-                        <div className="bg-cream border border-linen/50 rounded-2xl rounded-tl-md px-5 py-3 animate-pulse">
-                          <span className="text-xs text-warmgray">思考中…</span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
@@ -3213,7 +4462,7 @@
                 </div>
               </div>
             )}
-            <InputBar onSend={handleSend} running={running} onStop={stopCurrent} onSteer={handleSteer} model={selectedModel} availableModels={availableModels} onModelChange={v => { setSelectedModel(v); try { localStorage.setItem('praxic_selected_model', v); } catch {} }} projectId={activeProjectId} files={files} setFiles={setFiles} uploading={uploading} handleFiles={handleFiles} awaitingClarification={!!(clarify && clarify.convId === activeConvId)} onAnswer={submitAnswer} />
+            <InputBar onSend={handleSend} running={running} onStop={stopCurrent} onSteer={handleSteer} model={selectedModel} availableModels={availableModels} onModelChange={v => { setSelectedModel(v); try { localStorage.setItem('praxic_selected_model', v); } catch {} }} files={files} setFiles={setFiles} uploading={uploading} handleFiles={handleFiles} awaitingClarification={!!(clarify && clarify.convId === activeConvId)} onAnswer={submitAnswer} />
           </div>
           {showSettings && <SettingsDialog uiSettings={uiSettings} availableModels={availableModels} devMode={devMode} setDevMode={setDevMode} onSave={(s) => {
             setUiSettings(s);
@@ -3224,12 +4473,12 @@
             document.documentElement.style.setProperty('--app-font-size', (fs || FONT_SIZES[1]).css);
             if (s.page_zoom) document.body.style.zoom = (s.page_zoom / 100).toString();
           }} onClose={() => setShowSettings(false)} />}
-          {showNewProject && (
-            <NewProjectDialog
-              onConfirm={handleNewProjectConfirm}
-              onCancel={() => setShowNewProject(false)}
-            />
-          )}
+          {projectDialog && <ProjectDialog
+            projects={projects}
+            initialProjectId={projectDialog.initialProjectId || ''}
+            onConfirm={handleProjectDialogConfirm}
+            onCancel={() => setProjectDialog(null)}
+          />}
           {dragOver && (
             <div className="fixed inset-0 z-50 bg-ink/25 backdrop-blur-sm flex items-center justify-center pointer-events-none">
               <div className="bg-cream border-2 border-dashed border-seal rounded-3xl px-10 py-8 shadow-xl">

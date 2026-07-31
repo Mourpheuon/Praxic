@@ -154,10 +154,12 @@ def _finish_stream(conv_id: str) -> None:
 
 async def _run_and_broadcast(
     conv_id: str, question: str, context: str, mode: str, review_strategy: str,
-    model: str = "", files: str = "", project_id: str = ""
+    model: str = "", files: str = "", project_id: str = "", replace_session_id: str = ""
 ) -> None:
     """后台任务：运行认知循环，将事件广播给所有订阅者。"""
     loop_inst = get_loop(project_id)
+    if replace_session_id:
+        loop_inst.episodic.truncate_conversation_from(conv_id, replace_session_id)
     file_list = [f.strip() for f in files.split(",") if f.strip()] if files else None
     try:
         async for event in loop_inst.stream_run(
@@ -297,6 +299,7 @@ async def stream_agent(
     model: str = "",
     files: str = "",
     project_id: str = "",
+    replace_session_id: str = "",
 ):
     """
     SSE 流式端点（支持断线重连）。
@@ -331,7 +334,7 @@ async def stream_agent(
         if conv_id:
             asyncio.create_task(
                 _run_and_broadcast(conv_id, question, context, mode, review_strategy,
-                                   model, files, project_id)
+                                   model, files, project_id, replace_session_id)
             )
         else:
             # 无 conv_id：退化为旧式单次流（向后兼容）
@@ -449,22 +452,76 @@ async def control_agent(req: ControlRequest):
     action = req.action.lower()
     if action == "steer":
         controller.steer(req.content, target_phase=req.target_phase)
+        if req.content.strip():
+            get_episodic().append_conversation_event(
+                conversation_id=req.conversation_id,
+                session_id=controller.session_id,
+                phase=controller.current_phase or req.target_phase or "practice",
+                summary="用户插话：" + req.content.strip(),
+                event_type="steering",
+                data={
+                    "event_type": "steering",
+                    "content": req.content.strip(),
+                    "target_phase": req.target_phase or "",
+                },
+            )
         log.info("control.steer", conv_id=req.conversation_id, content=req.content[:80])
         return {"status": "ok", "action": "steer", "conversation_id": req.conversation_id}
     elif action == "interrupt":
         controller.interrupt()
+        get_episodic().append_conversation_event(
+            conversation_id=req.conversation_id,
+            session_id=controller.session_id,
+            phase=controller.current_phase or "practice",
+            summary="用户请求打断当前认知循环",
+            event_type="interrupt",
+            data={"event_type": "interrupt", "action": "interrupt"},
+        )
         log.info("control.interrupt", conv_id=req.conversation_id)
         return {"status": "ok", "action": "interrupt", "conversation_id": req.conversation_id}
     elif action == "stop":
         controller.stop()
+        get_episodic().append_conversation_event(
+            conversation_id=req.conversation_id,
+            session_id=controller.session_id,
+            phase=controller.current_phase or "practice",
+            summary="用户终止了认知循环",
+            event_type="stop",
+            data={"event_type": "stop", "action": "stop"},
+        )
         log.info("control.stop", conv_id=req.conversation_id)
         return {"status": "ok", "action": "stop", "conversation_id": req.conversation_id}
     elif action == "resume":
         controller.resume(steer=req.content or None)
+        if req.content.strip():
+            get_episodic().append_conversation_event(
+                conversation_id=req.conversation_id,
+                session_id=controller.session_id,
+                phase=controller.current_phase or "practice",
+                summary="恢复运行时附带插话：" + req.content.strip(),
+                event_type="steering",
+                data={
+                    "event_type": "steering",
+                    "content": req.content.strip(),
+                    "action": "resume",
+                },
+            )
         log.info("control.resume", conv_id=req.conversation_id)
         return {"status": "ok", "action": "resume", "conversation_id": req.conversation_id}
     elif action == "answer":
         controller.submit_clarification(req.content)
+        get_episodic().append_conversation_event(
+            conversation_id=req.conversation_id,
+            session_id=controller.session_id,
+            phase=controller.current_phase or "preprocessing",
+            summary="用户回答了澄清问题",
+            event_type="user_question",
+            data={
+                "event_type": "user_question",
+                "content": req.content or "",
+                "action": "answer",
+            },
+        )
         log.info("control.answer", conv_id=req.conversation_id)
         return {"status": "ok", "action": "answer", "conversation_id": req.conversation_id}
     else:

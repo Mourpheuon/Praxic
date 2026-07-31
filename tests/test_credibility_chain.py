@@ -61,7 +61,7 @@ class TestCredibilityChainFullPipeline:
         facts = _make_fact_report([("f1","strong fact",0.95)])
         cg = _make_contradiction(basis_ids=["f1"])
         chain = CredibilityChain.from_trace(fact_report=facts, contradiction_graph=cg)
-        assert chain.weakest_link in ["调查阶段","矛盾分析","理性认识","决策输出"]
+        assert chain.weakest_link in ["调查阶段","矛盾分析","理性认识","实践检验"]
 
     def test_summary_format(self):
         facts = _make_fact_report([("f1","fact",0.9)])

@@ -7,7 +7,7 @@
       <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.05" xChannelSelector="R" yChannelSelector="G" />
     </filter>
   </defs>
-  <g filter="url(#chalk)" fill="none" stroke="#8c271e" stroke-linecap="round" stroke-linejoin="round">
+  <g filter="url(#chalk)" fill="none" stroke="#8C0000" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="128" cy="128" r="91" stroke-width="12" />
     <g transform="rotate(34 128 128)">
       <path d="M128 38 160 128 128 218 96 128Z" stroke-width="11" />

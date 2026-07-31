@@ -74,7 +74,7 @@ async def main():
     fake = CapturingFake()
     loop = CognitiveLoop(llm=fake, project_id="")   # project 通过 run() 传
     for attr in ("preprocessor","preprocessing","investigation","contradiction","rational",
-                 "decision","practice","reflection","perspectives"):
+                 "practice","reflection","perspectives"):
         obj = getattr(loop, attr, None)
         if obj is not None and hasattr(obj, "llm"):
             obj.llm = fake
@@ -114,8 +114,8 @@ async def main():
     results["list_projects含testproj"] = lp.get("testproj", 0) >= 1
 
     # ── 断言 4：非调查阶段不注入文件（token 控制）──
-    # 决策阶段调用不应含哨兵（文件仅进调查阶段）
-    # 找决策相关调用：含"战略"或 action，宽松起见只验证——并非每个调用都带哨兵
+    # 后续实践阶段调用不应含哨兵（文件仅进调查阶段）
+    # 宽松验证至少存在不含文件的后续阶段调用。
     non_sentinel_calls = [c for c in fake.calls if SENTINEL not in c["user"]]
     results["存在不含文件的后续阶段调用(token控制)"] = len(non_sentinel_calls) >= 1
 

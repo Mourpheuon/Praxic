@@ -18,7 +18,7 @@ from praxic.llm.base import BaseLLM, LLMResponse
 from praxic.core.practice import PracticeModule
 from praxic.tools.filesystem import WorkspaceToolkit
 from praxic.api.schemas.models import (
-    ActionItem, DecisionReport, CognitiveTrace,
+    CognitiveTrace,
     FactReport, Fact, RationalSynthesis, ContradictionGraph,
 )
 from praxic.memory.working_memory import WorkingMemory
@@ -93,14 +93,6 @@ async def main():
     )
     trace.contradictions = ContradictionGraph()
 
-    decision = DecisionReport(
-        summary="编写Python脚本计算质数之和",
-        action_items=[
-            ActionItem(description="编写质数计算脚本", priority=1,
-                       practice_feasibility="direct"),
-        ],
-    )
-
     # WorkingMemory with skill context injected (simulates SkillManager.inject_phase_skills)
     wm = WorkingMemory(session_id="test")
     wm.set("_skill_context_practice",
@@ -109,7 +101,6 @@ async def main():
     print("\n[1] Calling practice.practice() with skill context + decoupled plan...")
     report = await practice.practice(
         question="用Python计算1到100所有质数的和",
-        decision_report=decision,
         trace=trace,
         wm=wm,
     )

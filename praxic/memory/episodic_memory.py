@@ -39,6 +39,7 @@ class EpisodicMemory:
                     session_id      TEXT NOT NULL,
                     conversation_id TEXT NOT NULL DEFAULT '',
                     question        TEXT NOT NULL,
+                    context         TEXT NOT NULL DEFAULT '',
                     summary         TEXT NOT NULL,
                     action_items    TEXT DEFAULT '[]',
                     principal_contradiction TEXT DEFAULT '',
@@ -51,6 +52,11 @@ class EpisodicMemory:
             try:
                 conn.execute("ALTER TABLE episodes ADD COLUMN conversation_id TEXT NOT NULL DEFAULT ''")
                 log.info("episodic_memory.migration", added="conversation_id")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE episodes ADD COLUMN context TEXT NOT NULL DEFAULT ''")
+                log.info("episodic_memory.migration", added="context")
             except sqlite3.OperationalError:
                 pass
             # 改进四：推导链持久化
@@ -85,7 +91,8 @@ class EpisodicMemory:
                 CREATE TABLE IF NOT EXISTS conversation_meta (
                     conversation_id TEXT PRIMARY KEY,
                     name            TEXT NOT NULL DEFAULT '',
-                    updated_at      TEXT NOT NULL
+                    updated_at      TEXT NOT NULL,
+                    pinned          INTEGER NOT NULL DEFAULT 0
                 )
             """)
             # project_id 迁移（v0.2.0）—— 项目归属，conversation_meta 为权威来源
@@ -99,13 +106,32 @@ class EpisodicMemory:
                 log.info("episodic_memory.migration", added="conversation_meta.project_id")
             except sqlite3.OperationalError:
                 pass
+            try:
+                conn.execute("ALTER TABLE conversation_meta ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+                log.info("episodic_memory.migration", added="conversation_meta.pinned")
+            except sqlite3.OperationalError:
+                pass
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_events (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT NOT NULL,
+                    session_id      TEXT NOT NULL DEFAULT '',
+                    phase           TEXT NOT NULL DEFAULT '',
+                    summary         TEXT NOT NULL DEFAULT '',
+                    event_type      TEXT NOT NULL DEFAULT 'phase',
+                    data            TEXT NOT NULL DEFAULT '{}',
+                    created_at      TEXT NOT NULL
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ce_conversation ON conversation_events(conversation_id, id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_ce_session ON conversation_events(session_id, id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_ep_project ON episodes(project_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_project ON conversation_meta(project_id)")
             conn.commit()
 
     def save_episode(self, session_id, question, summary, action_items=None,
                      principal_contradiction="", lessons=None, conversation_id="",
-                     derivation_chains=None, upsert_session=False, project_id=""):
+                     derivation_chains=None, upsert_session=False, project_id="", context=""):
         """Save an episode. If upsert_session=True, deletes the in-progress
         placeholder ('[...]') for this session_id before inserting the real one."""
         with sqlite3.connect(self.db_path) as conn:
@@ -124,10 +150,10 @@ class EpisodicMemory:
 
             cursor = conn.execute(
                 """INSERT INTO episodes
-                   (session_id, conversation_id, project_id, question, summary, action_items,
+                   (session_id, conversation_id, project_id, question, context, summary, action_items,
                     principal_contradiction, lessons, created_at, derivation_chains)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (session_id, conversation_id, project_id, question, summary,
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (session_id, conversation_id, project_id, question, context or "", summary,
                  json.dumps(action_items or [], ensure_ascii=False),
                  principal_contradiction,
                  json.dumps(lessons or [], ensure_ascii=False),
@@ -249,13 +275,19 @@ class EpisodicMemory:
                 project_id=project_id,
             )
             if recent:
-                lines = ["[此前对话记录]"]
+                entries = []
                 for i, ep in enumerate(reversed(recent), 1):
-                    lines.append(
-                        f"第{i}轮 - 用户问题：{ep['question'][:200]}\n"
-                        f"      结论：{ep['summary'][:250]}"
+                    entries.append(
+                        f"第{i}轮 - 用户问题：{ep['question'][:4000]}\n"
+                        f"      结论：{ep['summary'][:4000]}"
                     )
-                parts.append("\n".join(lines))
+                # Keep enough of a prior answer for code and other concrete
+                # artifacts to survive a follow-up, while bounding total prompt
+                # growth for long-running conversations.
+                history_budget = 18000
+                while entries and len("\n".join(entries)) > history_budget:
+                    entries.pop(0)
+                parts.append("[此前对话记录]\n" + "\n".join(entries))
         if current_question:
             relevant = self.search(current_question, limit=3)
             existing_ids = {ep["id"] for ep in recent}
@@ -291,17 +323,16 @@ class EpisodicMemory:
         return "\n\n".join(parts)
 
     def list_conversations(self, project_id=None):
-        """列出对话，按最近活动排序。
-        project_id=None → 全部；'' → 默认项目（未归属）；'x' → 指定项目。
-        以 conversation_meta.project_id 为权威归属来源。"""
+        """列出全部对话，按最近活动排序。"""
         where = ""
-        params: list = []
+        params = []
         if project_id is not None:
             where = "WHERE cm.project_id = ?"
-            params.append(project_id)
+            params.append(project_id or "")
         sql = """
                 SELECT cm.conversation_id,
                        cm.project_id,
+                       cm.pinned,
                        COALESCE(MAX(e.created_at), cm.updated_at) AS last_active,
                        COUNT(e.id) AS question_count,
                        (SELECT question FROM episodes e2
@@ -312,10 +343,10 @@ class EpisodicMemory:
                 FROM conversation_meta cm
                 LEFT JOIN episodes e ON e.conversation_id = cm.conversation_id
                                       AND e.summary != '[...]'
-                %s
+                {where}
                 GROUP BY cm.conversation_id
                 ORDER BY last_active DESC
-        """ % where
+        """.format(where=where)
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(sql, params).fetchall()
@@ -334,6 +365,67 @@ class EpisodicMemory:
                 (conversation_id, now, project_id or "", project_id or "", now),
             )
             conn.commit()
+
+    def set_conversation_pinned(self, conversation_id, pinned):
+        """设置对话置顶状态，并确保 conversation_meta 行存在。"""
+        if not conversation_id:
+            return
+        value = 1 if pinned else 0
+        now = datetime.now().isoformat()
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """INSERT INTO conversation_meta (conversation_id, name, updated_at, pinned)
+                   VALUES (?, '', ?, ?)
+                   ON CONFLICT(conversation_id) DO UPDATE SET pinned = ?, updated_at = ?""",
+                (conversation_id, now, value, value, now),
+            )
+            conn.commit()
+
+    def append_conversation_event(self, conversation_id, session_id, phase,
+                                  summary, event_type="phase", data=None):
+        """持久化一次认知事件，供历史会话恢复完整过程。"""
+        if not conversation_id:
+            return None
+        payload = data
+        if hasattr(payload, "model_dump"):
+            try:
+                payload = payload.model_dump(mode="json")
+            except TypeError:
+                payload = payload.model_dump()
+        elif hasattr(payload, "dict") and not isinstance(payload, dict):
+            try:
+                payload = payload.dict()
+            except Exception:
+                payload = str(payload)
+        if payload is None:
+            payload = {}
+        elif not isinstance(payload, dict):
+            payload = {"value": payload}
+        else:
+            payload = dict(payload)
+        if event_type:
+            payload.setdefault("event_type", event_type)
+        try:
+            data_json = json.dumps(payload, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            data_json = json.dumps({"event_type": event_type, "value": str(payload)}, ensure_ascii=False)
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                """INSERT INTO conversation_events
+                   (conversation_id, session_id, phase, summary, event_type, data, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    conversation_id,
+                    session_id or "",
+                    phase or "",
+                    str(summary or ""),
+                    event_type or "phase",
+                    data_json,
+                    datetime.now().isoformat(),
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid
 
     def list_projects(self):
         """列出所有项目（以 conversation_meta.project_id 分组）及统计。"""
@@ -355,11 +447,38 @@ class EpisodicMemory:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                """SELECT session_id, question, summary, action_items, created_at
+                """SELECT session_id, question, context, summary, action_items, created_at
                    FROM episodes WHERE conversation_id = ?
                    ORDER BY created_at ASC""",
                 (conversation_id,),
             ).fetchall()
+            event_rows = conn.execute(
+                """SELECT id, session_id, phase, summary, event_type, data, created_at
+                   FROM conversation_events WHERE conversation_id = ?
+                   ORDER BY id ASC""",
+                (conversation_id,),
+            ).fetchall()
+        phase_logs_by_session = {}
+        for event in event_rows:
+            raw_data = event["data"] or ""
+            if (event["event_type"] or "phase") == "phase" and raw_data in ("", "{}", "null"):
+                event_data = None
+            else:
+                try:
+                    event_data = json.loads(raw_data or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    event_data = {"value": raw_data}
+                if not isinstance(event_data, dict):
+                    event_data = {"value": event_data}
+                event_data.setdefault("event_type", event["event_type"] or "phase")
+            session_id = event["session_id"] or ""
+            phase_logs_by_session.setdefault(session_id, []).append({
+                "id": str(event["id"]),
+                "phase": event["phase"] or "",
+                "summary": event["summary"] or "",
+                "data": event_data,
+                "timestamp": event["created_at"] or "",
+            })
         results = []
         for r in rows:
             d = dict(r)
@@ -367,8 +486,54 @@ class EpisodicMemory:
                 d["action_items"] = json.loads(d.get("action_items", "[]"))
             except (json.JSONDecodeError, TypeError):
                 d["action_items"] = []
+            d["phase_logs"] = phase_logs_by_session.get(d.get("session_id", ""), [])
             results.append(d)
         return results
+
+    def truncate_conversation_from(self, conversation_id, session_id):
+        """Remove a selected turn and all later turns from a conversation."""
+        if not conversation_id or not session_id:
+            return 0
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                """SELECT MIN(id) FROM episodes
+                   WHERE conversation_id = ? AND session_id = ?""",
+                (conversation_id, session_id),
+            ).fetchone()
+            cutoff_id = row[0] if row else None
+            if cutoff_id is None:
+                return 0
+
+            conn.execute(
+                """DELETE FROM derivation_chains
+                   WHERE episode_id IN (
+                     SELECT id FROM episodes
+                     WHERE conversation_id = ? AND id >= ?
+                   )""",
+                (conversation_id, cutoff_id),
+            )
+            conn.execute(
+                """DELETE FROM conversation_events
+                   WHERE conversation_id = ?
+                     AND session_id IN (
+                       SELECT session_id FROM episodes
+                       WHERE conversation_id = ? AND id >= ?
+                     )""",
+                (conversation_id, conversation_id, cutoff_id),
+            )
+            deleted = conn.execute(
+                """DELETE FROM episodes
+                   WHERE conversation_id = ? AND id >= ?""",
+                (conversation_id, cutoff_id),
+            ).rowcount
+            conn.commit()
+        log.info(
+            "episodic_memory.truncated_conversation",
+            conversation=conversation_id,
+            from_session=session_id,
+            deleted=deleted,
+        )
+        return deleted
 
     def get_conversation_name(self, conversation_id):
         with sqlite3.connect(self.db_path) as conn:
@@ -399,6 +564,10 @@ class EpisodicMemory:
 
     def delete_conversation(self, conversation_id):
         with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "DELETE FROM conversation_events WHERE conversation_id = ?",
+                (conversation_id,),
+            )
             cursor = conn.execute(
                 "DELETE FROM episodes WHERE conversation_id = ?",
                 (conversation_id,),

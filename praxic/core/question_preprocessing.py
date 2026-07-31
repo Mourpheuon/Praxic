@@ -51,38 +51,38 @@ _STEP1_TASK_NATURE_PROMPT = """判断以下用户问题的任务性质与复杂�
 PHASE_NECESSITY_TABLE = {
     "code_generation": {
         "investigation": "light",    "contradiction": "skip",
-        "rational": "skip",          "decision": "required",
-        "practice": "required",      "reflection": "required",
+        "rational": "skip",          "practice": "required",
+        "reflection": "required",
     },
     "fact_lookup": {
         "investigation": "required", "contradiction": "required",
-        "rational": "required",      "decision": "light",
-        "practice": "skip",          "reflection": "required",
+        "rational": "required",      "practice": "skip",
+        "reflection": "required",
     },
     "causal_explanation": {
         "investigation": "required", "contradiction": "required",
-        "rational": "required",      "decision": "required",
-        "practice": "required",      "reflection": "required",
+        "rational": "required",      "practice": "required",
+        "reflection": "required",
     },
     "comparison_decision": {
         "investigation": "required", "contradiction": "required",
-        "rational": "required",      "decision": "required",
-        "practice": "light",         "reflection": "required",
+        "rational": "required",      "practice": "light",
+        "reflection": "required",
     },
     "exploration_understanding": {
         "investigation": "required", "contradiction": "required",
-        "rational": "required",      "decision": "light",
-        "practice": "required",      "reflection": "required",
+        "rational": "required",      "practice": "required",
+        "reflection": "required",
     },
     "creative_design": {
         "investigation": "light",    "contradiction": "required",
-        "rational": "required",      "decision": "required",
-        "practice": "required",      "reflection": "required",
+        "rational": "required",      "practice": "required",
+        "reflection": "required",
     },
     "other": {
         "investigation": "required", "contradiction": "required",
-        "rational": "required",      "decision": "required",
-        "practice": "light",         "reflection": "required",
+        "rational": "required",      "practice": "light",
+        "reflection": "required",
     },
 }
 
@@ -304,7 +304,6 @@ class QuestionPreprocessing:
             investigation_necessity=necessity["investigation"],
             contradiction_necessity=necessity["contradiction"],
             rational_necessity=necessity["rational"],
-            decision_necessity=necessity["decision"],
             practice_necessity=necessity["practice"],
             reflection_necessity=necessity["reflection"],
         )

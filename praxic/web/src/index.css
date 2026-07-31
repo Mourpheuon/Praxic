@@ -1,18 +1,18 @@
 :root {
   font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
-  color: #171717;
+  color: #123B63;
   background: #dfe2df;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --paper: #dfe2df;
   --panel: #f3f4f1;
-  --ink: #171717;
+  --ink: #123B63;
   --muted: #656965;
   --line: #aeb3ae;
-  --red: #e34832;
+  --red: #8C0000;
   --blue: #2456c6;
   --yellow: #f2c84b;
-  --dark: #242321;
+  --dark: #123B63;
 }
 
 * { box-sizing: border-box; }
@@ -32,7 +32,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .topbar-meta i { width: 1px; height: 14px; background: #6e6860; }
 .status-pip { width: 9px; height: 9px; display: inline-block; background: #777; }
 .status-pip--running { background: var(--yellow); box-shadow: 0 0 0 4px rgba(242, 200, 75, .16); }
-.status-pip--waiting { background: var(--red); box-shadow: 0 0 0 4px rgba(227, 72, 50, .2); animation: pulse-mark 1.2s steps(2, end) infinite; }
+.status-pip--waiting { background: var(--red); box-shadow: 0 0 0 4px rgba(140, 0, 0, .2); animation: pulse-mark 1.2s steps(2, end) infinite; }
 .status-pip--done { background: #83be72; }
 .status-pip--error { background: var(--red); }
 
@@ -89,8 +89,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .phase-group__meta small { margin-top: 3px; color: var(--muted); font-size: 9px; white-space: nowrap; }
 .phase-group--active .phase-group__meta small { color: var(--red); font-weight: 800; }
 .phase-group--waiting .phase-group__meta small, .phase-group--error .phase-group__meta small { color: var(--red); font-weight: 800; }
-.phase-group--active .phase-group__icon { box-shadow: 0 0 0 4px rgba(227, 72, 50, .12); animation: pulse-mark 1.2s steps(2, end) infinite; }
-.phase-group--waiting .phase-group__icon, .phase-group--error .phase-group__icon { box-shadow: 0 0 0 4px rgba(227, 72, 50, .16); }
+.phase-group--active .phase-group__icon { box-shadow: 0 0 0 4px rgba(140, 0, 0, .12); animation: pulse-mark 1.2s steps(2, end) infinite; }
+.phase-group--waiting .phase-group__icon, .phase-group--error .phase-group__icon { box-shadow: 0 0 0 4px rgba(140, 0, 0, .16); }
 .phase-group__summary { min-width: 0; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .phase-group__chevron { color: var(--red); font-family: ui-monospace, monospace; font-size: 19px; text-align: center; }
 .phase-group__body { margin-left: 16px; padding: 2px 0 7px 16px; border-left: 1px solid var(--line); }
@@ -112,7 +112,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .event-copy strong { margin-top: 4px; font-size: 12px; font-weight: 750; line-height: 1.35; }
 .event-copy em { margin-top: 4px; color: var(--muted); font-size: 9px; font-style: normal; }
 .event-row-wrap--active .event-copy em, .event-row-wrap--authorization .event-copy em, .event-row-wrap--failure .event-copy em { color: var(--red); font-weight: 800; }
-.event-steer-trigger { padding: 5px 6px; color: var(--red); border: 1px solid rgba(227, 72, 50, .35); background: transparent; font-size: 9px; font-weight: 800; opacity: 0; transition: opacity .16s ease, background .16s ease; }
+.event-steer-trigger { padding: 5px 6px; color: var(--red); border: 1px solid rgba(140, 0, 0, .35); background: transparent; font-size: 9px; font-weight: 800; opacity: 0; transition: opacity .16s ease, background .16s ease; }
 .event-row:hover .event-steer-trigger, .event-row-wrap--selected .event-steer-trigger, .event-steer-trigger:focus-visible { opacity: 1; }
 .event-steer-trigger:hover { color: #fff; background: var(--red); }
 .event-arrow { color: var(--red); font-size: 17px; }

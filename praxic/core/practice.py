@@ -23,8 +23,10 @@ from ..tools.permissions import PermissionPolicy
 from ..tools.shell import ShellTool
 from ..tools.filesystem import FileReadTool, FileWriteTool, FileListTool, FileDeleteTool
 from ..tools.python_exec import PythonExecTool
+from ..tools.user_context import ReadUserContextTool
 
 from . import practice_harness as harness
+from .autonomy import get_autonomy_instruction
 
 log = structlog.get_logger(__name__)
 
@@ -62,6 +64,9 @@ _FINAL_ANALYSIS_PROMPT = """
   "reinvestigation_needed": false,
   "reinvestigation_focus": "",
   "key_findings": ["发现1", "发现2"],
+  "claim_assessments": [
+    {"claim": "被检验的论断", "assessment": "supported|challenged|falsified|inconclusive", "evidence": "对应工具证据"}
+  ],
   "contradiction_feedback": [
     {"contradiction": "...","challenge_type": "falsified|weakened|new_contradiction_found","evidence": "...","suggested_revision": "..."}
   ]
@@ -112,22 +117,13 @@ class PracticeModule:
         on_progress: callable = None,
         wm = None,
         registry = None,
-        decision_report=None,
         steering_checkpoint: callable = None,
     ) -> Optional[PracticeReport]:
-        # 兼容迁移前的第三位置调用：practice(question, trace, decision)
-        # 与当前回调签名可以共存，新的调用优先使用关键字参数。
-        if decision_report is None and on_progress is not None and not callable(on_progress):
-            decision_report = on_progress
-            on_progress = None
-
         def _notify(summary: str, data=None):
             if on_progress:
                 on_progress("practice", summary, data=data)
 
         self._current_question = question
-        if decision_report is not None and trace.decision is None:
-            trace.decision = decision_report
         hyps = []
         if trace.rational_synthesis:
             hyps = trace.rational_synthesis.hypotheses[:8]
@@ -257,6 +253,10 @@ class PracticeModule:
             success_indicators=all_success[:10], failure_indicators=all_failure[:10],
             contradiction_feedback=analysis.get("contradiction_feedback", []) if analysis else [],
             analysis_summary=(analysis or {}).get("analysis", "") if analysis else "",
+            claim_assessments=(analysis or {}).get("claim_assessments", []) if analysis else [],
+            unexpected_insights=(analysis or {}).get("surprises", []) if analysis else [],
+            reinvestigation_needed=bool((analysis or {}).get("reinvestigation_needed", False)) if analysis else False,
+            reinvestigation_focus=(analysis or {}).get("reinvestigation_focus", "") if analysis else "",
             rounds=round_records,
             tool_call_records=all_call_records,
             action_records=all_action_records,
@@ -285,6 +285,7 @@ class PracticeModule:
             registry.register(FileDeleteTool(workspace))
             registry.register(PythonExecTool(workspace_dir=workspace))
             registry.register(ShellTool(allowed_roots=roots))
+        registry.register(ReadUserContextTool())
         self._fallback_registry = registry
         return registry
 
@@ -308,17 +309,10 @@ class PracticeModule:
         hypotheses_text = "（无）"
         if trace.rational_synthesis:
             hypotheses_text = "\\n".join(f"- {h}" for h in trace.rational_synthesis.hypotheses[:6])
-        decision_text = "（尚未形成独立行动编排）"
-        if trace.decision:
-            action_lines = []
-            for item in trace.decision.action_items[:6]:
-                action_lines.append(
-                    f"- [{item.practice_feasibility}] {item.description}"
-                    f"；预期：{item.expected_outcome[:120]}"
-                )
-            decision_text = (
-                f"战略评估：{trace.decision.strategic_assessment[:500]}\n"
-                "行动项：\n" + ("\n".join(action_lines) or "（无）")
+        practice_direction_text = "实践阶段负责从前序认识中提炼可检验论断，并自主编排行动与风险边界"
+        if trace.rational_synthesis and trace.rational_synthesis.contradiction_motion:
+            practice_direction_text += (
+                "\n矛盾运动提示：" + trace.rational_synthesis.contradiction_motion[:300]
             )
 
         prompt = harness.R1_PLAN
@@ -335,7 +329,7 @@ class PracticeModule:
         prompt = prompt.replace("{contradiction_text}", contradiction_text)
         prompt = prompt.replace("{essence_text}", essence_text)
         prompt = prompt.replace("{hypotheses_text}", hypotheses_text)
-        prompt = prompt.replace("{decision_text}", decision_text)
+        prompt = prompt.replace("{practice_direction_text}", practice_direction_text)
 
         plan = await self._call_planner(prompt, "基于前序认知产出，设计第一轮实验。提炼可检验论断，设计工具调用序列。")
         return plan
@@ -348,6 +342,7 @@ class PracticeModule:
 
     async def _call_planner(self, system_prompt: str, user_msg: str) -> dict:
         try:
+            system_prompt += get_autonomy_instruction(settings.autonomy_level, "practice")
             resp = await self.llm.call(
                 messages=[{"role": "user", "content": user_msg}],
                 system=system_prompt,
@@ -383,7 +378,13 @@ class PracticeModule:
             params = tc.get("params", {})
             if not tool_name:
                 continue
-            result = await registry.call(tool_name, **params) if registry else None
+            call_params = dict(params)
+            if tool_name == "read_user_context" and wm is not None:
+                # Keep the actual background out of authorization parameters
+                # and audit records. ToolRegistry carries this private value
+                # only to the already-authorized execution.
+                call_params["_user_context"] = str(wm.get("context", "") or "")
+            result = await registry.call(tool_name, **call_params) if registry else None
             record = None
             if result is not None:
                 record = next((r for r in reversed(registry.records) if r.call_id == result.call_id), None)
@@ -583,21 +584,17 @@ class PracticeModule:
         ht = "（无）"
         if trace.rational_synthesis:
             ht = "\\n".join(f"- {h}" for h in trace.rational_synthesis.hypotheses[:6])
-        decision_text = "（尚未形成独立行动编排）"
-        if trace.decision:
-            decision_text = trace.decision.summary[:500] or trace.decision.strategic_assessment[:500]
-            actions = [
-                f"- [{item.practice_feasibility}] {item.description[:160]}"
-                for item in trace.decision.action_items[:6]
-            ]
-            if actions:
-                decision_text += "\n" + "\n".join(actions)
+        practice_direction_text = "实践阶段根据前序认识自主调整下一轮检验方向"
+        if trace.rational_synthesis and trace.rational_synthesis.synthesis_text:
+            practice_direction_text += (
+                "\n前序综合判断：" + trace.rational_synthesis.synthesis_text[:400]
+            )
         prev = round_contexts[-1] if round_contexts else {}
         return {
             "round_num": str(round_num), "question": question,
             "facts_text": "\\n".join(facts_lines) or "（无）", "gaps_text": "\\n".join(gaps_lines) or "（无）",
             "contradiction_text": ct, "essence_text": et, "hypotheses_text": ht,
-            "decision_text": decision_text,
+            "practice_direction_text": practice_direction_text,
             "prev_round_num": str(prev.get("round_num", round_num - 1)),
             "prev_round_plan": prev.get("plan_json", "（无）")[:3000],
             "prev_round_results": prev.get("results", "（无）")[:3000],
@@ -613,7 +610,7 @@ class PracticeModule:
             ht = ""
             if trace.rational_synthesis:
                 ht = "\\n".join(f"- {h}" for h in trace.rational_synthesis.hypotheses[:5])
-            prompt = _FINAL_ANALYSIS_PROMPT.replace("{question}", question).replace("{hypotheses}", ht or "（无）").replace("{decision_summary}", ht or "（无）").replace("{practice_rationale}", rationale or "（无）").replace("{all_rounds_log}", all_rounds_log[:6000])
+            prompt = _FINAL_ANALYSIS_PROMPT.replace("{question}", question).replace("{hypotheses}", ht or "（无）").replace("{practice_rationale}", rationale or "（无）").replace("{all_rounds_log}", all_rounds_log[:6000])
             resp = await self.llm.call(messages=[{"role": "user", "content": "综合分析全部轮次实验结果。"}], system=prompt, temperature=0.3, max_tokens=1024)
             raw = resp.content.strip()
             while raw.startswith("```"):

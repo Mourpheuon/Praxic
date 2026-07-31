@@ -36,7 +36,7 @@ async def main() -> bool:
     fake = UniversalFake()
     loop = CognitiveLoop(llm=fake)
     for attr in ("preprocessor", "investigation", "contradiction", "rational",
-                 "decision", "practice", "reflection", "perspectives"):
+                 "practice", "reflection", "perspectives"):
         obj = getattr(loop, attr, None)
         if obj is not None and hasattr(obj, "llm"):
             obj.llm = fake

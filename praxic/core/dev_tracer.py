@@ -24,7 +24,6 @@ PHASE_LABELS = {
     "investigation":  "调查研究",
     "contradiction":  "矛盾分析",
     "rational":        "理性认识",
-    "decision":        "决策输出",
     "perspectives":    "多视角审查",
     "practice":        "实践检验",
     "reflection":      "反思复盘",
@@ -34,7 +33,6 @@ PHASE_EMOJI = {
     "investigation":  "🔍",
     "contradiction":  "⚡",
     "rational":        "🧠",
-    "decision":        "🎯",
     "perspectives":    "👥",
     "practice":        "⚙️",
     "reflection":      "🔄",
@@ -155,7 +153,7 @@ class DevTracer:
             console = Console()
             phase_color = {
                 "investigation": "cyan", "contradiction": "yellow",
-                "rational": "blue", "decision": "green",
+                "rational": "blue",
                 "perspectives": "magenta", "practice": "bright_yellow",
                 "reflection": "red",
             }.get(phase, "white")

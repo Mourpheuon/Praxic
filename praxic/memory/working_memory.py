@@ -47,7 +47,13 @@ class WorkingMemory:
 
     def get_context_for_phase(self, phase, model: str = "", token_budget: int = 0):
         parts = []
-        # 当前日期时间（全阶段无条件可见）——"今天几号""现在几点"直接据此回答，
+        user_context = str(self._store.get("context", "") or "").strip()
+        if user_context and phase != "practice":
+            parts.append("## 用户补充背景（本轮）\n" + user_context)
+        conversation_history = str(self._store.get("conversation_history", "") or "").strip()
+        if conversation_history:
+            parts.append("## 当前对话前文（用于理解本轮追问）\n" + conversation_history)
+        # 当前日期时间（全阶段无条件可见）——“今天几号”“现在几点”直接据此回答，
         # 不要当作需要调查搜索的信息缺口。
         cur_dt = self._store.get("_current_datetime", "")
         if cur_dt:
@@ -88,7 +94,7 @@ class WorkingMemory:
             cc = self.get_contradiction_context()
             if cc:
                 parts.append("## 当前矛盾结构（贯穿本轮所有阶段）\n%s" % cc)
-        if phase in ("rational", "decision", "practice", "reflection"):
+        if phase in ("rational", "practice", "reflection"):
             sm = self._store.get("_system_model")
             if sm:
                 element_names = [e.name for e in sm.elements]
