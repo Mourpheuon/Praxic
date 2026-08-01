@@ -204,7 +204,8 @@ class RationalCognitionModule:
                 unexplained_phenomena=data.get("unexplained_phenomena", []),
             )
         except json.JSONDecodeError:
-            return RationalSynthesis(essence=raw[:300], synthesis_text=raw)
+            # 保留完整原文，前端负责把可解析字段整理展示，原始内容放入可折叠区域。
+            return RationalSynthesis(essence=raw, synthesis_text=raw)
 
     # ═══════════════════════════════════════════════════════════════════
     # I 线：理性认识深化

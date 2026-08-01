@@ -851,7 +851,7 @@ class CognitiveLoop:
                 _emit_phase(
                     on_phase,
                     CognitivePhaseName.RATIONAL,
-                    "本质：" + rational_synthesis.essence[:80],
+                    "本质：" + rational_synthesis.essence,
                     data=rational_synthesis,
                 )
             if await _check("practice"): break

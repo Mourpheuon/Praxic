@@ -340,7 +340,7 @@ class ReflectionEngine:
         except json.JSONDecodeError:
             log.warning("reflection.parse_error", raw=raw[:200])
             return ReflectionReport(
-                quality_assessment=raw[:300],
+                quality_assessment=raw,
                 convergence_score=0.5,
             )
 

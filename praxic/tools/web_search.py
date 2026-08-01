@@ -122,7 +122,7 @@ class WebSearchTool(BaseTool):
         for i, r in enumerate(results, 1):
             lines.append(f"[{i}] {r.title}")
             lines.append(f"    URL: {r.url}")
-            lines.append(f"    内容: {r.content[:300]}")
+            lines.append(f"    内容: {r.content}")
             lines.append("")
 
         content = "\n".join(lines)

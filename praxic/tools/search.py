@@ -61,7 +61,7 @@ class TavilySearchTool(BaseTool):
                 lines.append(
                     f"【{r.get('title', '无标题')}】\n"
                     f"来源：{r.get('url', '')}\n"
-                    f"{r.get('content', '')[:300]}\n"
+                    f"{r.get('content', '')}\n"
                 )
 
             return ToolResult(

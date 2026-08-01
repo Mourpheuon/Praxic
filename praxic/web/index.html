@@ -781,6 +781,27 @@
     .praxic-phase-group--active .praxic-phase-group__meta small, .praxic-phase-group--waiting .praxic-phase-group__meta small, .praxic-phase-group--error .praxic-phase-group__meta small { color: #8C0000; font-weight: 800; }
     .praxic-phase-group__summary { min-width: 0; overflow: hidden; color: #6b6560; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; animation: phaseTextReveal .28s ease-out calc(150ms + var(--phase-order, 0) * 90ms) both; }
     .praxic-phase-group__events { margin-left: .85rem; padding: .1rem 0 .35rem .9rem; border-left: 1px solid #c5bfb5; }
+    .praxic-phase-group--active::before,
+    .praxic-phase-group--waiting::before {
+      content: "";
+      position: absolute;
+      z-index: 2;
+      top: .2rem;
+      bottom: .35rem;
+      left: .85rem;
+      width: 2px;
+      pointer-events: none;
+      background: #8C0000;
+      transform-origin: top center;
+      animation: phaseActiveLine .55s cubic-bezier(.2,.75,.25,1) both;
+    }
+    .praxic-phase-group--waiting::before { background: #9e7b3a; }
+    .praxic-phase-group--active .praxic-phase-group__header,
+    .praxic-phase-group--active .praxic-phase-group__events,
+    .praxic-phase-group--waiting .praxic-phase-group__header,
+    .praxic-phase-group--waiting .praxic-phase-group__events { position: relative; z-index: 1; }
+    .praxic-phase-group--active .praxic-phase-group__events,
+    .praxic-phase-group--waiting .praxic-phase-group__events { border-left-color: transparent; }
     .praxic-event-wrap { position: relative; border-bottom: 1px solid transparent; animation: phaseTextReveal .28s ease-out calc(170ms + var(--phase-order, 0) * 90ms + var(--event-order, 0) * 70ms) both; }
     .praxic-event-wrap::after {
       content: "";
@@ -812,6 +833,34 @@
       display: inline-block;
       animation: phaseWaveChar 1.35s ease-in-out calc(var(--wave-order, 0) * 58ms) infinite;
     }
+    .praxic-structured-detail,
+    .praxic-search-detail { display: flex; flex-direction: column; gap: .55rem; color: #1C1916; font-size: .68rem; line-height: 1.55; }
+    .praxic-structured-detail__section { padding: .45rem .55rem; border-left: 3px solid #4a6741; background: rgba(237,232,223,.42); }
+    .praxic-structured-detail__section + .praxic-structured-detail__section { margin-top: .35rem; }
+    .praxic-structured-detail__label,
+    .praxic-search-detail__label { color: #4a6741; font-size: .62rem; font-weight: 800; letter-spacing: .04em; }
+    .praxic-structured-detail__text,
+    .praxic-search-detail__summary p,
+    .praxic-search-source__excerpt p { margin: .18rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .praxic-search-detail__query { display: flex; flex-direction: column; gap: .15rem; padding: .45rem .55rem .55rem; border-bottom: 2px solid #1C1916; }
+    .praxic-search-detail__query > span { color: #9e7b3a; font-size: .6rem; font-weight: 800; letter-spacing: .08em; }
+    .praxic-search-detail__query > strong { font-size: .75rem; font-weight: 800; overflow-wrap: anywhere; }
+    .praxic-search-detail__summary { padding: .45rem .55rem; border-left: 3px solid #4a6741; background: rgba(237,232,223,.42); }
+    .praxic-search-detail__sources { padding-top: .45rem; border-top: 1px solid #c5bfb5; }
+    .praxic-search-detail__sources > .praxic-search-detail__label { margin-bottom: .15rem; }
+    .praxic-search-detail__label small { color: #6b6560; font-size: .58rem; font-weight: 500; }
+    .praxic-search-source { padding: .45rem 0; border-bottom: 1px solid rgba(197,191,181,.55); }
+    .praxic-search-source:last-child { border-bottom: 0; }
+    .praxic-search-source__title { display: block; color: #1C1916; font-weight: 800; text-decoration: none; overflow-wrap: anywhere; }
+    .praxic-search-source__title:hover { color: #8C0000; text-decoration: underline; }
+    .praxic-search-source__url { margin-top: .12rem; color: #6b6560; font: .58rem/1.35 Consolas, monospace; overflow-wrap: anywhere; }
+    .praxic-search-source__excerpt { margin-top: .25rem; color: #6b6560; }
+    .praxic-search-source__excerpt summary { color: #9e7b3a; cursor: pointer; font-size: .6rem; font-weight: 700; }
+    .praxic-search-detail__empty { padding: .35rem 0; color: #6b6560; }
+    .praxic-raw-detail { border-top: 1px solid #c5bfb5; padding-top: .4rem; }
+    .praxic-raw-detail summary { color: #6b6560; cursor: pointer; font-size: .62rem; font-weight: 800; }
+    .praxic-raw-detail summary:hover { color: #8C0000; }
+    .praxic-raw-detail pre { max-height: 240px; margin: .4rem 0 0; padding: .55rem; overflow: auto; color: #4d4842; background: #f3f0e9; border: 1px solid #c5bfb5; font: .6rem/1.45 Consolas, monospace; white-space: pre; }
     .praxic-event-steer { padding: .16rem .28rem; color: #8C0000; border: 1px solid rgba(140,0,0,.35); background: transparent; font-size: .56rem; font-weight: 800; opacity: 0; }
     .praxic-event-row:hover .praxic-event-steer, .praxic-event-wrap--selected .praxic-event-steer, .praxic-event-steer:focus-visible { opacity: 1; }
     .praxic-event-steer:hover { color: #fff; background: #8C0000; }
@@ -826,8 +875,54 @@
     .praxic-inline-steer__cancel { color: #6b6560; background: transparent; }
     .praxic-inline-steer__submit { color: #fff; background: #8C0000; font-weight: 800; }
     .praxic-inline-steer__error { margin-right: auto; color: #8C0000; font-size: .58rem; }
+    .praxic-authorization {
+      display: flex;
+      justify-content: center;
+      padding: .7rem 1rem 1rem;
+      background: transparent;
+    }
+    .praxic-authorization__bubble {
+      width: min(100%, 58rem);
+      border-radius: 1rem;
+      box-shadow: 4px 4px 0 rgba(140,0,0,.14);
+    }
+    .praxic-authorization__steer {
+      margin-top: .75rem;
+      padding-top: .65rem;
+      border-top: 1px solid rgba(140,0,0,.18);
+    }
+    .praxic-authorization__steer-label { display: block; margin-bottom: .35rem; color: #6b6560; font-size: .62rem; }
+    .praxic-authorization__steer-row { display: flex; align-items: stretch; gap: .45rem; }
+    .praxic-authorization__steer-input {
+      flex: 1;
+      min-width: 0;
+      min-height: 2rem;
+      resize: vertical;
+      padding: .42rem .55rem;
+      color: #1C1916;
+      border: 1px solid #c5bfb5;
+      border-radius: .35rem;
+      outline: 0;
+      background: #fffdf8;
+      font: .68rem/1.4 'Microsoft YaHei', 'Segoe UI', sans-serif;
+    }
+    .praxic-authorization__steer-input:focus { border-color: #4a6741; box-shadow: 2px 2px 0 rgba(74,103,65,.16); }
+    .praxic-authorization__steer-submit {
+      align-self: stretch;
+      padding: .35rem .7rem;
+      color: #fff;
+      border: 0;
+      border-radius: .35rem;
+      background: #9e7b3a;
+      font-size: .65rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .praxic-authorization__steer-submit:disabled { cursor: not-allowed; opacity: .48; }
+    .praxic-authorization__steer-error { margin-top: .3rem; color: #8C0000; font-size: .6rem; }
     @keyframes phaseRuleDraw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
     @keyframes phaseTextReveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes phaseActiveLine { from { transform: scaleY(0); opacity: 0; } to { transform: scaleY(1); opacity: .9; } }
     @keyframes phaseWaveChar { 0%, 72%, 100% { transform: translateY(0); } 14% { transform: translateY(-2px); } 28% { transform: translateY(0); } }
     @media (max-width: 760px) {
       .praxic-phase-stream { margin-left: .9rem; margin-right: .9rem; }
@@ -1582,7 +1677,7 @@
       justify-content: space-between;
       gap: 10px;
       min-height: 92px;
-      padding: 16px 13px 14px;
+      padding: 10px 13px 14px;
       color: #fcfaf5;
       background: #1C1916;
       border-bottom: 4px solid #8C0000;
@@ -1597,7 +1692,7 @@
 
     .praxic-inspector__title {
       max-width: 100%;
-      margin-top: 4px;
+      margin-top: 0;
       overflow: hidden;
       color: #fcfaf5;
       font: 900 31px/.96 'Noto Serif SC', serif;
@@ -2652,7 +2747,13 @@
         const parsed = JSON.parse(text);
         return parsed && typeof parsed === 'object' ? parsed : null;
       } catch {
-        return null;
+        const loose = {};
+        const fieldPattern = /"(abstract_from|essence|return_to_concrete|fact_foundation|quality_assessment|investigation_retrospective|contradiction_retrospective|practice_retrospective|decision_retrospective|reinvestigation_focus)"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+        let match;
+        while ((match = fieldPattern.exec(text))) {
+          try { loose[match[1]] = JSON.parse(`\"${match[2]}\"`); } catch {}
+        }
+        return Object.keys(loose).length > 0 ? loose : null;
       }
     }
 
@@ -2668,6 +2769,24 @@
           .join('\n');
       }
       return value === null || value === undefined ? '' : String(value);
+    }
+
+    function eventDisplaySummary(entry) {
+      const raw = String(entry?.summary || '').trim();
+      const structuredEssence = parseJsonText(entry?.data?.essence);
+      if (structuredEssence) {
+        const essence = structuredEssence.essence || structuredEssence.abstract_from || structuredEssence.return_to_concrete;
+        if (essence) return `本质：${readableStructuredValue(essence)}`;
+      }
+      const essencePrefix = raw.match(/^本质[:：]\s*([\s\S]+)$/);
+      const essenceObject = essencePrefix && parseJsonText(essencePrefix[1]);
+      if (essenceObject) {
+        const essence = essenceObject.essence || essenceObject.abstract_from || essenceObject.return_to_concrete;
+        if (essence) return `本质：${readableStructuredValue(essence)}`;
+      }
+      const searchQuery = raw.match(/^###\s*搜索[:：]\s*(.+)$/m);
+      if (searchQuery) return `搜索：${searchQuery[1].trim()}`;
+      return raw || '状态已更新';
     }
 
     function StructuredNarrative({ value, rawValue, fields }) {
@@ -2717,8 +2836,23 @@
     function SearchToolDetail({ entry, result }) {
       const content = result?.content || '';
       const parsed = parseSearchContent(content);
+      const rawResults = Array.isArray(result?.data?.results) ? result.data.results : [];
+      const sources = parsed.sources.length > 0
+        ? parsed.sources.map((source, index) => ({
+            ...source,
+            title: rawResults[index]?.title || source.title,
+            url: rawResults[index]?.url || source.url,
+            snippet: rawResults[index]?.content || source.snippet,
+          }))
+        : rawResults.map((source, index) => ({
+            number: String(index + 1),
+            title: source.title || '无标题',
+            url: source.url || '',
+            snippet: source.content || '',
+          }));
       const parameters = entry?.data?.record?.parameters || {};
       const query = parsed.query || parameters.query || '未记录查询词';
+      const summary = parsed.summary || result?.data?.answer || '';
       const rawData = { parameters, result };
       return (
         <div className="praxic-search-detail">
@@ -2726,15 +2860,15 @@
             <span>查询词</span>
             <strong>{query}</strong>
           </div>
-          {parsed.summary && (
+          {summary && (
             <div className="praxic-search-detail__summary">
               <div className="praxic-search-detail__label">AI 摘要</div>
-              <p>{parsed.summary}</p>
+              <p>{summary}</p>
             </div>
           )}
           <div className="praxic-search-detail__sources">
-            <div className="praxic-search-detail__label">来源列表 <small>{parsed.count ? `（${parsed.count}）` : ''}</small></div>
-            {parsed.sources.length > 0 ? parsed.sources.map(source => (
+            <div className="praxic-search-detail__label">来源列表 <small>{(parsed.count || sources.length) ? `（${parsed.count || sources.length}）` : ''}</small></div>
+            {sources.length > 0 ? sources.map(source => (
               <div key={source.number} className="praxic-search-source">
                 <a href={source.url || undefined} target="_blank" rel="noreferrer" className="praxic-search-source__title">[{source.number}] {source.title}</a>
                 {source.url && <div className="praxic-search-source__url">{source.url}</div>}
@@ -2853,9 +2987,11 @@
       };
 
       if (!groups.length && !activePhase) return null;
+      const interrupted = normalized.some(entry => ['interrupt', 'stop'].includes(eventKind(entry)));
+      const streamState = running ? '当前阶段默认展开' : interrupted ? '认知循环已中断' : '认知循环已完成';
       return (
         <div className="praxic-phase-stream">
-          <div className="praxic-phase-stream__head"><strong>认知过程 / 显式事件流</strong><small>{normalized.length} 条事件 · 当前阶段默认展开</small></div>
+          <div className="praxic-phase-stream__head"><strong>认知过程 / 显式事件流</strong><small>{normalized.length} 条事件 · {streamState}</small></div>
           {groups.map((group, groupIndex) => {
             const pending = group.events.some(entry => eventStatus(entry) === '等待授权');
             const failed = group.events.some(eventFailure);
@@ -2871,7 +3007,7 @@
                 <button type="button" className="praxic-phase-group__header" onClick={() => togglePhase(group.id, defaultOpen)} aria-expanded={open}>
                   <span className="praxic-phase-group__title"><strong>{group.label}<small>{' · '}{group.subtitle}</small></strong></span>
                   <span className="praxic-phase-group__meta"><strong>{String(actions).padStart(2, '0')}</strong><small>{status === 'active' ? '进行中' : status === 'waiting' ? '等待授权' : status === 'error' ? '需注意' : '已完成'}</small></span>
-                  <span className="praxic-phase-group__summary">{showSummary ? (last?.summary || '等待进入') : ''}</span>
+                  <span className="praxic-phase-group__summary">{showSummary ? eventDisplaySummary(last) : ''}</span>
                 </button>
                 {open && <div className="praxic-phase-group__events">
                   {group.events.map((entry, idx) => {
@@ -2880,7 +3016,7 @@
                     const selected = expandedDetail.has(key);
                     const activeEvent = running && group.id === activePhase && idx === group.events.length - 1;
                     const label = eventLabel(entry);
-                    const summary = entry.summary || '状态已更新';
+                    const summary = eventDisplaySummary(entry);
                     return (
                           <div key={key} style={{ '--event-order': idx }} className={'praxic-event-wrap ' + (activeEvent ? 'praxic-event-wrap--active ' : '') + (selected ? 'praxic-event-wrap--selected ' : '') + (kind === 'tool_call' ? 'praxic-event-wrap--tool ' : '') + (kind.startsWith('authorization') ? 'praxic-event-wrap--authorization ' : '') + (kind.startsWith('steering') ? 'praxic-event-wrap--steering ' : '') + (eventFailure(entry) ? 'praxic-event-wrap--error' : '')}>
                         <div className="praxic-event-row" role="button" tabIndex="0" onClick={() => toggleDetail(key)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDetail(key); } }}>
@@ -2906,12 +3042,31 @@
       );
     }
 
-    function AuthorizationPanel({ request, busy, error, onResolve }) {
+    function AuthorizationPanel({ request, busy, error, onResolve, onSteer }) {
+      const [steerDraft, setSteerDraft] = useState('');
+      const [steerBusy, setSteerBusy] = useState(false);
+      const [steerError, setSteerError] = useState('');
+      const submitSteer = async event => {
+        event.preventDefault();
+        const content = steerDraft.trim();
+        if (!content || steerBusy || !onSteer) return;
+        setSteerBusy(true);
+        setSteerError('');
+        try {
+          const sent = await onSteer(content);
+          if (!sent) throw new Error('插话未送达，运行可能已经结束');
+          setSteerDraft('');
+        } catch (steerException) {
+          setSteerError(steerException?.message || '插话未送达');
+        } finally {
+          setSteerBusy(false);
+        }
+      };
       if (!request) return null;
       const pending = request.status === 'pending';
       return (
-        <div className="praxic-authorization px-4 py-3 bg-cream">
-          <div className="max-w-3xl mx-auto border border-seal/40 bg-seal-wash px-4 py-3">
+        <div className="praxic-authorization">
+          <div className="praxic-authorization__bubble border border-seal/40 bg-seal-wash px-4 py-3">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-[10px] font-semibold text-seal uppercase tracking-wide">行动授权</div>
@@ -2936,6 +3091,16 @@
                 <button onClick={() => onResolve(request, 'deny')} disabled={busy === request.request_id}
                   className="px-4 py-2 bg-ink text-white text-xs font-semibold disabled:opacity-50">拒绝</button>
               </div>
+            )}
+            {pending && onSteer && (
+              <form className="praxic-authorization__steer" onSubmit={submitSteer}>
+                <label className="praxic-authorization__steer-label" htmlFor="authorization-steer">需要补充信息？可以先插话，再决定是否授权。</label>
+                <div className="praxic-authorization__steer-row">
+                  <textarea id="authorization-steer" className="praxic-authorization__steer-input" value={steerDraft} onChange={e => setSteerDraft(e.target.value)} rows="1" placeholder="补充事实、修正方向，或提出下一步要求…" />
+                  <button type="submit" className="praxic-authorization__steer-submit" disabled={steerBusy || !steerDraft.trim()}>{steerBusy ? '发送中…' : '插话'}</button>
+                </div>
+                {steerError && <div className="praxic-authorization__steer-error">{steerError}</div>}
+              </form>
             )}
             {error && <div className="mt-2 text-xs text-red-700">{error}</div>}
           </div>
@@ -3331,7 +3496,6 @@
           />
           <div className="praxic-inspector__header">
             <div className="min-w-0">
-              <div className="praxic-inspector__eyebrow">{file ? '文件' : '项目'}</div>
               <div className="praxic-inspector__title" title={file ? fileTitle : workspaceName}>{file ? fileTitle : workspaceName}</div>
             </div>
           </div>
@@ -3545,6 +3709,22 @@
 
     function ReflectionDetail({ data }) {
       const d=data||{};
+      const reflectionFields = [
+        ['quality_assessment', '质量评估'],
+        ['investigation_retrospective', '调查回顾'],
+        ['contradiction_retrospective', '矛盾回顾'],
+        ['practice_retrospective', '实践回顾'],
+        ['decision_retrospective', '决策回顾'],
+        ['reinvestigation_focus', '重新调查重点'],
+      ];
+      const reflectionValue = parseJsonText(d.quality_assessment) || {
+        quality_assessment: d.quality_assessment,
+        investigation_retrospective: d.investigation_retrospective,
+        contradiction_retrospective: d.contradiction_retrospective,
+        practice_retrospective: d.practice_retrospective,
+        decision_retrospective: d.decision_retrospective,
+        reinvestigation_focus: d.reinvestigation_focus,
+      };
       return (<div className="space-y-2 text-xs">
         <div className="flex flex-wrap gap-1.5">
           <span className="px-1.5 py-0.5 rounded-full bg-olivewash text-[10px] text-olive">收敛 {((d.convergence_score||0)*100).toFixed(0)}%</span>
@@ -3552,10 +3732,11 @@
           {d.qualitative_leap && <span className="px-1.5 py-0.5 rounded-full bg-seal-wash text-[10px] text-seal">质变飞跃</span>}
           {d.should_reinvestigate && <span className="px-1.5 py-0.5 rounded-full bg-seal-wash text-[10px] text-seal">建议再调查</span>}
         </div>
-        {d.quality_assessment && <p className="text-warmgray">{d.quality_assessment}</p>}
+        {(d.quality_assessment || d.investigation_retrospective || d.contradiction_retrospective || d.practice_retrospective || d.decision_retrospective || d.reinvestigation_focus) && (
+          <StructuredNarrative value={reflectionValue} rawValue={d} fields={reflectionFields} />
+        )}
         {(d.lessons_learned||[]).length>0 && <div>{d.lessons_learned.map((l,i)=><div key={i} className="text-warmgray pl-2 border-l-2 border-olive/30 mb-0.5">• {l}</div>)}</div>}
         {(d.cognitive_biases_found||[]).length>0 && <div>{d.cognitive_biases_found.map((b,i)=><div key={i} className="text-seal-light pl-2 border-l-2 border-seal/30 mb-0.5">• {b}</div>)}</div>}
-        {d.reinvestigation_focus && <p className="text-warmgray italic">🔍 焦点：{d.reinvestigation_focus}</p>}
       </div>);
     }
 
@@ -4797,7 +4978,8 @@
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.detail || '授权状态更新失败');
-          setAuthorizationByConv(prev => ({ ...prev, [cid]: data.authorization || request }));
+          const resolved = data.authorization || request;
+          setAuthorizationByConv(prev => ({ ...prev, [cid]: resolved.status === 'pending' ? resolved : null }));
         } catch (e) {
           setAuthorizationError(e.message || '授权状态更新失败');
         } finally {
@@ -5019,9 +5201,10 @@
                 onClarification: (questions) => {
                   setClarify({ convId: recoveringConvId, questions: questions || [] });
                 },
-                onAuthorization: (authorization) => {
+                onAuthorization: (authorization, eventType) => {
                   if (authorization?.request_id) {
-                    setAuthorizationByConv(prev => ({ ...prev, [recoveringConvId]: authorization }));
+                    const pending = eventType === 'authorization_requested' || authorization.status === 'pending';
+                    setAuthorizationByConv(prev => ({ ...prev, [recoveringConvId]: pending ? authorization : null }));
                   }
                 },
                 onDone: (result) => {
@@ -5187,9 +5370,10 @@
             onClarification: (questions) => {
               setClarify({ convId: cid, questions: questions || [] });
             },
-            onAuthorization: (authorization) => {
+            onAuthorization: (authorization, eventType) => {
               if (authorization?.request_id) {
-                setAuthorizationByConv(prev => ({ ...prev, [cid]: authorization }));
+                const pending = eventType === 'authorization_requested' || authorization.status === 'pending';
+                setAuthorizationByConv(prev => ({ ...prev, [cid]: pending ? authorization : null }));
               }
             },
             replaceSessionId: shouldReplaceTurn ? replaceSessionId : '',
@@ -5511,7 +5695,7 @@
             </div>
 
             {activeAuthorization && (
-              <AuthorizationPanel request={activeAuthorization} busy={authorizationBusy} error={authorizationError} onResolve={resolveAuthorization} />
+              <AuthorizationPanel request={activeAuthorization} busy={authorizationBusy} error={authorizationError} onResolve={resolveAuthorization} onSteer={handleSteer} />
             )}
             {clarify && clarify.convId === activeConvId && clarify.questions && clarify.questions.length > 0 && (
               <div className="px-4 pt-3 bg-cream">
