@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from praxic.api.routes import agent as agent_routes
 from praxic.api.routes.agent import _serialize_event
 from praxic.api.schemas.models import CognitiveTrace
-from praxic.core.autonomy import AutonomyLevel
+from praxic.tools.permissions import PermissionMode
 from praxic.core.cognitive_loop import CognitiveLoop
 from praxic.core.practice import PracticeModule
 from praxic.llm.claude import ClaudeLLM
@@ -74,7 +74,7 @@ async def _wait_for_event(events: list[dict], event_type: str) -> dict:
 async def test_authorization_wait_approve_and_deny():
     events: list[dict] = []
     registry = ToolRegistry(
-        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        policy=PermissionPolicy(permission_mode=PermissionMode.AUTO_REVIEW),
         event_sink=events.append,
         authorization_timeout_seconds=1.0,
     )
@@ -112,7 +112,7 @@ async def test_authorization_wait_approve_and_deny():
 async def test_authorization_timeout_does_not_execute():
     events: list[dict] = []
     registry = ToolRegistry(
-        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        policy=PermissionPolicy(permission_mode=PermissionMode.AUTO_REVIEW),
         event_sink=events.append,
         authorization_timeout_seconds=0.01,
     )
@@ -132,7 +132,7 @@ async def test_authorization_timeout_does_not_execute():
 async def test_authorization_cancellation_resolves_pending_request():
     events: list[dict] = []
     registry = ToolRegistry(
-        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        policy=PermissionPolicy(permission_mode=PermissionMode.AUTO_REVIEW),
         event_sink=events.append,
         authorization_timeout_seconds=30.0,
     )
@@ -157,7 +157,7 @@ async def test_authorization_cancellation_resolves_pending_request():
 async def test_authorization_redacts_nested_parameters():
     events: list[dict] = []
     registry = ToolRegistry(
-        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        policy=PermissionPolicy(permission_mode=PermissionMode.AUTO_REVIEW),
         event_sink=events.append,
         authorization_timeout_seconds=1.0,
     )
@@ -184,7 +184,7 @@ async def test_authorization_redacts_nested_parameters():
 async def test_user_context_observation_waits_for_authorization_and_hides_text():
     events: list[dict] = []
     registry = ToolRegistry(
-        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        policy=PermissionPolicy(permission_mode=PermissionMode.AUTO_REVIEW),
         event_sink=events.append,
         authorization_timeout_seconds=1.0,
     )
@@ -217,7 +217,7 @@ async def test_user_context_observation_waits_for_authorization_and_hides_text()
 async def test_practice_executor_supplies_context_only_after_approval():
     events: list[dict] = []
     registry = ToolRegistry(
-        policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD),
+        policy=PermissionPolicy(permission_mode=PermissionMode.AUTO_REVIEW),
         event_sink=events.append,
         authorization_timeout_seconds=1.0,
     )
@@ -288,7 +288,7 @@ def test_conversation_history_preserves_concrete_prior_code(tmp_path):
 
 @pytest.mark.asyncio
 async def test_api_returns_conflict_for_resolved_authorization(monkeypatch):
-    registry = ToolRegistry(policy=PermissionPolicy(autonomy_level=AutonomyLevel.STANDARD))
+    registry = ToolRegistry(policy=PermissionPolicy(permission_mode=PermissionMode.AUTO_REVIEW))
     request = registry.policy.create_authorization_request(
         tool_name="external_probe",
         action_kind=ActionKind.EXTERNAL,
@@ -318,7 +318,7 @@ def test_authorization_ttl_must_be_positive():
 async def test_file_change_records_and_readback(tmp_path):
     registry = ToolRegistry(
         policy=PermissionPolicy(
-            autonomy_level=AutonomyLevel.STANDARD,
+            permission_mode=PermissionMode.AUTO_REVIEW,
             allowed_roots=(tmp_path,),
         )
     )

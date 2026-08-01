@@ -6,6 +6,7 @@ from typing import AsyncIterator, Callable, Optional
 import structlog
 from ..api.schemas.models import AgentResponse, CognitiveTrace, CognitivePhaseName, TraceMetadata
 from ..config import settings
+from ..core.autonomy import PermissionMode
 from ..llm import get_llm, get_phase_llm
 from ..llm.base import BaseLLM
 from ..memory.episodic_memory import EpisodicMemory
@@ -202,12 +203,17 @@ class CognitiveLoop:
             skills_dir = Path("praxic/skills")
         self.skill_manager = SkillManager(skills_dir)
         # 初始化统一行动注册表：观察、计算、沙箱变更和外部行动都经过同一契约。
+        policy = PermissionPolicy(
+            permission_mode=settings.permission_mode,
+            allowed_roots=(self.workspace.workspace,) if self.workspace else (),
+            allow_network=_web,
+        )
+        if settings.permission_mode == PermissionMode.AUTO_REVIEW:
+            # 自动审核模式：为越界/外部操作挂上 LLM 语义审核器。
+            from ..core.reviewer import build_reviewer
+            policy.reviewer = build_reviewer(_llm("practice", tag="reviewer"))
         self._registry = ToolRegistry(
-            policy=PermissionPolicy(
-                autonomy_level=settings.autonomy_level,
-                allowed_roots=(self.workspace.workspace,) if self.workspace else (),
-                allow_network=_web,
-            ),
+            policy=policy,
             event_sink=self._on_registry_event,
         )
         try:
@@ -220,6 +226,10 @@ class CognitiveLoop:
             self._registry.register(FileWriteTool(self.workspace.workspace))
             self._registry.register(FileListTool(self.workspace.workspace))
             self._registry.register(FileDeleteTool(self.workspace.workspace))
+            from ..tools.file_query import FileGrepTool, FileBatchReadTool, FileStatTool
+            self._registry.register(FileGrepTool(self.workspace.workspace))
+            self._registry.register(FileBatchReadTool(self.workspace.workspace))
+            self._registry.register(FileStatTool(self.workspace.workspace))
             self._registry.register(ShellTool(allowed_roots=(self.workspace.workspace,)))
         self._registry.register(WebSearchTool(
             api_key=settings.tavily_api_key,

@@ -262,6 +262,19 @@ class PracticeStep(BaseModel):
     state_classification: str = ""
 
 
+class DirectionStateUpdate(BaseModel):
+    """C5: structured evidence impact carried from one practice round to the next."""
+
+    round_num: int = 0
+    directional_claim: str = ""
+    epistemic_role: str = "exploration"
+    evidence_status: str = "no_observation"
+    effective_observations: list[str] = Field(default_factory=list)
+    technical_failures: list[str] = Field(default_factory=list)
+    impact: str = ""
+    next_focus: str = ""
+
+
 class PracticeRound(BaseModel):
     """审计友好的单轮行动记录，不把失败等同于假设被证伪。"""
 
@@ -274,6 +287,7 @@ class PracticeRound(BaseModel):
     failure_class: str = ""
     world_changed: bool = False
     duration_ms: float = 0.0
+    direction_state: DirectionStateUpdate = Field(default_factory=DirectionStateUpdate)
 
 class PracticeReport(BaseModel):
     mode: str = "executed"                 # "executed" | "partial" | "epistemic_only"
@@ -300,6 +314,8 @@ class PracticeReport(BaseModel):
     failure_classes: list[str] = Field(default_factory=list)
     world_changed: bool = False
     cache_metrics: dict = Field(default_factory=dict)
+    direction_state: DirectionStateUpdate = Field(default_factory=DirectionStateUpdate)
+    direction_state_history: list[DirectionStateUpdate] = Field(default_factory=list)
 
 # --- Practice Boundary ---
 class RealWorldPracticeTask(BaseModel):

@@ -182,124 +182,52 @@ class ToolRegistry:
             authorization_id=authorization_id,
         )
         if permission.decision == PermissionDecision.REQUIRE_AUTHORIZATION:
-            request = self.policy.create_authorization_request(
-                tool_name=name,
-                action_kind=action_kind,
-                params=safe_params,
-                scope=str(params.get("path") or params.get("target") or params.get("cwd") or ""),
-                reason=permission.reason,
-            )
-            permission.request_id = request.request_id
-            request_id = request.request_id
-            event = asyncio.Event()
-            self._authorization_events[request.request_id] = event
-            self._emit(
-                {
-                    "event_type": "authorization_requested",
-                    "request_id": request.request_id,
-                    "tool": name,
-                    "summary": "等待授权后执行 " + name,
-                    "authorization": request.to_dict(),
-                }
-            )
-            try:
+            # AUTO_REVIEW 硬规则未通过：先给语义审核器一次机会，通过则跳过授权。
+            if permission.review_requested and self.policy.reviewer is not None:
                 try:
-                    if authorization_timeout > 0:
-                        await asyncio.wait_for(event.wait(), timeout=authorization_timeout)
-                    else:
-                        await event.wait()
-                except asyncio.CancelledError:
-                    expired = self.policy.expire_request(request_id)
-                    resolved_request = self.policy.get_request(request_id)
-                    if expired and resolved_request is not None:
-                        self._emit(
-                            {
-                                "event_type": "authorization_resolved",
-                                "request_id": resolved_request.request_id,
-                                "summary": "授权等待已取消，行动不会执行",
-                                "authorization": resolved_request.to_dict(),
-                            }
-                        )
-                    raise
-                except asyncio.TimeoutError:
-                    expired = self.policy.expire_request(request_id)
-                    resolved_request = self.policy.get_request(request_id)
-                    if expired and resolved_request is not None:
-                        self._emit(
-                            {
-                                "event_type": "authorization_resolved",
-                                "request_id": resolved_request.request_id,
-                                "summary": "授权等待已超时，行动不会执行",
-                                "authorization": resolved_request.to_dict(),
-                            }
-                        )
-                    if resolved_request is None or resolved_request.status != "approved":
-                        permission = self.policy.record_decision(
-                            PermissionDecision.DENY,
-                            "授权等待超时，行动未执行",
-                            resolved_request.scope if resolved_request else "",
-                            request_id=(
-                                resolved_request.request_id if resolved_request else request_id
-                            ),
-                        )
-                        result = ToolResult(
-                            status=ToolStatus.ERROR,
-                            content="",
-                            error=permission.reason,
-                            action_kind=action_kind,
-                            permission=permission,
-                            call_id=call_id,
-                            started_at=started_at,
-                            failure_class="authorization_expired",
-                        )
-                        self._finish_record(name, safe_params, action_kind, result, started)
-                        return result
-                resolved_request = self.policy.get_request(request_id)
-                if resolved_request is None or resolved_request.status != "approved":
-                    permission = self.policy.record_decision(
-                        PermissionDecision.DENY,
-                        "授权已拒绝，行动未执行",
-                        resolved_request.scope if resolved_request else "",
-                        request_id=resolved_request.request_id if resolved_request else "",
+                    approved = await self.policy.reviewer(
+                        name, action_kind, params, permission.reason
                     )
-                    result = ToolResult(
-                        status=ToolStatus.ERROR,
-                        content="",
-                        error=permission.reason,
+                except Exception as exc:
+                    log.warning("tool_registry.reviewer_error", tool=name, error=str(exc))
+                    approved = False
+                if approved:
+                    self._emit(
+                        {
+                            "event_type": "review_passed",
+                            "tool": name,
+                            "summary": f"语义审核通过，自动执行 {name}",
+                            "action_kind": action_kind.value,
+                        }
+                    )
+                else:
+                    aborted = await self._await_authorization(
+                        name=name,
                         action_kind=action_kind,
+                        safe_params=safe_params,
+                        params=params,
                         permission=permission,
                         call_id=call_id,
                         started_at=started_at,
-                        failure_class="permission_denied",
+                        started=started,
+                        authorization_timeout=authorization_timeout,
                     )
-                    self._finish_record(name, safe_params, action_kind, result, started)
-                    return result
-                permission = self.policy.check(
-                    tool_name=name,
+                    if aborted is not None:
+                        return aborted
+            else:
+                aborted = await self._await_authorization(
+                    name=name,
                     action_kind=action_kind,
+                    safe_params=safe_params,
                     params=params,
-                    sandbox_safe=getattr(tool, "sandbox_safe", False),
-                    requires_authorization=getattr(tool, "requires_authorization", False),
-                    authorization_reason=getattr(tool, "authorization_reason", ""),
-                    requires_network=getattr(tool, "requires_network", False),
-                    authorization_id=resolved_request.grant_id,
+                    permission=permission,
+                    call_id=call_id,
+                    started_at=started_at,
+                    started=started,
+                    authorization_timeout=authorization_timeout,
                 )
-                permission.request_id = request_id
-                if permission.decision != PermissionDecision.ALLOW:
-                    result = ToolResult(
-                        status=ToolStatus.ERROR,
-                        content="",
-                        error=permission.reason,
-                        action_kind=action_kind,
-                        permission=permission,
-                        call_id=call_id,
-                        started_at=started_at,
-                        failure_class="permission_denied",
-                    )
-                    self._finish_record(name, safe_params, action_kind, result, started)
-                    return result
-            finally:
-                self._authorization_events.pop(request_id, None)
+                if aborted is not None:
+                    return aborted
         if permission.decision != PermissionDecision.ALLOW:
             result = ToolResult(
                 status=ToolStatus.ERROR,
@@ -356,6 +284,146 @@ class ToolRegistry:
             )
             self._finish_record(name, safe_params, action_kind, result, started)
             return result
+
+    async def _await_authorization(
+        self,
+        *,
+        name: str,
+        action_kind: ActionKind,
+        safe_params: dict,
+        params: dict,
+        permission: PermissionRecord,
+        call_id: str,
+        started_at: str,
+        started: float,
+        authorization_timeout: float,
+    ) -> Optional[ToolResult]:
+        """创建授权请求并等待用户批准。
+
+        返回：None 表示已获得 ALLOW（permission 已被更新为最终记录，可继续执行）；
+        非 None 表示已终止（超时/拒绝），返回已记录的错误 ToolResult，调用方直接返回。
+        """
+        request = self.policy.create_authorization_request(
+            tool_name=name,
+            action_kind=action_kind,
+            params=safe_params,
+            scope=str(params.get("path") or params.get("target") or params.get("cwd") or ""),
+            reason=permission.reason,
+        )
+        permission.request_id = request.request_id
+        request_id = request.request_id
+        event = asyncio.Event()
+        self._authorization_events[request.request_id] = event
+        self._emit(
+            {
+                "event_type": "authorization_requested",
+                "request_id": request.request_id,
+                "tool": name,
+                "summary": "等待授权后执行 " + name,
+                "authorization": request.to_dict(),
+            }
+        )
+        try:
+            try:
+                if authorization_timeout > 0:
+                    await asyncio.wait_for(event.wait(), timeout=authorization_timeout)
+                else:
+                    await event.wait()
+            except asyncio.CancelledError:
+                expired = self.policy.expire_request(request_id)
+                resolved_request = self.policy.get_request(request_id)
+                if expired and resolved_request is not None:
+                    self._emit(
+                        {
+                            "event_type": "authorization_resolved",
+                            "request_id": resolved_request.request_id,
+                            "summary": "授权等待已取消，行动不会执行",
+                            "authorization": resolved_request.to_dict(),
+                        }
+                    )
+                raise
+            except asyncio.TimeoutError:
+                expired = self.policy.expire_request(request_id)
+                resolved_request = self.policy.get_request(request_id)
+                if expired and resolved_request is not None:
+                    self._emit(
+                        {
+                            "event_type": "authorization_resolved",
+                            "request_id": resolved_request.request_id,
+                            "summary": "授权等待已超时，行动不会执行",
+                            "authorization": resolved_request.to_dict(),
+                        }
+                    )
+                if resolved_request is None or resolved_request.status != "approved":
+                    denied = self.policy.record_decision(
+                        PermissionDecision.DENY,
+                        "授权等待超时，行动未执行",
+                        resolved_request.scope if resolved_request else "",
+                        request_id=(
+                            resolved_request.request_id if resolved_request else request_id
+                        ),
+                    )
+                    result = ToolResult(
+                        status=ToolStatus.ERROR,
+                        content="",
+                        error=denied.reason,
+                        action_kind=action_kind,
+                        permission=denied,
+                        call_id=call_id,
+                        started_at=started_at,
+                        failure_class="authorization_expired",
+                    )
+                    self._finish_record(name, safe_params, action_kind, result, started)
+                    return result
+            resolved_request = self.policy.get_request(request_id)
+            if resolved_request is None or resolved_request.status != "approved":
+                denied = self.policy.record_decision(
+                    PermissionDecision.DENY,
+                    "授权已拒绝，行动未执行",
+                    resolved_request.scope if resolved_request else "",
+                    request_id=resolved_request.request_id if resolved_request else "",
+                )
+                result = ToolResult(
+                    status=ToolStatus.ERROR,
+                    content="",
+                    error=denied.reason,
+                    action_kind=action_kind,
+                    permission=denied,
+                    call_id=call_id,
+                    started_at=started_at,
+                    failure_class="permission_denied",
+                )
+                self._finish_record(name, safe_params, action_kind, result, started)
+                return result
+            final = self.policy.check(
+                tool_name=name,
+                action_kind=action_kind,
+                params=params,
+                sandbox_safe=getattr(self._tools.get(name), "sandbox_safe", False),
+                requires_authorization=getattr(self._tools.get(name), "requires_authorization", False),
+                authorization_reason=getattr(self._tools.get(name), "authorization_reason", ""),
+                requires_network=getattr(self._tools.get(name), "requires_network", False),
+                authorization_id=resolved_request.grant_id,
+            )
+            final.request_id = request_id
+            if final.decision != PermissionDecision.ALLOW:
+                result = ToolResult(
+                    status=ToolStatus.ERROR,
+                    content="",
+                    error=final.reason,
+                    action_kind=action_kind,
+                    permission=final,
+                    call_id=call_id,
+                    started_at=started_at,
+                    failure_class="permission_denied",
+                )
+                self._finish_record(name, safe_params, action_kind, result, started)
+                return result
+            # 授权通过：把最终记录回写调用方的 permission 引用，使其变为 ALLOW。
+            permission.__dict__.update(final.__dict__)
+            return None
+        finally:
+            self._authorization_events.pop(request_id, None)
 
     def _finish_record(
         self,

@@ -11,9 +11,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from time import time
+from typing import Awaitable, Callable, Optional
 from uuid import uuid4
 
-from ..core.autonomy import AutonomyLevel
+from ..core.autonomy import PermissionMode
 from .base import (
     ActionKind,
     PermissionDecision,
@@ -89,12 +90,22 @@ class AuthorizationRequest:
 
 @dataclass
 class PermissionPolicy:
-    """Central decision point used by the tool registry."""
+    """Central decision point used by the tool registry.
 
-    autonomy_level: AutonomyLevel = AutonomyLevel.STANDARD
+    permission_mode 决定变更/外部操作的放行档位：
+    - READ_ONLY：变更全拒
+    - ASK：变更先问用户
+    - AUTO_REVIEW：系统先自动审核（沙箱内可逆变更放行），不通过转询问
+    - FULL：变更自动放行
+    """
+
+    permission_mode: PermissionMode = PermissionMode.ASK
     allowed_roots: tuple[str | Path, ...] = ()
     auto_authorize_sandbox: bool = True
     allow_network: bool = True
+    # 语义审核器（AUTO_REVIEW 硬规则未通过时调用）。
+    # 异步回调：async (tool_name, action_kind, params, reason) -> bool（True=放行）。
+    reviewer: Optional[Callable[..., Awaitable[bool]]] = None
     _grants: dict[str, AuthorizationGrant] = field(default_factory=dict, init=False)
     _records: list[PermissionRecord] = field(default_factory=list, init=False)
     _requests: dict[str, AuthorizationRequest] = field(default_factory=dict, init=False)
@@ -253,8 +264,7 @@ class PermissionPolicy:
                 )
 
         # An explicitly gated observation must wait for approval before the
-        # automatic allow for ordinary observations. Keep the historical
-        # compute and sandbox-change behavior intact for existing tools.
+        # automatic allow for ordinary observations (e.g. read_user_context).
         if requires_authorization and action_kind == ActionKind.OBSERVE:
             return self._record(
                 PermissionDecision.REQUIRE_AUTHORIZATION,
@@ -262,35 +272,67 @@ class PermissionPolicy:
                 target,
             )
 
+        # 只读/计算/验证：所有权限档位下均自动允许。
         if action_kind in (ActionKind.OBSERVE, ActionKind.COMPUTE, ActionKind.VERIFY):
             return self._record(PermissionDecision.ALLOW, "读取、计算或验证操作自动允许", target)
 
-        if (
-            action_kind == ActionKind.CHANGE
-            and sandbox_safe
-            and self.auto_authorize_sandbox
-            and self.allowed_roots
-        ):
-            if target:
-                try:
-                    self.path_guard.resolve(target)
-                except (PermissionError, OSError) as exc:
-                    return self._record(PermissionDecision.DENY, str(exc), target)
-            if self.autonomy_level >= AutonomyLevel.SANDBOXED:
-                return self._record(PermissionDecision.ALLOW, "限定在工作区内的沙箱变更", target)
-
-        if requires_authorization:
-            return self._record(
-                PermissionDecision.REQUIRE_AUTHORIZATION,
-                authorization_reason or "该工具需要用户授权后才能执行",
-                target,
-            )
-
-        reason = "外部副作用需要授权" if action_kind == ActionKind.EXTERNAL else "变更操作需要授权"
+        # 变更/外部操作：按权限模式分档。
         if action_kind in (ActionKind.CHANGE, ActionKind.EXTERNAL):
-            return self._record(PermissionDecision.REQUIRE_AUTHORIZATION, reason, target)
+            if self.permission_mode == PermissionMode.READ_ONLY:
+                return self._record(
+                    PermissionDecision.DENY,
+                    "只读权限模式下禁止变更操作",
+                    target,
+                )
+            if self.permission_mode == PermissionMode.ASK:
+                return self._record(
+                    PermissionDecision.REQUIRE_AUTHORIZATION,
+                    authorization_reason or "当前权限模式为询问：变更操作需要用户授权",
+                    target,
+                )
+            if self.permission_mode == PermissionMode.AUTO_REVIEW:
+                # 系统先自动审核：沙箱内可逆变更放行；否则标记需要语义审核，
+                # 由调用方决定调用 reviewer（LLM 审核）或转用户询问。
+                if self._auto_review_approve(action_kind, params, sandbox_safe):
+                    return self._record(
+                        PermissionDecision.ALLOW,
+                        "自动审核通过：变更限定在工作区内且可逆",
+                        target,
+                    )
+                record = self._record(
+                    PermissionDecision.REQUIRE_AUTHORIZATION,
+                    "自动审核未通过：变更超出工作区或不可逆，需语义审核或用户确认",
+                    target,
+                )
+                record.review_requested = True
+                return record
+            if self.permission_mode == PermissionMode.FULL:
+                return self._record(
+                    PermissionDecision.ALLOW,
+                    "完全权限模式：变更自动放行",
+                    target,
+                )
 
-        return self._record(PermissionDecision.DENY, "当前自主级别不允许该操作", target)
+        return self._record(PermissionDecision.DENY, "当前权限模式不允许该操作", target)
+
+    def _auto_review_approve(
+        self,
+        action_kind: ActionKind,
+        params: dict,
+        sandbox_safe: bool,
+    ) -> bool:
+        """自动审核硬规则：变更必须限定在工作区根内，且工具声明为沙箱安全。"""
+        if action_kind == ActionKind.EXTERNAL:
+            return False
+        if not sandbox_safe or not self.auto_authorize_sandbox or not self.allowed_roots:
+            return False
+        target = str(params.get("path") or params.get("target") or params.get("cwd") or "")
+        if target:
+            try:
+                self.path_guard.resolve(target)
+            except (PermissionError, OSError):
+                return False
+        return True
 
     @staticmethod
     def _scope_matches(scope: str, target: str) -> bool:

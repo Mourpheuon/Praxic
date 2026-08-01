@@ -215,7 +215,7 @@ class FileListTool(BaseTool):
 
 
 class FileDeleteTool(BaseTool):
-    """删除 workspace 内的文件（仅在 autonomy >= ELEVATED 时可用）"""
+    """删除 workspace 内的文件（READ_ONLY 权限模式下不可用）"""
 
     name = "file_delete"
     description = "删除工作区内的文件（需要高权限）"
@@ -228,12 +228,13 @@ class FileDeleteTool(BaseTool):
         self.workspace = (workspace or DEFAULT_WORKSPACE).resolve()
 
     async def run(self, path: str) -> ToolResult:
-        from ..config import settings, AutonomyLevel
-        if settings.autonomy_level < AutonomyLevel.ELEVATED:
+        from ..config import settings
+        from ..tools.permissions import PermissionMode
+        if settings.permission_mode == PermissionMode.READ_ONLY:
             return ToolResult(
                 status=ToolStatus.ERROR,
                 content="",
-                error=f"删除操作需要 elevated 权限，当前：{settings.autonomy_level.name}",
+                error=f"只读权限模式下禁止删除操作，当前：{settings.permission_mode.name}",
             )
         try:
             target = _safe_path(self.workspace, path)

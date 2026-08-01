@@ -111,13 +111,20 @@ def _resolve_data_dir(raw: str) -> Path:
     return p.resolve() if p.is_absolute() else (Path.cwd() / raw).resolve()
 
 
-from .core.autonomy import AutonomyLevel
+from .core.autonomy import AutonomyLevel, PermissionMode
 
 _AUTONOMY_MAP = {
     "read_only": AutonomyLevel.READ_ONLY,
     "sandboxed": AutonomyLevel.SANDBOXED,
     "standard": AutonomyLevel.STANDARD,
     "elevated": AutonomyLevel.ELEVATED,
+}
+
+_PERMISSION_MAP = {
+    "read_only": PermissionMode.READ_ONLY,
+    "ask": PermissionMode.ASK,
+    "auto_review": PermissionMode.AUTO_REVIEW,
+    "full": PermissionMode.FULL,
 }
 
 
@@ -146,7 +153,8 @@ class Settings:
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""
     tavily_api_key: str = ""
-    autonomy_level: AutonomyLevel = AutonomyLevel.STANDARD
+    autonomy_level: AutonomyLevel = AutonomyLevel.STANDARD   # 行为自主（推理指导）
+    permission_mode: PermissionMode = PermissionMode.ASK     # 权限模式（放行档位）
     max_iterations: int = 5
     enable_trajectory_logging: bool = True
     stream_output: bool = True
@@ -289,6 +297,10 @@ def _build() -> Settings:
         (_env("PRAXIC_AUTONOMY_LEVEL") or str(rt.get("autonomy_level", "standard"))).lower(),
         AutonomyLevel.STANDARD,
     )
+    pm = _PERMISSION_MAP.get(
+        (_env("PRAXIC_PERMISSION_MODE") or str(rt.get("permission_mode", "ask"))).lower(),
+        PermissionMode.ASK,
+    )
     dd_raw = _env("PRAXIC_DATA_DIR") or pth.get("data_dir", "./data")
     cd_raw = pth.get("chroma_dir", "./data/chroma")
     ws_raw = _env("PRAXIC_WORKSPACE_DIR") or pth.get("workspace_dir", "./workspace")
@@ -333,6 +345,7 @@ def _build() -> Settings:
         deepseek_api_key=dk,
         tavily_api_key=tk,
         autonomy_level=al,
+        permission_mode=pm,
         max_iterations=int(_env("PRAXIC_MAX_ITERATIONS") or rt.get("max_iterations", 5)),
         enable_trajectory_logging=_bool(
             _env("PRAXIC_ENABLE_TRAJECTORY_LOGGING") or rt.get("enable_trajectory_logging", True),

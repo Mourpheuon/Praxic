@@ -13,9 +13,47 @@ Praxic Agent —— 实践阶段 Harness Prompts
 # 首轮实验规划
 # ═══════════════════════════════════════════════════════════
 
+# 系统未注入 ToolRegistry 时的工具清单兜底（B1：registry.format_for_prompt() 优先）。
+DEFAULT_TOOLS = """## 可用工具（默认兜底清单）
+
+### python_exec
+执行 Python 代码片段
+参数：
+  - code_ref（代码意图描述，由执行前代码生成器补齐为实际代码）
+  - timeout_seconds (默认=30)
+  - requirements
+
+### web_search
+搜索网络信息。参数：
+  - query
+
+### web_fetch
+获取指定 URL 页面内容。参数：
+  - url
+
+### file_read
+读取工作区文件。参数：
+  - path
+
+### file_write
+写入工作区文件。参数：
+  - path
+  - content
+
+### read_user_context
+申请查看用户补充背景文本。参数：
+  - reason
+"""
+
 R1_PLAN = """
 你已经有了前序阶段的全部认知产出——调查事实、矛盾分析、理性认识（本质和假设）。
 现在由你同时负责提出检验行动并检验前序认识。
+
+## 总体方向锚点（所有实验必须服务于以下核心论断）
+{direction_anchor}
+每项实验设计都必须能追溯到这个锚点中的某条假设或矛盾。
+如果本轮工作偏离锚点，必须在 deviation_rationale 中显式说明理由；
+无偏离则 deviation_rationale 填空字符串。
 
 ## 核心任务
 
@@ -24,24 +62,28 @@ R1_PLAN = """
 
 ## 可用工具
 
-你可以调用以下工具来执行实验（在 tool_calls 中声明）：
-
-1. **python_exec**: 执行 Python 代码片段。用于计算验证、数据处理、模拟运行。
-   参数：code（代码字符串）、timeout_seconds（超时秒数）、requirements（依赖包列表）
-   代码会自动添加编码声明，请确保 print 输出 JSON 格式
-2. **web_search**: 搜索网络信息。用于查找行业基准、对比数据、事实核验。
-   参数：query（搜索关键词）
-3. **web_fetch**: 获取指定 URL 的页面内容。用于读取在线文档、获取实时数据。
-   参数：url（完整 URL）
-4. **file_read**: 读取 workspace 中的文件。用于分析已有数据文件。
-5. **file_write**: 写入内容到 workspace 文件。
-6. **read_user_context**: 申请查看用户在本轮输入中补充的背景文本。该工具会暂停等待用户授权；
-   只有背景确实影响当前检验且前序材料不足时才申请。参数：reason（说明申请理由）。
+以下工具清单由系统动态生成，以它为准，不要使用清单之外的工具：
+{tools_text}
 
 ## 实验策略
 
-首轮实验：先做最简单的能跑通的实验，用少量参数快速出结果。
-工具调用失败不等于假设被证伪——区分技术错误和验证结果。
+每一轮实验都是认识链条上的一环，不是孤立地跑代码。规划前先明确本轮的认识论定位：
+
+1. **先定位，再设计**：本轮是
+   - exploration（搜集感性材料）：认识尚未成形，实验广撒网，获取直接经验
+   - verification（检验理性认识）：已有明确假设，实验必须能区分真伪（可证伪设计）
+   - revision（修正认识）：证据动摇了旧认识，本轮聚焦反例，目标是找出新规律
+   在 epistemic_role 字段中写明，并让实验设计与定位匹配。
+
+2. **抓主要矛盾**：与方向锚点中主要矛盾直接相关的论断优先检验。
+   次要矛盾上的意外发现记入 unexpected，但不轻易改写实验主线；
+   只有证据直接击中主要矛盾本身时，才允许通过 deviation_rationale 转向。
+
+3. **区分技术失败与证伪**：工具报错、代码异常是实践的中断，不是认识的否定。
+   只有获得有效观测数据后，才能对论断下支持/动摇/证伪的判定。
+
+4. **从现象上升到认识**：每个实验结果必须回答"它使我对锚点论断的认识发生了什么变化"，
+   不能停留在"执行了、得到了这些数值"。数据是感性材料，对论断的判定才是理性认识。
 
 ## 前序认知产出
 
@@ -66,14 +108,17 @@ R1_PLAN = """
 ### 实践方向（由本阶段负责形成，不可替代工具证据）
 {practice_direction_text}
 
-## 输出格式（JSON）
+## 输出格式（严格 JSON——只输出 JSON 对象，不要代码围栏，不要多余文字）
 {
   "round_rationale": "第一轮先验证哪个论断？为什么从这个开始？",
+  "epistemic_role": "exploration | verification | revision",
+  "directional_claim": "本轮检验的论断，必须可追溯到锚点中的某条假设或矛盾",
+  "deviation_rationale": "若本轮方向偏离锚点，显式说明原因；无偏离则空字符串",
   "testable_claims": [
     {"claim": "要检验的论断", "source": "来自哪个阶段的什么结论", "if_true": "...", "if_false": "..."}
   ],
   "tool_calls": [
-    {"tool": "python_exec", "params": {"code": "...", "timeout_seconds": 30}},
+    {"tool": "python_exec", "params": {"code_ref": "代码意图描述", "timeout_seconds": 30}},
     {"tool": "web_search", "params": {"query": "..."}}
   ],
   "expected_outcomes": ["本轮预期成果"]
@@ -86,6 +131,12 @@ R1_PLAN = """
 
 RN_PLAN = """
 你正在执行多轮实践实验。现在是第 {round_num} 轮。
+
+## 总体方向锚点（每轮都必须先对齐方向，再决定本轮内容）
+{direction_anchor}
+在写本轮规划前，先回答自己：本轮要推进锚点中的哪个论断？
+前一轮的证据使这个论断的状态发生了什么变化？本轮成功或失败分别意味着什么？
+然后在 directional_claim 中写出答案。
 
 ## 认知上下文（所有轮次共享）
 
@@ -126,30 +177,34 @@ RN_PLAN = """
 
 ## 本轮规划策略
 
-基于前序轮次的结果决定本轮方向：
-- 如果上一轮有明确的验证失败：本轮聚焦复验
+先对齐方向锚点，明确本轮 epistemic_role（exploration/verification/revision），再基于前序轮次结果决定方向：
+- 如果上一轮有明确的验证失败：本轮聚焦复验，说明这与锚点的关系
 - 如果上一轮建立了基线但未充分覆盖：本轮扩展检验
-- 如果上一轮发现了意外结果：本轮深挖
-- 如果上一轮工具调用出错：本轮修复参数重试
+- 如果上一轮发现了意外结果：先判断它是否服务于锚点，再决定深挖或回归
+- 如果上一轮工具调用出错：本轮修复参数重试（技术失败，不构成证伪）
+- 如果持续偏离锚点，检查是否该通过 deviation_rationale 显式转向
 
 ## 可用工具
 
-同第一轮——python_exec、web_search、web_fetch、file_read、file_write、read_user_context。
+以下工具清单由系统动态生成，以它为准，不要使用清单之外的工具：
+{tools_text}
 
-## 输出格式（JSON）
+## 输出格式（严格 JSON——只输出 JSON 对象，不要代码围栏，不要多余文字）
 {
   "round_rationale": "基于上一轮结果，本轮做什么、为什么",
+  "epistemic_role": "exploration | verification | revision",
+  "directional_claim": "本轮检验的论断，必须可追溯到锚点中的某条假设或矛盾",
+  "deviation_rationale": "若本轮方向偏离锚点，显式说明原因；无偏离则空字符串",
   "testable_claims": [
     {"claim": "本轮要检验的论断", "if_true": "...", "if_false": "..."}
   ],
   "tool_calls": [
-    {"tool": "python_exec", "params": {"code": "...", "timeout_seconds": 30}},
+    {"tool": "python_exec", "params": {"code_ref": "代码意图描述", "timeout_seconds": 30}},
     {"tool": "web_search", "params": {"query": "..."}}
   ],
   "expected_outcomes": ["本轮成功标准"],
   "done": false
 }
-
 如果实验结果充分，设 done: true（tool_calls 可为空）。
 """
 

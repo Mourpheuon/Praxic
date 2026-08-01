@@ -82,6 +82,8 @@ class PermissionRecord:
     authorization_id: str = ""
     request_id: str = ""
     requested_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # AUTO_REVIEW 模式下硬规则未通过，标记需要语义审核；由调用方决定是否调用 reviewer。
+    review_requested: bool = False
 
     def to_dict(self) -> dict:
         return _jsonable(self)

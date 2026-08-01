@@ -10,7 +10,8 @@ model    = "deepseek-v4-pro"
 
 # --- Runtime ---
 [runtime]
-autonomy_level             = "standard"
+autonomy_level             = "standard"   # 行为自主：read_only | sandboxed | standard | elevated
+permission_mode            = "ask"        # 权限模式：read_only | ask | auto_review | full
 max_iterations             = 5
 enable_trajectory_logging  = true
 stream_output              = true

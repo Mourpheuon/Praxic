@@ -1,19 +1,18 @@
 """
 Praxic Agent —— 问题预处理模块（v0.2.0 五步管线）
 核心原则：调查之前先理解问题本身。
-五步分步调用 LLM，每步聚焦单一任务，前一步输出决定下一步是否执行。
-简单任务（如代码生成）只需 2 次 LLM 调用，避免过度分析。
+五步逻辑保留，Step 1 后合并执行 Step 3/4/5；合并失败时自动退回分步管线。
+正常路径只需 2 次 LLM 调用，避免过度分析。
 """
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import Optional
 
 import structlog
 
 from ..api.schemas.models import PreprocessedQuestion
 from ..config import PhaseConfig
-from ..llm.base import BaseLLM
 from ..llm import get_llm as _get_default_llm
 
 log = structlog.get_logger(__name__)
@@ -213,11 +212,49 @@ _STEP5_STRUCTURE_PROMPT = """基于已经完成的任务性质判断、意图矛
 只输出 JSON。"""
 
 
+_STEP345_COMBINED_PROMPT = """一次完成用户问题的意图矛盾分析、预设审查和结构化扩展。
+
+用户消息会给出任务性质、复杂度，以及“执行意图矛盾分析”“执行预设审查”两个开关。开关为 false 时，对应字段必须输出空字符串或空数组，不要强行分析。
+
+## 意图矛盾分析
+
+只分析用户提问行为本身：表面想要的答案与真正需要、担心或掌握的信息之间，是否存在互相依赖又互相牵制的结构性差距。不要分析问题主题内部的技术对立。问题直接明确时留空；真正存在时写清对立两极及其关系，100-200 字。
+
+## 预设审查与框架审视
+
+检查问题把哪些论断当成既定事实，是否存在以偏概全、把相关性当因果、把流行叙事当事实等情况。每条可疑预设使用“预设：<主张> —— 存疑：<原因> —— 核实：<方向>”格式。不确定时标注待核实。再检查用户框架是否遗漏了重要的第三方、约束或更基础的问题。确实没有时数组留空。
+
+## 结构化扩展
+
+- question_intent：分类为因果解释 / 行动方案 / 判断验证 / 探索理解 / 其他，并附一句依据。
+- core_anxiety：基于问题本身推断深层关切，50-150 字，不臆测。
+- question_domains：列出 3-4 个直接相关的知识领域或维度。
+- structured_sub_questions：拆为 2-4 个具体子问题；存在可疑预设或遗漏因素时必须覆盖它们。简单任务可为 1-2 个。
+- expanded_question：补充必要限定，将可疑预设降格为待核实论断。复杂问题 200-400 字，简单问题 50-150 字。
+- clarifying_questions：只有用户本人能提供且缺少后无法回答的信息，最多 1-3 条；能搜索或验证的信息不要反问。
+- wants_detailed_report：仅当用户明确要求详细、深入或完整报告时为 true。
+
+输出 JSON，字段必须完整：
+{
+  "contradiction_in_question": "矛盾描述或空字符串",
+  "questionable_premises": [],
+  "overlooked_factors": [],
+  "question_intent": "分类 —— 一句依据",
+  "core_anxiety": "深层关切",
+  "question_domains": [],
+  "structured_sub_questions": [],
+  "expanded_question": "扩展后的问题",
+  "clarifying_questions": [],
+  "wants_detailed_report": false
+}
+只输出 JSON。"""
+
+
 class QuestionPreprocessing:
     """问题预处理模块 —— 调查之前先理解问题
 
-    五步管线，分步调用 LLM：任务性质→阶段必要性→意图矛盾→预设审查→结构化扩展。
-    每一步的 prompt 聚焦单一任务，前一步的输出决定下一步是否执行。
+    五步逻辑管线：任务性质→阶段必要性→意图矛盾→预设审查→结构化扩展。
+    正常路径合并后三步，失败时回退到 Step 3/4 并行的分步实现。
     """
 
     def __init__(self, llm=None, phase_config=None):
@@ -260,31 +297,69 @@ class QuestionPreprocessing:
             necessity = {k: "skip" for k in necessity}
             complexity = "simple"
 
-        # ── Step 3：意图矛盾（仅在非简单任务时执行）──
-        if complexity != "simple":
-            step3 = await self._step_contradiction_in_intent(question, task_nature, _ctx_prefix)
-            contradiction_in_question = step3.get("contradiction_in_question", "")
-        else:
-            contradiction_in_question = ""
-
-        # ── Step 4：预设审查 + 框架审视（仅在任务含事实主张时执行）──
+        # ── Step 3/4：计算执行开关；合并失败时两者可并行执行 ──
+        do_step3 = complexity != "simple"
         do_step4 = not (
             task_nature in _STEP4_SKIP_TASK_TYPES and complexity == "simple"
         )
-        if do_step4:
-            step4 = await self._step_premise_audit(question, task_nature, _ctx_prefix)
-            questionable_premises = step4.get("questionable_premises", []) or []
-            overlooked_factors = step4.get("overlooked_factors", []) or []
-        else:
-            questionable_premises = []
-            overlooked_factors = []
 
-        # ── Step 5：结构化扩展（始终执行，汇总前几步结果）──
-        step5 = await self._step_structure(
-            question, task_nature, complexity,
-            contradiction_in_question, questionable_premises, overlooked_factors,
+        combined = await self._step_analysis_and_structure(
+            question,
+            task_nature,
+            complexity,
+            do_step3,
+            do_step4,
             _ctx_prefix,
         )
+        if combined is not None:
+            contradiction_in_question = (
+                combined.get("contradiction_in_question", "") if do_step3 else ""
+            )
+            questionable_premises = (
+                combined.get("questionable_premises", []) or [] if do_step4 else []
+            )
+            overlooked_factors = (
+                combined.get("overlooked_factors", []) or [] if do_step4 else []
+            )
+            step5 = combined
+        else:
+            # 合并调用失败时降级到 B1：Step 3/4 并行，随后执行 Step 5。
+            if do_step3 and do_step4:
+                step3_task = asyncio.create_task(
+                    self._step_contradiction_in_intent(
+                        question, task_nature, _ctx_prefix
+                    )
+                )
+                step4_task = asyncio.create_task(
+                    self._step_premise_audit(question, task_nature, _ctx_prefix)
+                )
+                step3, step4 = await asyncio.gather(step3_task, step4_task)
+            elif do_step3:
+                step3 = await self._step_contradiction_in_intent(
+                    question, task_nature, _ctx_prefix
+                )
+                step4 = {"questionable_premises": [], "overlooked_factors": []}
+            elif do_step4:
+                step3 = {"contradiction_in_question": ""}
+                step4 = await self._step_premise_audit(
+                    question, task_nature, _ctx_prefix
+                )
+            else:
+                step3 = {"contradiction_in_question": ""}
+                step4 = {"questionable_premises": [], "overlooked_factors": []}
+
+            contradiction_in_question = step3.get("contradiction_in_question", "")
+            questionable_premises = step4.get("questionable_premises", []) or []
+            overlooked_factors = step4.get("overlooked_factors", []) or []
+            step5 = await self._step_structure(
+                question,
+                task_nature,
+                complexity,
+                contradiction_in_question,
+                questionable_premises,
+                overlooked_factors,
+                _ctx_prefix,
+            )
 
         result = PreprocessedQuestion(
             original_question=question,
@@ -406,6 +481,92 @@ class QuestionPreprocessing:
             temperature=0.5, max_tokens=1024,
         )
 
+    async def _step_analysis_and_structure(
+        self,
+        question: str,
+        task_nature: str,
+        complexity: str,
+        do_step3: bool,
+        do_step4: bool,
+        conversation_history: str = "",
+    ) -> dict | None:
+        """Run the merged fast path; return None to activate the B1 fallback."""
+        content = "\n".join(
+            [
+                f"用户原始问题：{question}",
+                f"任务性质：{task_nature}",
+                f"复杂度：{complexity}",
+                f"执行意图矛盾分析：{'true' if do_step3 else 'false'}",
+                f"执行预设审查：{'true' if do_step4 else 'false'}",
+            ]
+        )
+        if conversation_history:
+            content = f"对话历史：\n{conversation_history}\n\n---\n\n{content}"
+
+        default_result = {
+            "_combined_failed": True,
+            "contradiction_in_question": "",
+            "questionable_premises": [],
+            "overlooked_factors": [],
+            "question_intent": "",
+            "core_anxiety": "",
+            "question_domains": [],
+            "structured_sub_questions": [],
+            "expanded_question": question,
+            "clarifying_questions": [],
+            "wants_detailed_report": False,
+        }
+        result = await self._call_step(
+            _STEP345_COMBINED_PROMPT,
+            content,
+            "analysis_structure",
+            default_result,
+            temperature=0.4,
+            max_tokens=1536,
+        )
+        required_fields = set(default_result) - {"_combined_failed"}
+        list_fields = {
+            "questionable_premises",
+            "overlooked_factors",
+            "question_domains",
+            "structured_sub_questions",
+            "clarifying_questions",
+        }
+        string_fields = {
+            "contradiction_in_question",
+            "question_intent",
+            "core_anxiety",
+            "expanded_question",
+        }
+        invalid_fields: list[str] = []
+        if isinstance(result, dict):
+            invalid_fields.extend(
+                name
+                for name in list_fields
+                if not isinstance(result.get(name), list)
+                or not all(isinstance(item, str) for item in result[name])
+            )
+            invalid_fields.extend(
+                name for name in string_fields if not isinstance(result.get(name), str)
+            )
+            if not isinstance(result.get("wants_detailed_report"), bool):
+                invalid_fields.append("wants_detailed_report")
+
+        if (
+            not isinstance(result, dict)
+            or result.get("_combined_failed")
+            or not required_fields.issubset(result)
+            or invalid_fields
+        ):
+            missing = sorted(required_fields - set(result)) if isinstance(result, dict) else []
+            log.warning(
+                "question_preprocessing.analysis_structure.invalid_schema",
+                missing=missing,
+                invalid=sorted(invalid_fields),
+            )
+            return None
+        return result
+
     # ═══════════════════════════════════════════════════════════════
     # 通用工具方法
     # ═══════════════════════════════════════════════════════════════
@@ -416,11 +577,17 @@ class QuestionPreprocessing:
     ) -> dict:
         """通用的单步 LLM 调用 + JSON 解析。失败时返回 default_result。"""
         try:
+            reasoning_kwargs = {"reasoning_effort": "low"}
+            # Anthropic's similarly named option enables extended thinking;
+            # omitting it is the low-latency equivalent for these short steps.
+            if getattr(self.llm, "provider_name", "") == "anthropic":
+                reasoning_kwargs = {}
             response = await self.llm.call(
                 messages=[{"role": "user", "content": user_content}],
                 system=system_prompt,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                **reasoning_kwargs,
             )
             return self._parse_json_safe(response.content, step_name, default_result)
         except Exception as e:

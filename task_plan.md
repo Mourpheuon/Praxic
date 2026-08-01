@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-全部阶段已完成；当前等待用户继续进行视觉调试。
+Phase 7（实践阶段结构化改造）已完成；C5 方向状态更新已正式结构化，旧兼容路径已增加方向字段软校验。
 
 ## Phases
 
@@ -61,12 +61,23 @@
 - [x] 完成 TypeScript、生产构建、桌面/移动端与交互验收
 - **Status:** complete
 
+### Phase 7: 实践阶段结构化改造
+
+- [x] L1 止血：删除 reasoning 草稿顶替正文的 fallback；修复 JSON 解析器（换行符查找 + 正则兜底 + 原始输出日志）；规划失败用 max_retries 重试并带错误反馈；重试耗尽降级为 V2 知性分析，不再空跑三轮
+- [x] L2 结构化：工具清单改为 registry 动态注入（shell_exec 可见）；规划调用带 JSON mode 并降级兜底；tool 名/参数 schema 校验；规划与代码生成分离（code_ref → FILE_CONTENT 生成 → 执行）
+- [x] L3 方向锚点 + 方法论：R1/RN 注入 direction_anchor；新契约必含 directional_claim/deviation_rationale/epistemic_role 三字段并校验；方法论落为行为约束（先定位再设计、抓主要矛盾、技术失败≠证伪、现象上升为认识）；分析层判定纪律；C5 证据影响回写下一轮锚点
+- [x] C5 正式结构化：用 `DirectionStateUpdate` 记录单轮方向状态，由 `PracticeReport` 保存当前状态与历史，并将结构化 JSON 注入下一轮规划
+- [x] 旧契约软校验：`files_to_create`/`commands_to_run` 缺失方向字段时记录 warning，继续执行兼容路径，不把旧调用方强制推入降级流程
+- 验收证据：60 项 pytest、compileall、两个显式集成脚本；mock LLM 四场景（新契约路径、非法 JSON 重试、恒失败降级 V2、空 directional_claim 重试）；R1 含 shell_exec，R2 含方向锚点与证据影响
+- **Status:** complete
+
 ## 决策
 
 - 实验是实践的一种形式，核心抽象采用通用真实世界行动。
 - 真正的模型 KV cache、供应商 prompt cache 和应用层上下文缓存分层实现；不假设通用 API 支持跨请求传递 past_key_values。
 - 读取默认自动执行；写入、删除、发布和外部副作用通过权限与授权门控。
 - 前端展示可审计的行动摘要、工具、结果、证据和验证，不展示模型私有逐字推理链。
+- 实践阶段方向强校验（directional_claim 非空）只对新 `tool_calls` 契约生效；旧 `files_to_create`/`commands_to_run` 兼容层放行，避免既有测试与旧调用方被推入降级路径。
 - 前端恢复以迁移前实际运行入口为功能基线；本阶段只做视觉改造和新授权契约的必要兼容，不重写原业务系统。
 - F 盘 Hanako 项目只读，参考其计划记录、Hook、执行策略和 claims/evidence ledger。
 - `.env`、token、运行时 registry 和外部绝对路径不进入提交。
@@ -111,6 +122,10 @@
 | Windows `bash` 命中 WSL shim，找不到 `/bin/bash` | 1 | 改用已安装的 `D:\Git\usr\bin\bash.exe` 执行项目推送脚本 |
 | session-catchup 在 GBK 终端输出设置符号时报 UnicodeEncodeError | 1 | 直接读取 UTF-8 规划文件与 Git 状态恢复上下文，不重复执行该输出路径 |
 | 浏览器关闭设置按钮定位为 0 | 1 | CSS 热更新已自动关闭弹窗；不重复点击，直接按移动视口重新加载验收 |
+| 规划 JSON 解析器 `find("\\\\n")` 查找字面反斜杠而非换行符 | 0 | 改为查找真实换行；增加首 `{` 到末 `}` 正则兜底，解析失败保留原始输出前 500 字符进日志 |
+| 规划失败后带空计划空跑三轮 | 0 | 用 `max_retries` 循环重试并把错误反馈追加回消息；耗尽返回 `plan_failed` 标记，主流程降级为 V2 知性分析 |
+| 工具清单与 ToolRegistry 漂移，shell_exec 已注册但未列出 | 0 | 提示词改为 `{tools_text}` 占位符，运行时用 `registry.format_for_prompt()` 动态注入，registry 为 None 时用 `DEFAULT_TOOLS` 兜底 |
+| 验证脚本误判 FILE_CONTENT 未生成 | 1 | 代码生成提示词含 `<python_exec>` 路径占位符，误用排除 `python_exec` 关键字判定；改为以 `编码规则` 标记识别 |
 
 ## 恢复提示
 

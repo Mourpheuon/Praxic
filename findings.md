@@ -1,5 +1,12 @@
 # Praxic 研究与发现记录
 
+## 2026-08-01 任务续接
+
+- 任务记录的 Phase 7 主体及两项收尾均已完成：C5 方向状态已结构化，旧规划契约已增加方向字段软校验。
+- `DirectionStateUpdate` 记录方向论断、认识论角色、证据状态、有效观测、技术失败、影响和下一步重点；`PracticeRound` 与 `PracticeReport` 分别保存单轮及累计状态。
+- 下一轮规划收到结构化方向状态 JSON；旧 `files_to_create`/`commands_to_run` 缺失方向字段时记录 warning，但继续执行兼容路径。
+- 两个实践显式集成脚本均通过；全量 pytest 60 项通过，compileall、CLI 和前端生产构建通过。
+
 ## 2026-07-30 前端入口审计结论
 
 - 迁移前浏览器实际加载的是 `siwu/web/index.html` 中 2558 行的完整 React 单页实现；它包含项目与 session、重命名/删除、排序、历史回看、文件拖放、模型选择、运行中 steering、澄清、完整设置、版本/构建和阶段详情。

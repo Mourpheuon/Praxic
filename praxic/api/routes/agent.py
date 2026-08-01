@@ -214,6 +214,13 @@ def _serialize_event(event: dict) -> Optional[str]:
             ] if result else [],
             "error": error_msg,
         }
+        if result and result.full_trace and result.full_trace.metadata:
+            metadata = result.full_trace.metadata
+            payload["metadata"] = (
+                metadata.model_dump(mode="json")
+                if hasattr(metadata, "model_dump")
+                else metadata
+            )
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
     return None  # 跳过 __eof__ 等内部事件
 

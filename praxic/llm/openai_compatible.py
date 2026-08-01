@@ -22,6 +22,18 @@ from .cache import usage_value
 
 log = structlog.get_logger(__name__)
 
+_UNSUPPORTED_PARAMETER_MARKERS = (
+    "unsupported",
+    "not support",
+    "unknown parameter",
+    "unrecognized parameter",
+    "unexpected keyword",
+    "unexpected argument",
+    "extra inputs",
+    "not permitted",
+    "invalid parameter",
+)
+
 
 class OpenAICompatibleLLM(BaseLLM):
     """Generic provider for any OpenAI-compatible chat-completions endpoint.
@@ -40,6 +52,55 @@ class OpenAICompatibleLLM(BaseLLM):
 
         self.default_model = default_model
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=300.0, max_retries=2)
+
+    @staticmethod
+    def _unsupported_reasoning_controls(exc: Exception, controls: set[str]) -> set[str]:
+        """Return only controls explicitly implicated by an unsupported-param error."""
+        details = " ".join(
+            str(value)
+            for value in (exc, getattr(exc, "body", None), getattr(exc, "code", None))
+            if value
+        ).lower()
+        if not any(marker in details for marker in _UNSUPPORTED_PARAMETER_MARKERS):
+            return set()
+
+        named = {name for name in controls if name in details}
+        if named:
+            return named
+        if controls and ("reasoning" in details or "thinking" in details):
+            return set(controls)
+        return set()
+
+    @staticmethod
+    def _remove_reasoning_controls(params: dict, controls: set[str]) -> dict:
+        retry_params = dict(params)
+        if "reasoning_effort" in controls:
+            retry_params.pop("reasoning_effort", None)
+        if "enable_reasoning" in controls:
+            extra_body = dict(retry_params.get("extra_body") or {})
+            extra_body.pop("enable_reasoning", None)
+            if extra_body:
+                retry_params["extra_body"] = extra_body
+            else:
+                retry_params.pop("extra_body", None)
+        return retry_params
+
+    async def _create_with_reasoning_fallback(
+        self, params: dict, controls: set[str]
+    ):
+        try:
+            return await self._client.chat.completions.create(**params)
+        except Exception as exc:
+            unsupported = self._unsupported_reasoning_controls(exc, controls)
+            if not unsupported:
+                raise
+            log.warning(
+                "openai_compatible.reasoning_controls_degraded",
+                controls=sorted(unsupported),
+                error=str(exc)[:200],
+            )
+            retry_params = self._remove_reasoning_controls(params, unsupported)
+            return await self._client.chat.completions.create(**retry_params)
 
     # ── call ──────────────────────────────────────────────────────
     async def call(
@@ -66,6 +127,15 @@ class OpenAICompatibleLLM(BaseLLM):
         }
         if max_tokens is not None and max_tokens > 0:
             params["max_tokens"] = max_tokens
+        reasoning_controls: set[str] = set()
+        if "reasoning_effort" in kwargs:
+            params["reasoning_effort"] = kwargs.pop("reasoning_effort")
+            reasoning_controls.add("reasoning_effort")
+        if "enable_reasoning" in kwargs:
+            extra_body = dict(params.get("extra_body") or {})
+            extra_body["enable_reasoning"] = kwargs.pop("enable_reasoning")
+            params["extra_body"] = extra_body
+            reasoning_controls.add("enable_reasoning")
         if kwargs.pop("use_provider_prompt_cache", False):
             cache_key = kwargs.pop("cache_key", None)
             if cache_key:
@@ -74,17 +144,25 @@ class OpenAICompatibleLLM(BaseLLM):
             if retention:
                 params["prompt_cache_retention"] = retention
 
-        response = await self._client.chat.completions.create(**params)
+        response = await self._create_with_reasoning_fallback(params, reasoning_controls)
         choice = response.choices[0]
         content = choice.message.content or ""
 
         # Some providers (e.g. DeepSeek) return reasoning in a separate field.
-        # Harmless no-op for providers that don't — getattr returns None.
+        # Reasoning is a thinking-chain draft; it is never valid as evaluable
+        # output (a thought trace fed to a JSON parser is a source of empty/half
+        # plans). Keep it for logging only and let empty content ("") propagate
+        # so the caller can retry or degrade instead of parsing a draft.
         reasoning = getattr(choice.message, "reasoning_content", None)
         if reasoning:
             log.debug("openai_compatible.reasoning_tokens", len=len(reasoning))
-        if not content and reasoning:
-            content = reasoning
+        if not content:
+            log.warning(
+                "openai_compatible.empty_content",
+                model=model,
+                finish_reason=choice.finish_reason,
+                reasoning_len=len(reasoning) if reasoning else 0,
+            )
 
         usage = response.usage
         cache_read = usage_value(getattr(usage, "prompt_tokens_details", None), "cached_tokens")
@@ -126,8 +204,18 @@ class OpenAICompatibleLLM(BaseLLM):
         }
         if max_tokens is not None and max_tokens > 0:
             params["max_tokens"] = max_tokens
+        reasoning_controls: set[str] = set()
+        if "reasoning_effort" in kwargs:
+            params["reasoning_effort"] = kwargs.pop("reasoning_effort")
+            reasoning_controls.add("reasoning_effort")
+        if "enable_reasoning" in kwargs:
+            extra_body = dict(params.get("extra_body") or {})
+            extra_body["enable_reasoning"] = kwargs.pop("enable_reasoning")
+            params["extra_body"] = extra_body
+            reasoning_controls.add("enable_reasoning")
 
-        async with await self._client.chat.completions.create(**params) as stream:
+        stream = await self._create_with_reasoning_fallback(params, reasoning_controls)
+        async with stream:
             async for chunk in stream:
                 delta = chunk.choices[0].delta
                 if delta.content:

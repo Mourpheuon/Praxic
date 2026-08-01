@@ -14,6 +14,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel
 
 from ..config import settings, CONFIG_TOML
 from .routes.agent import init_agent_resources, router as agent_router
@@ -24,6 +25,55 @@ UI_DIR = Path(__file__).parent.parent / "ui"
 WEB_DIR = Path(__file__).parent.parent / "web"
 
 log = structlog.get_logger(__name__)
+
+_TEXT_FILE_EXTENSIONS = {
+    ".c", ".cc", ".cpp", ".css", ".csv", ".go", ".h", ".hpp", ".html",
+    ".ini", ".java", ".js", ".json", ".jsx", ".md", ".py", ".rs", ".sh",
+    ".sql", ".svg", ".tex", ".toml", ".ts", ".tsx", ".txt", ".vue", ".xml", ".yaml",
+    ".yml",
+}
+_MAX_EDITOR_BYTES = 2 * 1024 * 1024
+_MAX_TREE_ENTRIES = 500
+
+
+class WorkspaceFileUpdateRequest(BaseModel):
+    path: str
+    content: str
+    project_id: str = ""
+
+
+def _resolve_project_workspace(project_id: str = "") -> Path:
+    """Resolve a project workspace without allowing project-id traversal."""
+    if not project_id:
+        return settings.workspace_dir.resolve()
+
+    projects_root = settings.projects_dir.resolve()
+    project_dir = (projects_root / project_id).resolve()
+    try:
+        project_dir.relative_to(projects_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="项目路径越界") from exc
+    if not project_dir.is_dir():
+        raise HTTPException(status_code=404, detail="项目不存在")
+
+    local_path_file = project_dir / ".localpath"
+    if local_path_file.is_file():
+        return Path(local_path_file.read_text(encoding="utf-8").strip()).resolve()
+    return (project_dir / "workspace").resolve()
+
+
+def _resolve_workspace_file(workspace: Path, file_path: str) -> Path:
+    raw = Path(file_path)
+    safe = (raw if raw.is_absolute() else workspace / raw).resolve()
+    try:
+        safe.relative_to(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="路径越界") from exc
+    return safe
+
+
+def _is_text_workspace_file(path: Path, mime: str | None) -> bool:
+    return path.suffix.lower() in _TEXT_FILE_EXTENSIONS or bool(mime and mime.startswith("text/"))
 
 
 @asynccontextmanager
@@ -88,15 +138,103 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/workspace/files/{file_path:path}", include_in_schema=False)
     async def serve_workspace_file(file_path: str):
         workspace = settings.workspace_dir.resolve()
-        safe = (workspace / file_path).resolve()
-        try:
-            safe.relative_to(workspace)
-        except ValueError:
-            raise HTTPException(status_code=403, detail="路径越界")
+        safe = _resolve_workspace_file(workspace, file_path)
         if not safe.is_file():
             raise HTTPException(status_code=404, detail="文件不存在")
         mime, _ = mimetypes.guess_type(str(safe))
         return FileResponse(safe, media_type=mime or "application/octet-stream")
+
+    @app.get("/api/v1/workspace/file-content", include_in_schema=False)
+    async def read_workspace_file(path: str, project_id: str = ""):
+        """Read a project workspace text file for the right-hand inspector."""
+        workspace = _resolve_project_workspace(project_id)
+        safe = _resolve_workspace_file(workspace, path)
+        if not safe.is_file():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        if safe.stat().st_size > _MAX_EDITOR_BYTES:
+            raise HTTPException(status_code=413, detail="文件过大，阅读器最多打开 2 MB")
+
+        mime, _ = mimetypes.guess_type(str(safe))
+        editable = _is_text_workspace_file(safe, mime)
+        if editable:
+            content = safe.read_text(encoding="utf-8", errors="replace")
+        else:
+            content = ""
+        return {
+            "path": str(safe),
+            "relative_path": str(safe.relative_to(workspace)),
+            "content": content,
+            "editable": editable,
+            "mime": mime or "application/octet-stream",
+            "size_bytes": safe.stat().st_size,
+        }
+
+    @app.get("/api/v1/workspace/tree", include_in_schema=False)
+    async def list_workspace_tree(path: str = "", project_id: str = ""):
+        """List one directory in a project workspace for the in-app file browser."""
+        workspace = _resolve_project_workspace(project_id)
+        safe = _resolve_workspace_file(workspace, path)
+        if not safe.exists():
+            raise HTTPException(status_code=404, detail="目录不存在")
+        if not safe.is_dir():
+            raise HTTPException(status_code=400, detail="目标不是目录")
+
+        try:
+            children = sorted(
+                safe.iterdir(),
+                key=lambda item: (not item.is_dir(), item.name.casefold()),
+            )
+        except OSError as exc:
+            raise HTTPException(status_code=403, detail="目录不可读取") from exc
+
+        entries = []
+        for child in children[:_MAX_TREE_ENTRIES]:
+            try:
+                resolved = child.resolve()
+                resolved.relative_to(workspace)
+                relative = str(child.relative_to(workspace))
+                is_dir = child.is_dir()
+                stat = child.stat()
+                mime, _ = mimetypes.guess_type(str(child))
+            except (OSError, ValueError):
+                continue
+            entries.append({
+                "name": child.name,
+                "relative_path": relative,
+                "kind": "directory" if is_dir else "file",
+                "size_bytes": 0 if is_dir else stat.st_size,
+                "mime": mime or ("inode/directory" if is_dir else "application/octet-stream"),
+                "editable": False if is_dir else _is_text_workspace_file(child, mime),
+            })
+
+        return {
+            "workspace_name": workspace.name or "workspace",
+            "current_path": "" if safe == workspace else str(safe.relative_to(workspace)),
+            "entries": entries,
+            "truncated": len(children) > _MAX_TREE_ENTRIES,
+        }
+
+    @app.put("/api/v1/workspace/file-content", include_in_schema=False)
+    async def update_workspace_file(req: WorkspaceFileUpdateRequest):
+        """Save an explicitly edited text file inside the active project workspace."""
+        if len(req.content.encode("utf-8")) > _MAX_EDITOR_BYTES:
+            raise HTTPException(status_code=413, detail="文件过大，最多保存 2 MB")
+
+        workspace = _resolve_project_workspace(req.project_id)
+        safe = _resolve_workspace_file(workspace, req.path)
+        if not safe.is_file():
+            raise HTTPException(status_code=404, detail="文件不存在")
+        mime, _ = mimetypes.guess_type(str(safe))
+        if not _is_text_workspace_file(safe, mime):
+            raise HTTPException(status_code=415, detail="该文件不是可编辑的文本文件")
+
+        safe.write_text(req.content, encoding="utf-8")
+        return {
+            "ok": True,
+            "path": str(safe),
+            "relative_path": str(safe.relative_to(workspace)),
+            "size_bytes": safe.stat().st_size,
+        }
 
     # Serve React SPA (self-contained, CDN-based, no build required)
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)

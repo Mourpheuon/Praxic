@@ -12,7 +12,7 @@ import structlog
 
 from ..api.schemas.models import (
     PracticeReport, PracticeRound, PracticeStep, CognitiveTrace,
-    RealWorldPracticeTask,
+    RealWorldPracticeTask, DirectionStateUpdate,
 )
 from ..config import PhaseConfig, load_phase_prompt, settings
 from ..llm.base import BaseLLM
@@ -55,17 +55,26 @@ _FINAL_ANALYSIS_PROMPT = """
 ## 全部轮次的执行记录
 {all_rounds_log}
 
+## 判定纪律（务必遵守）
+1. verdict 必须基于**有效观测**：只有被回读验证或获得结构化有效数据的轮次才能参与判定。
+   工具报错、超时、安全检查阻拦等**技术失败轮次不参与对论断的判定**——那是一次实践中断，不是认识否定。
+2. analysis 必须说明本轮证据对前序理性认识（假设）的**认识变化**：是支持、动摇还是证伪了
+   某个论断；如果是证伪，明确是哪个论断、依据什么有效观测。
+3. 每个 claim_assessments 条目必须给出可追溯的工具证据，不能只写“执行了、得到了数值”——
+   数据是感性材料，对论断的判定才是理性认识。
+4. 若证据不足以下判定，明确写 inconclusive，并给出下一步调查/实验方向，为反思和后续轮次提供目标。
+
 ## 输出格式（严格 JSON）
 {
   "verdict": "confirmed|partially_confirmed|challenged|falsified|inconclusive|execution_error",
-  "analysis": "3-5句综合分析",
+  "analysis": "3-5句综合分析，必须说明认识变化（支持/动摇/证伪）及对前序理性认识的修正",
   "surprises": ["意外发现"],
   "confidence_change": "可信度变化说明",
   "reinvestigation_needed": false,
   "reinvestigation_focus": "",
   "key_findings": ["发现1", "发现2"],
   "claim_assessments": [
-    {"claim": "被检验的论断", "assessment": "supported|challenged|falsified|inconclusive", "evidence": "对应工具证据"}
+    {"claim": "被检验的论断", "assessment": "supported|challenged|falsified|inconclusive", "evidence": "对应工具证据（必须是有效观测）"}
   ],
   "contradiction_feedback": [
     {"contradiction": "...","challenge_type": "falsified|weakened|new_contradiction_found","evidence": "...","suggested_revision": "..."}
@@ -105,6 +114,8 @@ class PracticeModule:
         self.practice_rounds = practice_rounds
         self._background_procs: dict[str, dict] = {}
         self._fallback_registry: ToolRegistry | None = None
+        self._direction_state = DirectionStateUpdate()
+        self._direction_state_update = ""
 
     @property
     def can_execute(self) -> bool:
@@ -124,6 +135,9 @@ class PracticeModule:
                 on_progress("practice", summary, data=data)
 
         self._current_question = question
+        self._current_wm = wm
+        self._direction_state = DirectionStateUpdate()
+        self._direction_state_update = ""
         hyps = []
         if trace.rational_synthesis:
             hyps = trace.rational_synthesis.hypotheses[:8]
@@ -142,6 +156,7 @@ class PracticeModule:
         full_execution_log: list[str] = []
         round_contexts: list[dict] = []
         round_records: list[PracticeRound] = []
+        direction_state_history: list[DirectionStateUpdate] = []
         all_call_records: list[dict] = []
         all_action_records: list[dict] = []
         all_verification_results: list[dict] = []
@@ -149,8 +164,28 @@ class PracticeModule:
         world_changed = False
         overall_rationale = ""
 
-        r1_plan = await self._plan_round1(question, trace, wm=wm)
+        # A4: 不具备执行能力 → 直接走知性分析（V2），不空跑三轮。
+        if not self.can_execute:
+            log.info("practice.no_execution_degrade", total_rounds=0)
+            analysis = await self._boundary_analysis(
+                question, trace, "无可用执行工作区，转入知性分析（V2）"
+            )
+            return self._build_epistemic_report(
+                question, trace, analysis, mode="epistemic_only", reason="no_execution_capability"
+            )
+
+        r1_plan = await self._plan_round1(question, trace, wm=wm, registry=registry)
         overall_rationale = r1_plan.get("round_rationale", "")
+
+        # A3+A4: 规划失败 → 不空跑三轮，直接知性分析（V2）。
+        if r1_plan.get("plan_failed"):
+            log.warning("practice.plan_failed_degrade", retries=self.max_retries)
+            analysis = await self._boundary_analysis(
+                question, trace, "首轮实验规划失败，转入知性分析（V2）"
+            )
+            return self._build_epistemic_report(
+                question, trace, analysis, mode="partial", reason="plan_failed"
+            )
 
         t0 = time.time()
         r1_steps, r1_outcomes, r1_unexpected, r1_success, r1_failure, r1_log, r1_ok, r1_detail = await self._execute_round(
@@ -184,6 +219,11 @@ class PracticeModule:
 
         round_contexts.append({"round_num": 1, "plan_json": json.dumps(r1_plan, ensure_ascii=False, indent=2), "results": r1_log, "duration": f"{r1_duration:.1f}s"})
         round_summaries.append(self._summarise_round(1, r1_plan, r1_outcomes, r1_unexpected, r1_failure, r1_ok))
+        r1_direction_state = self._update_direction_state(
+            r1_plan, r1_outcomes, r1_failure, round_num=1, detail=r1_detail,
+        )
+        r1_detail.direction_state = r1_direction_state
+        direction_state_history.append(r1_direction_state)
 
         for r in range(2, self.practice_rounds + 1):
             bg_results = await self._collect_background_results()
@@ -193,10 +233,28 @@ class PracticeModule:
                     full_execution_log.append(bg_log)
 
             ctx = self._build_next_round_context(r, question, trace, round_contexts, full_execution_log)
-            rn_plan = await self._plan_next_round(ctx)
+            rn_plan = await self._plan_next_round(ctx, registry=registry)
             if rn_plan.get("done"):
                 log.info("practice.rounds_done_early", rounds_completed=r - 1)
                 break
+
+            if rn_plan.get("plan_failed"):
+                # 后续轮规划连续失败：补齐方向状态日志后提前收束，不耗尽剩余轮次。
+                log.warning("practice.next_round_plan_failed", round_num=r, retries=self.max_retries)
+                direction_state_history.append(
+                    self._update_direction_state(
+                        rn_plan, [], ["规划失败，未执行"], round_num=r,
+                    )
+                )
+                full_execution_log.append(f"=== 第 {r} 轮 规划失败，本轮无执行 ===\n（规划重试耗尽，记录为技术中断，不构成对论断的证伪）")
+                round_contexts.append({
+                    "round_num": r,
+                    "plan_json": json.dumps(rn_plan, ensure_ascii=False, indent=2),
+                    "results": "（规划失败，未执行）",
+                    "duration": "0s",
+                })
+                round_summaries.append(self._summarise_round(r, rn_plan, [], [], [], False))
+                continue
 
             t0 = time.time()
             rn_steps, rn_outcomes, rn_unexpected, rn_success, rn_failure, rn_log, rn_ok, rn_detail = await self._execute_round(
@@ -226,6 +284,12 @@ class PracticeModule:
                 failure_classes.append(rn_detail.failure_class)
             round_contexts.append({"round_num": r, "plan_json": json.dumps(rn_plan, ensure_ascii=False, indent=2), "results": rn_log, "duration": f"{rn_duration:.1f}s"})
             round_summaries.append(self._summarise_round(r, rn_plan, rn_outcomes, rn_unexpected, rn_failure, rn_ok))
+            # C5: 用本轮证据对锚点的可观测影响更新方向状态，供下一轮锚点。
+            rn_direction_state = self._update_direction_state(
+                rn_plan, rn_outcomes, rn_failure, round_num=r, detail=rn_detail,
+            )
+            rn_detail.direction_state = rn_direction_state
+            direction_state_history.append(rn_direction_state)
 
         all_log_text = "\\n\\n".join(full_execution_log)
         analysis = await self._analyze_all_rounds(question, trace, overall_rationale, all_log_text)
@@ -264,6 +328,8 @@ class PracticeModule:
             failure_classes=failure_classes,
             world_changed=world_changed,
             cache_metrics=wm.get_cache_metrics() if wm and hasattr(wm, "get_cache_metrics") else {},
+            direction_state=self._direction_state,
+            direction_state_history=direction_state_history,
         )
         if analysis:
             report.success_indicators.append(f"实验结论：{analysis.get('verdict', '')}")
@@ -283,15 +349,51 @@ class PracticeModule:
             registry.register(FileWriteTool(workspace))
             registry.register(FileListTool(workspace))
             registry.register(FileDeleteTool(workspace))
+            from ..tools.file_query import FileGrepTool, FileBatchReadTool, FileStatTool
+            registry.register(FileGrepTool(workspace))
+            registry.register(FileBatchReadTool(workspace))
+            registry.register(FileStatTool(workspace))
             registry.register(PythonExecTool(workspace_dir=workspace))
             registry.register(ShellTool(allowed_roots=roots))
         registry.register(ReadUserContextTool())
         self._fallback_registry = registry
         return registry
 
+    # ── 方向锚点 & 工具清单 ──
+
+    def _build_direction_anchor(self, trace: CognitiveTrace, wm) -> str:
+        anchor_parts = []
+        if wm:
+            anxiety = wm.get("core_anxiety", "")
+            if anxiety:
+                anchor_parts.append(f"### 用户深层关切\n{anxiety}")
+        if trace.contradictions and trace.contradictions.principal_contradiction:
+            anchor_parts.append(
+                "### 主要矛盾\n"
+                + trace.contradictions.principal_contradiction.description[:300]
+            )
+        if trace.rational_synthesis and trace.rational_synthesis.hypotheses:
+            anchor_parts.append(
+                "### 核心假设\n"
+                + "\n".join(f"- {h}" for h in trace.rational_synthesis.hypotheses[:6])
+            )
+        if wm:
+            hints = wm.get("focus_hints") or {}
+            if hints.get("practice"):
+                anchor_parts.append("### 反思提示\n" + hints["practice"])
+        return "\n\n".join(anchor_parts) or "（无额外锚点，以原始问题为准）"
+
+    def _build_tools_text(self, registry) -> str:
+        if registry is not None:
+            try:
+                return registry.format_for_prompt()
+            except Exception as e:
+                log.warning("practice.tools_text_error", error=str(e))
+        return harness.DEFAULT_TOOLS
+
     # ── Round 1 planning ──
 
-    async def _plan_round1(self, question: str, trace: CognitiveTrace, wm=None) -> dict:
+    async def _plan_round1(self, question: str, trace: CognitiveTrace, wm=None, registry=None) -> dict:
         facts_lines = []
         if trace.investigation:
             for f in trace.investigation.facts[:6]:
@@ -330,35 +432,180 @@ class PracticeModule:
         prompt = prompt.replace("{essence_text}", essence_text)
         prompt = prompt.replace("{hypotheses_text}", hypotheses_text)
         prompt = prompt.replace("{practice_direction_text}", practice_direction_text)
+        # C1: 注入方向锚点与动态工具清单。
+        prompt = prompt.replace("{direction_anchor}", self._build_direction_anchor(trace, wm))
+        prompt = prompt.replace("{tools_text}", self._build_tools_text(registry))
 
-        plan = await self._call_planner(prompt, "基于前序认知产出，设计第一轮实验。提炼可检验论断，设计工具调用序列。")
+        plan = await self._call_planner(
+            prompt, "基于前序认知产出，设计第一轮实验。提炼可检验论断，设计工具调用序列。",
+            registry=registry,
+        )
         return plan
 
-    async def _plan_next_round(self, ctx: dict) -> dict:
+    async def _plan_next_round(self, ctx: dict, registry=None) -> dict:
         prompt = harness.RN_PLAN
         for key, value in ctx.items():
             prompt = prompt.replace("{" + key + "}", str(value))
-        return await self._call_planner(prompt, f"规划第 {ctx.get('round_num', '?')} 轮实验，done=true 可提前结束。")
+        prompt = prompt.replace("{tools_text}", self._build_tools_text(registry))
+        return await self._call_planner(
+            prompt, f"规划第 {ctx.get('round_num', '?')} 轮实验，done=true 可提前结束。",
+            registry=registry,
+        )
 
-    async def _call_planner(self, system_prompt: str, user_msg: str) -> dict:
-        try:
-            system_prompt += get_autonomy_instruction(settings.autonomy_level, "practice")
-            resp = await self.llm.call(
-                messages=[{"role": "user", "content": user_msg}],
-                system=system_prompt,
-                temperature=getattr(self.config, "temperature", 0.4),
-                max_tokens=getattr(self.config, "max_tokens", 8192),
-            )
-            plan = self._parse_json_safe(resp.content.strip(), {})
-            if not plan:
-                raise ValueError("empty plan")
-            plan.setdefault("round_rationale", "")
-            plan.setdefault("tool_calls", [])
-            plan.setdefault("expected_outcomes", [])
-            return plan
-        except Exception as e:
-            log.warning("practice.plan_error", error=str(e))
-            return {"round_rationale": f"规划失败: {str(e)[:100]}", "tool_calls": [], "expected_outcomes": []}
+    async def _call_planner(self, system_prompt: str, user_msg: str, registry=None) -> dict:
+        """
+        规划调用。使用 self.max_retries 循环重试：每次失败把解析/校验错误与
+        LLM 原始输出片段（截断）追加回消息，让模型知道为何被拒绝。
+        重试耗尽返回带 plan_failed 标记的空计划，由上层决定降级。
+        """
+        system_prompt += get_autonomy_instruction(settings.autonomy_level, "practice")
+        retries = max(1, int(self.max_retries or 3))
+        last_error = ""
+        last_snippet = ""
+
+        for attempt in range(1, retries + 1):
+            msg = user_msg
+            if last_error:
+                msg = (
+                    user_msg
+                    + "\n\n## 上一次规划被拒绝\n"
+                    + f"[原因] {last_error}\n"
+                    + f"[上次原始输出片段] {last_snippet}\n\n"
+                    + "请修正上述问题后，重新输出严格 JSON 对象。"
+                )
+            resp = None
+            try:
+                # B2: JSON mode，仅首轮尝试并带安全网；provider 不支持则降级文本模式。
+                call_kwargs: dict = {}
+                if attempt == 1:
+                    call_kwargs["response_format"] = {"type": "json_object"}
+                try:
+                    resp = await self.llm.call(
+                        messages=[{"role": "user", "content": msg}],
+                        system=system_prompt,
+                        temperature=getattr(self.config, "temperature", 0.4),
+                        max_tokens=getattr(self.config, "max_tokens", 8192),
+                        **call_kwargs,
+                    )
+                except Exception as e:
+                    err = str(e)
+                    if call_kwargs and self._looks_like_unsupported_response_format(err):
+                        log.warning(
+                            "practice.plan_json_mode_degraded",
+                            attempt=attempt, error=err[:200],
+                        )
+                        resp = await self.llm.call(
+                            messages=[{"role": "user", "content": msg}],
+                            system=system_prompt,
+                            temperature=getattr(self.config, "temperature", 0.4),
+                            max_tokens=getattr(self.config, "max_tokens", 8192),
+                        )
+                    else:
+                        raise
+
+                plan = self._parse_json_safe(resp.content.strip(), {})
+                if not plan or not isinstance(plan, dict):
+                    raise ValueError("空计划或不含 JSON 对象")
+
+                # B2 + C2: 结构校验（tool 名在 registry、参数类型、方向字段）。
+                errs = self._validate_plan_schema(plan, registry)
+                if errs:
+                    raise ValueError("；".join(errs))
+
+                plan.setdefault("round_rationale", "")
+                plan.setdefault("tool_calls", [])
+                plan.setdefault("expected_outcomes", [])
+                self._default_direction_fields(plan)
+                return plan
+            except Exception as e:
+                last_error = str(e)
+                last_snippet = ""
+                if resp is not None:
+                    last_snippet = self._truncate(resp.content, 400)
+                log.warning(
+                    "practice.plan_attempt_failed",
+                    attempt=attempt, retries=retries, error=last_error,
+                    raw=last_snippet,
+                )
+
+        return {
+            "plan_failed": True,
+            "round_rationale": f"规划在 {retries} 次尝试后仍失败: {last_error[:120]}",
+            "tool_calls": [],
+            "expected_outcomes": [],
+        }
+
+    @staticmethod
+    def _truncate(text: object, length: int = 400) -> str:
+        s = str(text or "")
+        return s[:length] if len(s) <= length else s[:length] + "...[truncated]"
+
+    @staticmethod
+    def _looks_like_unsupported_response_format(err: str) -> bool:
+        low = err.lower()
+        return any(
+            token in low
+            for token in ("response_format", "json_mode", "json_object", "400", "unsupported")
+        )
+
+    def _validate_plan_schema(self, plan: dict, registry=None) -> list[str]:
+        """返回校验错误列表；为空表示通过。"""
+        errs: list[str] = []
+
+        # ── B2: tool_calls 结构校验（仅当计划使用新 tool_calls 契约）──
+        tool_calls = plan.get("tool_calls")
+        if tool_calls is not None and not isinstance(tool_calls, list):
+            errs.append("tool_calls 必须是数组")
+            tool_calls = []
+        elif tool_calls is None:
+            tool_calls = []
+
+        if tool_calls:
+            known = set(registry.get_names()) if registry else set()
+            for tc in tool_calls:
+                if not isinstance(tc, dict) or not tc.get("tool"):
+                    errs.append("tool_calls 中存在缺 tool 名的条目")
+                    continue
+                tname = str(tc["tool"])
+                params = tc.get("params", {})
+                if not isinstance(params, dict):
+                    errs.append(f"工具 {tname} 的 params 必须是对象")
+                if registry and tname not in known:
+                    errs.append(f"工具 {tname} 不在已注册工具清单中")
+
+            # ── C2: 新契约下方向字段为非空可追溯要求 ──
+            directional_claim = plan.get("directional_claim")
+            if not directional_claim or not str(directional_claim).strip():
+                errs.append("directional_claim 为空，须可追溯至方向锚点中的假设或矛盾")
+            role = plan.get("epistemic_role")
+            if role not in (None, "", "exploration", "verification", "revision"):
+                errs.append(f"epistemic_role 取值非法: {role}")
+            if "deviation_rationale" in plan and not isinstance(plan.get("deviation_rationale"), str):
+                errs.append("deviation_rationale 必须是字符串")
+
+        # ── 旧契约兼容：方向字段软校验，只记录缺失，不阻断旧调用方 ──
+        legacy_contract = not tool_calls and any(
+            key in plan for key in ("files_to_create", "commands_to_run")
+        )
+        if legacy_contract:
+            missing = [
+                key for key in ("epistemic_role", "directional_claim", "deviation_rationale")
+                if not plan.get(key)
+            ]
+            if missing:
+                log.warning(
+                    "practice.legacy_plan_missing_direction_fields",
+                    fields=missing,
+                    compatibility_path=True,
+                )
+        return errs
+
+    @staticmethod
+    def _default_direction_fields(plan: dict) -> dict:
+        plan.setdefault("directional_claim", "")
+        plan.setdefault("deviation_rationale", "")
+        plan.setdefault("epistemic_role", "exploration")
+        return plan
 
     async def _execute_round(self, plan: dict, round_num: int, registry=None, on_progress=None, wm=None, steering_checkpoint=None) -> tuple:
         """Execute tools from plan's tool_calls list."""
@@ -478,8 +725,26 @@ class PracticeModule:
         return (steps, outcomes, unexpected, success, failure, "\\n".join(log_parts) or "（空）", all_ok, detail)
 
     async def _normalise_tool_calls(self, plan: dict) -> list[dict]:
-        """Accept the current tool_calls schema and the earlier file/command schema."""
+        """Accept the current tool_calls schema and the earlier file/command schema.
+
+        B3: 规划与代码生成分离。新契约下 python_exec 的 params.code 由
+        code_ref（代码意图描述）替代；执行前先经 _generate_file_content
+        生成实际代码再调用，规划输出量显著减小。
+        """
         calls = list(plan.get("tool_calls") or [])
+        for tc in calls:
+            if tc.get("tool") != "python_exec" or not isinstance(tc.get("params"), dict):
+                continue
+            params = tc["params"]
+            if "code_ref" in params:
+                code_ref = params.get("code_ref")
+                code = await self._generate_file_content(
+                    path="<python_exec>",
+                    purpose=str(code_ref or ""),
+                    plan=plan,
+                )
+                params["code"] = code
+                params.pop("code_ref", None)
         if calls:
             return calls
         generated_files: dict[str, str] = {}
@@ -590,11 +855,20 @@ class PracticeModule:
                 "\n前序综合判断：" + trace.rational_synthesis.synthesis_text[:400]
             )
         prev = round_contexts[-1] if round_contexts else {}
+        current_anchor = self._build_direction_anchor(trace, self._current_wm)
+        direction_state = getattr(self, "_direction_state", None)
+        if direction_state and direction_state.evidence_status != "no_observation":
+            state_payload = self._direction_state_to_dict(direction_state)
+            current_anchor += (
+                "\n\n### 本轮证据对锚点的影响（上一轮结构化状态）\n"
+                + json.dumps(state_payload, ensure_ascii=False, indent=2)
+            )
         return {
             "round_num": str(round_num), "question": question,
             "facts_text": "\\n".join(facts_lines) or "（无）", "gaps_text": "\\n".join(gaps_lines) or "（无）",
             "contradiction_text": ct, "essence_text": et, "hypotheses_text": ht,
             "practice_direction_text": practice_direction_text,
+            "direction_anchor": current_anchor,
             "prev_round_num": str(prev.get("round_num", round_num - 1)),
             "prev_round_plan": prev.get("plan_json", "（无）")[:3000],
             "prev_round_results": prev.get("results", "（无）")[:3000],
@@ -614,13 +888,195 @@ class PracticeModule:
             resp = await self.llm.call(messages=[{"role": "user", "content": "综合分析全部轮次实验结果。"}], system=prompt, temperature=0.3, max_tokens=1024)
             raw = resp.content.strip()
             while raw.startswith("```"):
-                idx = raw.find("\\n")
+                idx = raw.find("\n")
                 raw = raw[idx+1:] if idx >= 0 else raw[3:]
             if raw.endswith("```"): raw = raw[:-3]
-            return json.loads(raw.strip().rstrip("`"))
+            raw = raw.strip().rstrip("`")
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                fallback = self._extract_json_object(raw)
+                if fallback is not None:
+                    try:
+                        return json.loads(fallback)
+                    except json.JSONDecodeError:
+                        pass
+                log.warning("practice.analysis_json_parse_error", raw=raw[:500])
+                return None
         except Exception as e:
             log.warning("practice.analysis_error", error=str(e))
             return None
+
+    async def _boundary_analysis(self, question: str, trace: CognitiveTrace, reason: str) -> Optional[dict]:
+        """知性分析降级：无执行能力或规划失败时，用 V2 知性分析替代三轮实验。"""
+        try:
+            ht = ""
+            if trace.rational_synthesis:
+                ht = "\n".join(f"- {h}" for h in trace.rational_synthesis.hypotheses[:5])
+            facts = ""
+            if trace.investigation:
+                facts = "\n".join(f"- {f.content[:150]}" for f in trace.investigation.facts[:6])
+            prompt = (
+                _BOUNDARY_ANALYSIS_PROMPT
+                + "\n\n## 原始问题\n"
+                + question
+                + "\n\n## 调查事实\n"
+                + (facts or "（无）")
+                + "\n\n## 理性认识（假设）\n"
+                + (ht or "（无）")
+                + f"\n\n## 降级原因\n{reason}"
+            )
+            resp = await self.llm.call(
+                messages=[{"role": "user", "content": "基于调查事实与矛盾分析，对核心主张做知性评估（V2）。"}],
+                system=prompt,
+                temperature=0.3,
+                max_tokens=1024,
+            )
+            raw = resp.content.strip()
+            while raw.startswith("```"):
+                idx = raw.find("\n")
+                raw = raw[idx + 1:] if idx >= 0 else raw[3:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            raw = raw.strip().rstrip("`")
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                fallback = self._extract_json_object(raw)
+                if fallback is not None:
+                    try:
+                        return json.loads(fallback)
+                    except json.JSONDecodeError:
+                        pass
+                log.warning("practice.boundary_analysis_parse_error", raw=raw[:500])
+                return None
+        except Exception as e:
+            log.warning("practice.boundary_analysis_error", error=str(e))
+            return None
+
+    def _build_epistemic_report(self, question: str, trace: CognitiveTrace, analysis: Optional[dict], mode: str, reason: str) -> PracticeReport:
+        """构建 V2 知性分析报告（mode: partial / epistemic_only）。"""
+        a = analysis or {}
+        summary = (
+            f"[{a.get('verdict', 'inconclusive')}] {a.get('analysis', '')}"
+            if a else f"知性分析降级（{reason}），未能生成判定。"
+        )
+        summary = "[知性分析 V2，未执行工具实验] " + summary
+        report = PracticeReport(
+            mode=mode,
+            confidence_ceiling="V2",
+            steps_taken=[],
+            observed_outcomes=[],
+            unexpected_findings=[],
+            practice_summary=summary,
+            success_indicators=[],
+            failure_indicators=[],
+            contradiction_feedback=a.get("contradiction_feedback", []),
+            analysis_summary=a.get("analysis", "") if a else "",
+            claim_assessments=a.get("claim_assessments", []) if a else [],
+            unexpected_insights=a.get("surprises", []) if a else [],
+            reinvestigation_needed=bool(a.get("reinvestigation_needed", False)),
+            reinvestigation_focus=a.get("reinvestigation_focus", "") if a else "",
+            rounds=[],
+            tool_call_records=[],
+            action_records=[],
+            verification_results=[],
+            failure_classes=[],
+            world_changed=False,
+            cache_metrics=(
+                self._current_wm.get_cache_metrics()
+                if self._current_wm and hasattr(self._current_wm, "get_cache_metrics")
+                else {}
+            ),
+        )
+        log.info("practice.epistemic_report_built", mode=mode, reason=reason)
+        return report
+
+    @staticmethod
+    def _direction_state_to_dict(state: DirectionStateUpdate) -> dict:
+        if hasattr(state, "model_dump"):
+            return state.model_dump(mode="json")
+        return state.dict()
+
+    def _update_direction_state(
+        self,
+        plan: dict,
+        outcomes,
+        failures,
+        round_num: int = 0,
+        detail: Optional[PracticeRound] = None,
+    ) -> DirectionStateUpdate:
+        """C5: persist a structured, non-verdict evidence update for the next round."""
+        claim = str(plan.get("directional_claim") or "").strip()
+        observations: list[str] = []
+        technical_failures: list[str] = []
+        decisive_classifications = {"observed", "world_changed"}
+        technical_classifications = {
+            "tool_error", "timeout", "permission_denied",
+            "authorization_pending", "authorization_expired",
+        }
+
+        if detail:
+            for record in detail.tool_calls:
+                result = record.get("result") or {}
+                tool_name = str(record.get("tool") or "unknown_tool")
+                classification = str(result.get("state_classification") or "unknown")
+                content = self._truncate(
+                    result.get("content") or result.get("error") or classification,
+                    180,
+                )
+                line = f"{tool_name} [{classification}]: {content}"
+                if classification in technical_classifications or result.get("ok") is False:
+                    technical_failures.append(line)
+                else:
+                    observations.append(line)
+        else:
+            observations.extend(
+                str(item)[:180] for item in (outcomes or [])
+                if not str(item).startswith("FAIL")
+            )
+
+        technical_failures.extend(str(item)[:180] for item in (failures or []))
+        observations = list(dict.fromkeys(observations))[:6]
+        technical_failures = list(dict.fromkeys(technical_failures))[:6]
+
+        classifications = []
+        if detail:
+            classifications = [
+                str((record.get("result") or {}).get("state_classification") or "")
+                for record in detail.tool_calls
+            ]
+        if any(item in decisive_classifications for item in classifications):
+            evidence_status = "effective_observation"
+            impact = "已取得可用于认识更新的有效观测；支持、动摇或证伪仍由综合分析判定。"
+        elif observations:
+            evidence_status = "inconclusive"
+            impact = "取得结果但尚不足以更新方向判断；验证失败或状态未变不能直接视为证伪。"
+        elif technical_failures:
+            evidence_status = "technical_failure"
+            impact = "本轮发生技术中断，没有可用于否定方向锚点的有效观测。"
+        else:
+            evidence_status = "no_observation"
+            impact = "本轮没有产生可审计的观测，方向锚点保持不变。"
+
+        state = DirectionStateUpdate(
+            round_num=round_num,
+            directional_claim=claim,
+            epistemic_role=str(plan.get("epistemic_role") or "exploration"),
+            evidence_status=evidence_status,
+            effective_observations=observations,
+            technical_failures=technical_failures,
+            impact=impact,
+            next_focus=(
+                f"下一轮继续围绕该论断闭合证据缺口：{claim[:160]}"
+                if claim else "下一轮先从方向锚点中选择一个可检验论断。"
+            ),
+        )
+        self._direction_state = state
+        self._direction_state_update = json.dumps(
+            self._direction_state_to_dict(state), ensure_ascii=False, indent=2,
+        )
+        return state
 
     async def _collect_background_results(self) -> list[dict]:
         completed = []
@@ -642,17 +1098,42 @@ class PracticeModule:
         if default is None: default = {}
         raw = raw.strip()
         while raw.startswith("```"):
-            idx = raw.find("\\n")
+            idx = raw.find("\n")
             raw = raw[idx+1:] if idx >= 0 else raw[3:]
         if raw.endswith("```"): raw = raw[:-3]
         raw = raw.strip().rstrip("`")
-        for p in ["json\\n", "json"]:
+        for p in ["json\n", "json"]:
             if raw.startswith(p): raw = raw[len(p):]; break
         raw = raw.strip()
         try: return json.loads(raw)
         except json.JSONDecodeError:
+            # 兜底：截取第一个 { 到最后一个 }（或 [ 到 ]）之间的子串再解析，
+            # 容忍模型在 JSON 前后夹杂的解释性文字。
+            fallback = self._extract_json_object(raw)
+            if fallback is not None:
+                try:
+                    return json.loads(fallback)
+                except json.JSONDecodeError:
+                    pass
             for s in ['}', '}]}', ']}]}', '}]}]}']:
                 try: return json.loads(raw + s)
                 except json.JSONDecodeError: continue
-            log.warning("practice.json_parse_error", raw=raw[:200])
+            log.warning(
+                "practice.json_parse_error",
+                raw=raw[:500],
+                endswith=raw[-80:],
+            )
             return default
+
+    @staticmethod
+    def _extract_json_object(raw: str):
+        """从任意文本中截取最外层 JSON 对象/数组子串。"""
+        if not raw:
+            return None
+        import re
+        for open_ch, close_ch in (("{", "}"), ("[", "]")):
+            start = raw.find(open_ch)
+            end = raw.rfind(close_ch)
+            if start != -1 and end != -1 and end > start:
+                return raw[start:end + 1]
+        return None

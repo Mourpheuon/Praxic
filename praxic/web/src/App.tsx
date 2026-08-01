@@ -71,17 +71,72 @@ function activityHasFailure(event: ActivityEvent) {
     || event.event_type === 'error'
 }
 
-function activityStatus(event: ActivityEvent) {
-  const authorization = authorizationFrom(event)
-  if (authorization?.status === 'pending') return '等待授权'
-  if (authorization?.status === 'approved') return '已授权'
-  if (authorization?.status === 'denied') return '已拒绝'
-  if (event.event_type === 'steering') return '已注入'
-  if (event.event_type === 'user_question') return '已提交'
-  if (event.event_type === 'result') return '已完成'
-  if (activityHasFailure(event)) return '需注意'
-  if (event.summary.includes('正在') || event.summary.includes('进行中')) return '进行中'
-  return '已完成'
+function isToolProgress(event: ActivityEvent) {
+  const result = toolResultFrom(event)
+  return event.event_type === 'tool_call'
+    && (result?.status === 'running' || /进行中|检索中/.test(event.summary || ''))
+}
+
+function canMergeToolProgress(previous: ActivityEvent | undefined, next: ActivityEvent) {
+  return Boolean(previous)
+    && isToolProgress(previous as ActivityEvent)
+    && next.event_type === 'tool_call'
+    && previous?.phase === next.phase
+    && toolNameFrom(previous as ActivityEvent).toLowerCase() === toolNameFrom(next).toLowerCase()
+}
+
+function hasMeaningfulEventData(event: ActivityEvent) {
+  const data = event.data
+  return Boolean(data && Object.keys(data).some(key => key !== 'event_type'))
+}
+
+function isPhaseProgressStart(event: ActivityEvent) {
+  return event.event_type === 'phase'
+    && !hasMeaningfulEventData(event)
+    && /^(正在|开始)/.test(event.summary || '')
+}
+
+function canMergePhaseProgress(previous: ActivityEvent | undefined, next: ActivityEvent) {
+  return Boolean(previous)
+    && isPhaseProgressStart(previous as ActivityEvent)
+    && next.event_type === 'phase'
+    && previous?.phase === next.phase
+    && !/^(正在|开始)/.test(next.summary || '')
+}
+
+function mergeActivityData(previousData: Record<string, unknown> | undefined, nextData: Record<string, unknown> | undefined) {
+  const previous = previousData || {}
+  const next = nextData || {}
+  const previousRecord = (previous.record && typeof previous.record === 'object' ? previous.record : {}) as Record<string, any>
+  const nextRecord = (next.record && typeof next.record === 'object' ? next.record : {}) as Record<string, any>
+  const previousResult = (previousRecord.result && typeof previousRecord.result === 'object' ? previousRecord.result : {}) as Record<string, any>
+  const nextResult = (nextRecord.result && typeof nextRecord.result === 'object' ? nextRecord.result : {}) as Record<string, any>
+  const merged: Record<string, unknown> = {
+    ...previous,
+    ...next,
+  }
+  if (previous.record || next.record) merged.record = {
+      ...previousRecord,
+      ...nextRecord,
+      result: { ...previousResult, ...nextResult },
+  }
+  return merged
+}
+
+function appendActivityEvent(previous: ActivityEvent[], next: ActivityEvent) {
+  const last = previous[previous.length - 1]
+  if (!canMergeToolProgress(last, next) && !canMergePhaseProgress(last, next)) {
+    return [...previous, next].slice(-300)
+  }
+  return [
+    ...previous.slice(0, -1),
+    {
+      ...last,
+      summary: next.summary || last.summary,
+      data: mergeActivityData(last.data, next.data),
+      timestamp: next.timestamp || last.timestamp,
+    },
+  ]
 }
 
 function localActivity(phase: string, eventType: string, summary: string, data?: Record<string, unknown>): ActivityEvent {
@@ -207,7 +262,7 @@ export default function App() {
   const handleEvent = useCallback((event: ActivityEvent) => {
     const normalized = normalizeActivity(event, lastPhaseRef.current)
     if (PHASE_LABELS[normalized.phase]) lastPhaseRef.current = normalized.phase
-    setActivities(previous => [...previous, normalized].slice(-300))
+    setActivities(previous => appendActivityEvent(previous, normalized))
     setSelectedId(normalized.id)
     const authorization = authorizationFrom(normalized)
     if (authorization) {
@@ -497,7 +552,7 @@ export default function App() {
                             >
                               <span className="event-index">{(index + 1).toString().padStart(2, '0')}</span>
                               <span className="event-marker" />
-                              <span className="event-copy"><small>{label}</small><strong>{activity.summary || '状态已更新'}</strong><em>{activityStatus(activity)}</em></span>
+                              <span className="event-copy"><small>{label}</small><strong>{activity.summary || '状态已更新'}</strong></span>
                               {status === 'running' && !isSteering && <button type="button" className="event-steer-trigger" onClick={event => { event.stopPropagation(); setSteerTargetId(activity.id); setSteeringError('') }}>插话</button>}
                               <span className="event-arrow">↗</span>
                             </div>

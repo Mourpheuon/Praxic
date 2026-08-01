@@ -92,6 +92,7 @@
       outline-offset: 2px;
     }
     .praxic-shell {
+      position: relative;
       padding-top: 4px;
       background: var(--construct-paper);
     }
@@ -544,6 +545,70 @@
       padding-top: .8rem;
       border-top: 2px solid #1C1916;
     }
+    .praxic-agent-result {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .praxic-agent-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 2px;
+      min-height: 14px;
+      margin-top: 6px;
+      padding-top: 0;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-2px);
+      transition: opacity .15s ease, transform .15s ease;
+    }
+    .praxic-agent-result:hover .praxic-agent-actions,
+    .praxic-agent-result:focus-within .praxic-agent-actions {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+    .praxic-agent-actions button {
+      width: 14px;
+      height: 14px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      padding: 0;
+      color: #1C1916;
+      border: 0;
+      background: transparent;
+      font-size: 10px;
+      line-height: 1;
+      transition: color .15s ease, transform .15s ease;
+    }
+    .praxic-agent-actions svg {
+      width: 11px;
+      height: 11px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.7;
+    }
+    .praxic-agent-actions button:hover,
+    .praxic-agent-actions button:focus-visible { color: #8C0000; text-decoration: none; transform: translateY(-1px); }
+    .praxic-agent-actions button:disabled { cursor: not-allowed; opacity: .42; text-decoration: none; }
+    .praxic-agent-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .8rem;
+      margin-top: .35rem;
+      padding: .35rem .55rem;
+      color: #6b6560;
+      border-top: 1px solid #c5bfb5;
+      font: 500 .62rem/1.35 Consolas, monospace;
+    }
+    .praxic-agent-metric { display: inline-flex; gap: .25rem; }
+    .praxic-agent-metric__label { color: #9e7b3a; font-weight: 800; }
     .praxic-flow .markdown-body {
       font-size: 14px;
       line-height: 1.75;
@@ -653,11 +718,26 @@
   </style>
   <style id="praxic-explicit-event-stream">
     .praxic-phase-stream {
+      position: relative;
       margin: 0 2.5rem .75rem;
-      border-top: 2px solid #1C1916;
+      overflow: hidden;
+      border-top: 2px solid transparent;
       border-left: 1px solid #c5bfb5;
       border-right: 1px solid #c5bfb5;
       background: #fcfaf5;
+    }
+    .praxic-phase-stream::before {
+      content: "";
+      position: absolute;
+      z-index: 2;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: #1C1916;
+      transform: scaleX(0);
+      transform-origin: left center;
+      animation: phaseRuleDraw .46s cubic-bezier(.2,.75,.25,1) both;
     }
     .praxic-phase-stream__head {
       display: flex;
@@ -668,38 +748,54 @@
       color: #1C1916;
       background: #ede8df;
       border-bottom: 1px solid #c5bfb5;
+      animation: phaseTextReveal .26s ease-out .04s both;
     }
     .praxic-phase-stream__head strong { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; }
     .praxic-phase-stream__head small { color: #6b6560; font-size: .65rem; }
-    .praxic-phase-group { border-bottom: 1px solid #c5bfb5; }
-    .praxic-phase-group:last-child { border-bottom: 0; }
+    .praxic-phase-group { position: relative; border-bottom: 0; }
+    .praxic-phase-group:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      z-index: 1;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 1px;
+      background: #c5bfb5;
+      transform: scaleX(0);
+      transform-origin: left center;
+      animation: phaseRuleDraw .42s cubic-bezier(.2,.75,.25,1) calc(120ms + var(--phase-order, 0) * 90ms) both;
+    }
     .praxic-phase-group__header {
-      width: 100%; display: grid; grid-template-columns: 1.15rem minmax(11rem, 1fr) auto minmax(7rem, 1.4fr) 1rem;
+      width: 100%; display: grid; grid-template-columns: minmax(11rem, 1fr) auto minmax(7rem, 1.4fr);
       align-items: center; gap: .55rem; padding: .42rem .75rem; text-align: left;
       border: 0; background: transparent; color: #1C1916;
     }
     .praxic-phase-group__header:hover, .praxic-phase-group--open .praxic-phase-group__header { background: #f3f0e9; }
-    .praxic-phase-group__icon { position: relative; width: 1.05rem; height: 1.05rem; display: grid; place-items: center; border: 2px solid #1C1916; background: #fcfaf5; }
-    .praxic-phase-group__icon::before { content: ""; width: .62rem; height: 2px; background: #1C1916; transform: rotate(-45deg); }
-    .praxic-phase-group--active .praxic-phase-group__icon { border-color: #8C0000; box-shadow: 0 0 0 3px rgba(140,0,0,.12); animation: phasePulse 1.2s steps(2,end) infinite; }
-    .praxic-phase-group--active .praxic-phase-group__icon::before { background: #8C0000; }
-    .praxic-phase-group--done .praxic-phase-group__icon { border-color: #4a6741; }
-    .praxic-phase-group--done .praxic-phase-group__icon::before { background: #4a6741; }
-    .praxic-phase-group--waiting .praxic-phase-group__icon, .praxic-phase-group--error .praxic-phase-group__icon { border-color: #8C0000; }
-    .praxic-phase-group--waiting .praxic-phase-group__icon::before, .praxic-phase-group--error .praxic-phase-group__icon::before { background: #8C0000; }
-    .praxic-phase-group__title { min-width: 0; overflow: hidden; }
+    .praxic-phase-group__title { min-width: 0; overflow: hidden; animation: phaseTextReveal .28s ease-out calc(90ms + var(--phase-order, 0) * 90ms) both; }
     .praxic-phase-group__title strong { display: block; overflow: hidden; font-size: .76rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
     .praxic-phase-group__title small { margin-left: .25rem; color: #6b6560; font-size: .61rem; font-weight: 500; }
-    .praxic-phase-group__meta { display: flex; align-items: baseline; justify-content: flex-end; gap: .28rem; min-width: 4.8rem; white-space: nowrap; }
+    .praxic-phase-group__meta { display: flex; align-items: baseline; justify-content: flex-end; gap: .28rem; min-width: 4.8rem; white-space: nowrap; animation: phaseTextReveal .28s ease-out calc(120ms + var(--phase-order, 0) * 90ms) both; }
     .praxic-phase-group__meta strong { font: 800 .7rem Consolas, monospace; }
     .praxic-phase-group__meta small { color: #6b6560; font-size: .6rem; }
     .praxic-phase-group--active .praxic-phase-group__meta small, .praxic-phase-group--waiting .praxic-phase-group__meta small, .praxic-phase-group--error .praxic-phase-group__meta small { color: #8C0000; font-weight: 800; }
-    .praxic-phase-group__summary { min-width: 0; overflow: hidden; color: #6b6560; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
-    .praxic-phase-group__chevron { color: #8C0000; font: 800 1rem Consolas, monospace; text-align: center; }
-    .praxic-phase-group__events { margin-left: 1.6rem; padding: .1rem 0 .35rem 1rem; border-left: 1px solid #c5bfb5; }
-    .praxic-event-wrap { border-bottom: 1px solid rgba(197,191,181,.55); }
-    .praxic-event-wrap:last-child { border-bottom: 0; }
-    .praxic-event-row { width: 100%; display: grid; grid-template-columns: 1.5rem 3px minmax(0,1fr) auto auto 1rem; align-items: center; gap: .55rem; padding: .24rem .55rem .24rem 0; text-align: left; border: 0; background: transparent; }
+    .praxic-phase-group__summary { min-width: 0; overflow: hidden; color: #6b6560; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; animation: phaseTextReveal .28s ease-out calc(150ms + var(--phase-order, 0) * 90ms) both; }
+    .praxic-phase-group__events { margin-left: .85rem; padding: .1rem 0 .35rem .9rem; border-left: 1px solid #c5bfb5; }
+    .praxic-event-wrap { position: relative; border-bottom: 1px solid transparent; animation: phaseTextReveal .28s ease-out calc(170ms + var(--phase-order, 0) * 90ms + var(--event-order, 0) * 70ms) both; }
+    .praxic-event-wrap::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 1px;
+      background: rgba(197,191,181,.55);
+      transform: scaleX(0);
+      transform-origin: left center;
+      animation: phaseRuleDraw .34s cubic-bezier(.2,.75,.25,1) calc(210ms + var(--phase-order, 0) * 90ms + var(--event-order, 0) * 70ms) both;
+    }
+    .praxic-event-wrap:last-child::after { display: none; }
+    .praxic-event-row { width: 100%; display: grid; grid-template-columns: 1.5rem 3px minmax(0,1fr) auto; align-items: center; gap: .55rem; padding: .24rem .55rem .24rem 0; text-align: left; border: 0; background: transparent; }
     .praxic-event-row:hover, .praxic-event-wrap--selected .praxic-event-row { background: #f3f0e9; }
     .praxic-event-index { color: #9e7b3a; font: .62rem Consolas, monospace; text-align: right; }
     .praxic-event-marker { align-self: stretch; min-height: 1.2rem; background: #4a6741; }
@@ -711,12 +807,14 @@
     .praxic-event-copy small, .praxic-event-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .praxic-event-copy small { flex: 0 0 auto; color: #6b6560; font: 800 .58rem Consolas, monospace; letter-spacing: .04em; }
     .praxic-event-copy strong { min-width: 0; color: #1C1916; font-size: .73rem; font-weight: 700; line-height: 1.1; }
-    .praxic-event-status { justify-self: end; color: #6b6560; font-size: .57rem; line-height: 1; white-space: nowrap; }
-    .praxic-event-wrap--error .praxic-event-status, .praxic-event-wrap--authorization .praxic-event-status { color: #8C0000; font-weight: 800; }
+    .praxic-wave-text { white-space: nowrap; }
+    .praxic-wave-char {
+      display: inline-block;
+      animation: phaseWaveChar 1.35s ease-in-out calc(var(--wave-order, 0) * 58ms) infinite;
+    }
     .praxic-event-steer { padding: .16rem .28rem; color: #8C0000; border: 1px solid rgba(140,0,0,.35); background: transparent; font-size: .56rem; font-weight: 800; opacity: 0; }
     .praxic-event-row:hover .praxic-event-steer, .praxic-event-wrap--selected .praxic-event-steer, .praxic-event-steer:focus-visible { opacity: 1; }
     .praxic-event-steer:hover { color: #fff; background: #8C0000; }
-    .praxic-event-arrow { color: #8C0000; font-size: .9rem; }
     .praxic-inline-steer { margin: 0 .55rem .55rem 2.25rem; padding: .6rem; border-left: 3px solid #9e7b3a; background: #f7f4ed; box-shadow: 3px 3px 0 rgba(158,123,58,.25); }
     .praxic-inline-steer__head { display: flex; justify-content: space-between; gap: .6rem; margin-bottom: .4rem; }
     .praxic-inline-steer__head strong { font-size: .62rem; }
@@ -728,14 +826,15 @@
     .praxic-inline-steer__cancel { color: #6b6560; background: transparent; }
     .praxic-inline-steer__submit { color: #fff; background: #8C0000; font-weight: 800; }
     .praxic-inline-steer__error { margin-right: auto; color: #8C0000; font-size: .58rem; }
-    @keyframes phasePulse { 50% { opacity: .45; } }
+    @keyframes phaseRuleDraw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes phaseTextReveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes phaseWaveChar { 0%, 72%, 100% { transform: translateY(0); } 14% { transform: translateY(-2px); } 28% { transform: translateY(0); } }
     @media (max-width: 760px) {
       .praxic-phase-stream { margin-left: .9rem; margin-right: .9rem; }
-      .praxic-phase-group__header { grid-template-columns: 1.05rem minmax(0,1fr) auto 1rem; gap: .4rem; }
+      .praxic-phase-group__header { grid-template-columns: minmax(0,1fr) auto; gap: .4rem; }
       .praxic-phase-group__summary { display: none; }
       .praxic-phase-group__events { margin-left: .5rem; padding-left: .65rem; }
-      .praxic-event-row { grid-template-columns: 1.3rem 3px minmax(0,1fr) auto auto; gap: .4rem; }
-      .praxic-event-arrow { display: none; }
+      .praxic-event-row { grid-template-columns: 1.3rem 3px minmax(0,1fr) auto; gap: .4rem; }
       .praxic-event-steer { opacity: 1; }
       .praxic-inline-steer { margin-left: 1.85rem; }
       .praxic-inline-steer__head { display: block; }
@@ -779,8 +878,8 @@
 
     .praxic-sidebar-title .praxic-brand-mark {
       display: block;
-      width: 30px !important;
-      height: 30px !important;
+      width: 38px !important;
+      height: 38px !important;
     }
 
     .praxic-sidebar-actions {
@@ -1392,6 +1491,357 @@
     .praxic-inputbar { background: #efebe4 !important; border-top: 2px solid #1C1916 !important; }
     .praxic-inputbar textarea, .praxic-inputbar input, .praxic-inputbar select { background: #fcfaf5 !important; border-color: #c5bfb5 !important; }
 
+    .praxic-main-pane {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .praxic-user-message--editing {
+      width: min(48rem, 94%);
+      max-width: 94%;
+    }
+
+    .praxic-user-message--editing .praxic-user-bubble {
+      width: 100%;
+    }
+
+    .praxic-inline-editor textarea,
+    .praxic-inspector__textarea {
+      scrollbar-color: #8C0000 #ede8df;
+      scrollbar-width: thin;
+    }
+
+    .praxic-inline-editor textarea::-webkit-scrollbar,
+    .praxic-inspector__textarea::-webkit-scrollbar,
+    .scrollbar-thin::-webkit-scrollbar { width: 8px; }
+    .praxic-inline-editor textarea::-webkit-scrollbar-track,
+    .praxic-inspector__textarea::-webkit-scrollbar-track,
+    .scrollbar-thin::-webkit-scrollbar-track { background: #ede8df; }
+    .praxic-inline-editor textarea::-webkit-scrollbar-thumb,
+    .praxic-inspector__textarea::-webkit-scrollbar-thumb,
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: #8C0000;
+      border: 1px solid #ede8df;
+      border-radius: 1px;
+    }
+
+    .praxic-agent-heading {
+      justify-content: flex-start;
+    }
+    .praxic-agent-heading__chevron { display: none; }
+
+    .praxic-inspector {
+      display: flex;
+      position: relative;
+      flex: 0 0 var(--praxic-inspector-width, 318px);
+      flex-direction: column;
+      width: var(--praxic-inspector-width, 318px);
+      min-width: 280px;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+      color: #1C1916;
+      background: #ede8df;
+      border-left: 2px solid #1C1916;
+    }
+
+    .praxic-inspector__resize-handle {
+      position: absolute;
+      z-index: 4;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 12px;
+      cursor: col-resize;
+      touch-action: none;
+    }
+
+    .praxic-inspector__resize-handle::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 5px;
+      width: 2px;
+      height: 64px;
+      background: #8C0000;
+      opacity: .62;
+      transform: translateY(-50%);
+      transition: height .15s ease, opacity .15s ease;
+    }
+
+    .praxic-inspector__resize-handle:hover::after,
+    .praxic-inspector__resize-handle:focus-visible::after {
+      height: 92px;
+      opacity: 1;
+    }
+
+    .praxic-inspector__header {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 92px;
+      padding: 16px 13px 14px;
+      color: #fcfaf5;
+      background: #1C1916;
+      border-bottom: 4px solid #8C0000;
+    }
+
+    .praxic-inspector__eyebrow {
+      color: #9e7b3a;
+      font: 800 10px/1.2 Consolas, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .praxic-inspector__title {
+      max-width: 100%;
+      margin-top: 4px;
+      overflow: hidden;
+      color: #fcfaf5;
+      font: 900 31px/.96 'Noto Serif SC', serif;
+      letter-spacing: .01em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .praxic-inspector__section-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0;
+      color: #6b6560;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .praxic-inspector__section-head:hover .praxic-inspector__label,
+    .praxic-inspector__section-head:focus-visible .praxic-inspector__label { color: #8C0000; }
+
+    .praxic-inspector__section-head-icon {
+      color: #8C0000;
+      font: 800 16px/1 Consolas, monospace;
+    }
+
+    .praxic-workspace-tree {
+      margin-top: 10px;
+      padding-top: 7px;
+      border-top: 1px solid #c5bfb5;
+    }
+
+    .praxic-workspace-tree__row {
+      width: 100%;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 16px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 0;
+      color: #1C1916;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .praxic-workspace-tree__row:hover,
+    .praxic-workspace-tree__row:focus-visible { color: #8C0000; }
+
+    .praxic-workspace-tree__icon {
+      color: #9e7b3a;
+      font: 800 12px/1 Consolas, monospace;
+      text-align: center;
+    }
+
+    .praxic-workspace-tree__name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .praxic-workspace-tree__size {
+      color: #6b6560;
+      font: 9px/1.2 Consolas, monospace;
+    }
+
+    .praxic-workspace-tree__status {
+      padding: 6px 0;
+      color: #6b6560;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .praxic-workspace-tree__error { color: #8C0000; }
+
+    .praxic-inspector__back {
+      align-self: flex-start;
+      margin-top: 13px;
+      padding: 0;
+      color: #8C0000;
+      border: 0;
+      background: transparent;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .praxic-inspector__back:hover,
+    .praxic-inspector__back:focus-visible { text-decoration: underline; }
+
+    .praxic-inspector-toggle {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      color: #1C1916;
+      border: 1px solid #9e7b3a;
+      border-radius: 2px;
+      background: #9e7b3a;
+      font: 700 17px/1 Arial, sans-serif;
+    }
+
+    .praxic-inspector-toggle:hover { background: #b08d4a; }
+
+    .praxic-inspector__body {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 13px;
+    }
+
+    .praxic-inspector__section {
+      padding: 0 0 13px;
+      border-bottom: 1px solid #c5bfb5;
+    }
+
+    .praxic-inspector__section + .praxic-inspector__section { padding-top: 13px; }
+
+    .praxic-inspector__label {
+      color: #6b6560;
+      font: 800 10px/1.2 Consolas, monospace;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .praxic-inspector__value {
+      margin-top: 5px;
+      color: #1C1916;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .praxic-inspector__path {
+      margin-top: 5px;
+      color: #6b6560;
+      font: 10px/1.45 Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+
+    .praxic-inspector__status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #4a6741;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .praxic-inspector__status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .praxic-inspector__file-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      margin-top: 5px;
+      color: #6b6560;
+      font: 10px/1.3 Consolas, monospace;
+    }
+
+    .praxic-inspector__editor-wrap {
+      display: flex;
+      flex: 1 1 auto;
+      min-height: 0;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .praxic-inspector__textarea {
+      width: 100%;
+      min-height: 260px;
+      flex: 1 1 auto;
+      resize: none;
+      padding: 11px;
+      color: #1C1916;
+      border: 1px solid #c5bfb5;
+      border-left: 4px solid #8C0000;
+      border-radius: 2px;
+      outline: 0;
+      background: #fcfaf5;
+      font: 11px/1.55 Consolas, 'Microsoft YaHei', monospace;
+      tab-size: 2;
+    }
+
+    .praxic-inspector__textarea:focus {
+      border-color: #8C0000;
+      box-shadow: 3px 3px 0 rgba(140, 0, 0, .16);
+    }
+
+    .praxic-inspector__actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .praxic-inspector__save {
+      min-height: 30px;
+      padding: 5px 11px;
+      color: #fff;
+      border: 1px solid #8C0000;
+      border-radius: 2px;
+      background: #8C0000;
+      box-shadow: 3px 3px 0 #4a6741;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .praxic-inspector__save:disabled { cursor: not-allowed; opacity: .42; box-shadow: none; }
+    .praxic-inspector__notice { color: #6b6560; font-size: 11px; line-height: 1.5; }
+    .praxic-inspector__error { color: #8C0000; font-size: 11px; line-height: 1.5; }
+
+    .praxic-inspector-toggle {
+      align-self: stretch;
+      width: 34px;
+      height: auto;
+      min-height: 88px;
+      border-width: 0 0 0 2px;
+      border-color: #1C1916;
+      border-radius: 0;
+      background: #9e7b3a;
+    }
+
+    @media (max-width: 980px) and (min-width: 761px) {
+      .praxic-inspector { flex-basis: var(--praxic-inspector-width, 280px); width: var(--praxic-inspector-width, 280px); min-width: 250px; }
+      .praxic-inspector__title { font-size: 27px; }
+    }
+
     @media (max-width: 760px) {
       .praxic-sidebar, .praxic-sidebar--collapsed { width: 100% !important; }
       .praxic-sidebar { flex-basis: 42dvh; height: 42dvh; min-height: 260px; }
@@ -1405,6 +1855,20 @@
       .praxic-sidebar-list { margin-top: 10px; }
       .praxic-toolbar::before { font-size: 20px; }
       .praxic-toolbar::after { font-size: 16px; }
+      .praxic-inspector {
+        position: absolute;
+        z-index: 30;
+        top: 58px;
+        right: 0;
+        bottom: 0;
+        width: min(var(--praxic-inspector-width, 318px), 92vw);
+        flex-basis: auto;
+        min-width: 0;
+        height: auto;
+        border-left: 2px solid #1C1916;
+        box-shadow: -6px 0 0 rgba(28, 25, 22, .14);
+      }
+      .praxic-inspector-toggle { min-height: 58px; }
     }
   </style>
 </head>
@@ -1438,18 +1902,16 @@
 
     // ── Constants ────────────────────────────────────────────
     const PHASES = [
-      { id: 'file_load',      icon: '📎', label: '文件加载', subtitle: '准备资料' },
-      { id: 'preprocessing',  icon: '🔎', label: '问题解析', subtitle: '揣度意图' },
-      { id: 'investigation', icon: '🔍', label: '调查研究', subtitle: '实事求是' },
-      { id: 'contradiction',  icon: '⚡', label: '矛盾分析', subtitle: '抓主要矛盾' },
-      { id: 'rational',       icon: '🧠', label: '理性认识', subtitle: '去伪存真' },
-      { id: 'practice',       icon: '⚙️', label: '实践检验', subtitle: '行动与验证' },
-      { id: 'reflection',     icon: '🔄', label: '反思', subtitle: '验证与修正' },
+      { id: 'file_load',      label: '文件加载', subtitle: '准备资料' },
+      { id: 'preprocessing',  label: '问题解析', subtitle: '揣度意图' },
+      { id: 'investigation', label: '调查研究', subtitle: '实事求是' },
+      { id: 'contradiction',  label: '矛盾分析', subtitle: '抓主要矛盾' },
+      { id: 'rational',       label: '理性认识', subtitle: '去伪存真' },
+      { id: 'practice',       label: '实践检验', subtitle: '行动与验证' },
+      { id: 'reflection',     label: '反思', subtitle: '验证与修正' },
     ];
     const PHASE_LABELS = Object.fromEntries(PHASES.map(p => [p.id, p.label]));
-    const PHASE_ICONS = Object.fromEntries(PHASES.map(p => [p.id, p.icon]));
     PHASE_LABELS.authorization = '行动授权';
-    PHASE_ICONS.authorization = '!';
 
     // ── Markdown renderer ──────────────────────────────────────
     // 简易 markdown → HTML，支持公式（MathJax）、图片、链接、代码、列表、粗体
@@ -1549,9 +2011,51 @@
       return `${Math.floor(elapsed / year)}y ago`;
     }
 
+    function isInterruptedSummary(summary) {
+      const text = String(summary || '');
+      return /认知循环已中断|认知循环已由用户手动终止|连接中断|运行出错|^已终止/.test(text);
+    }
+
+    function turnMetricData(turn) {
+      const source = turn?.metrics || turn?.metadata || {};
+      let durationMs = Number(source.duration_ms || source.durationMs || turn?.durationMs || 0);
+      const tokenCount = Number(source.total_tokens ?? source.total_tokens_used ?? source.tokens ?? 0);
+      const timestamps = (turn?.phaseLogs || turn?.phase_logs || [])
+        .map(entry => Date.parse(entry?.timestamp || ''))
+        .filter(value => Number.isFinite(value));
+      const startValue = turn?.startedAt || turn?.started_at
+        || source.start_time || source.startTime
+        || (timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : '');
+      const endValue = turn?.completedAt || turn?.completed_at
+        || source.end_time || source.endTime
+        || (!turn?.interrupted ? (turn?.createdAt || turn?.created_at || '') : '')
+        || (timestamps.length ? new Date(Math.max(...timestamps)).toISOString() : '');
+      const start = Date.parse(startValue || '');
+      const end = Date.parse(endValue || '');
+      if (!durationMs && Number.isFinite(start) && Number.isFinite(end) && end >= start) durationMs = end - start;
+      return {
+        durationMs: durationMs > 0 ? durationMs : 0,
+        tokenCount: tokenCount > 0 ? tokenCount : 0,
+      };
+    }
+
+    function formatDuration(durationMs) {
+      const seconds = Math.max(1, Math.round(durationMs / 1000));
+      if (seconds < 60) return `${seconds}s`;
+      const minutes = Math.round(seconds / 60);
+      if (minutes < 60) return `${minutes}min`;
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      return rest ? `${hours}h ${rest}min` : `${hours}h`;
+    }
+
+    function formatTokenCount(value) {
+      return Number(value).toLocaleString('en-US');
+    }
+
     function historyTurnFromApi(turn) {
-      const interrupted = turn?.summary === '[...]';
-      const phaseLogs = turn?.phase_logs || turn?.phaseLogs || [];
+      const interrupted = turn?.summary === '[...]' || turn?.interrupted === true || isInterruptedSummary(turn?.summary);
+      const phaseLogs = mergePhaseEvents(turn?.phase_logs || turn?.phaseLogs || []);
       return {
         type: 'history',
         sessionId: turn?.session_id || turn?.sessionId || '',
@@ -1563,6 +2067,10 @@
         actions: turn?.action_items || turn?.actions || [],
         generatedFiles: turn?.generated_files || turn?.generatedFiles || [],
         phaseLogs,
+        interrupted,
+        metrics: turn?.metrics || turn?.metadata || null,
+        startedAt: turn?.started_at || turn?.startedAt || '',
+        completedAt: turn?.completed_at || turn?.completedAt || '',
         createdAt: turn?.created_at || turn?.createdAt || '',
       };
     }
@@ -2024,6 +2532,81 @@
       return String(entry?.data?.tool || entry?.data?.record?.tool || entry?.data?.tool_name || 'TOOL');
     }
 
+    function isToolProgress(entry) {
+      const result = entry?.data?.record?.result || {};
+      return eventKind(entry) === 'tool_call'
+        && (result.status === 'running' || /进行中|检索中/.test(String(entry?.summary || '')));
+    }
+
+    function canMergeToolProgress(previous, next) {
+      return Boolean(previous && next)
+        && isToolProgress(previous)
+        && eventKind(next) === 'tool_call'
+        && String(previous.phase || '') === String(next.phase || '')
+        && eventTool(previous).toLowerCase() === eventTool(next).toLowerCase();
+    }
+
+    function hasMeaningfulEventData(entry) {
+      const data = entry?.data;
+      if (!data || typeof data !== 'object') return false;
+      return Object.keys(data).some(key => key !== 'event_type');
+    }
+
+    function isPhaseProgressStart(entry) {
+      return eventKind(entry) === 'phase'
+        && !hasMeaningfulEventData(entry)
+        && /^(正在|开始)/.test(String(entry?.summary || ''));
+    }
+
+    function canMergePhaseProgress(previous, next) {
+      return Boolean(previous && next)
+        && isPhaseProgressStart(previous)
+        && eventKind(next) === 'phase'
+        && String(previous.phase || '') === String(next.phase || '')
+        && !/^(正在|开始)/.test(String(next?.summary || ''));
+    }
+
+    function mergeEventData(previousData, nextData) {
+      const previous = previousData && typeof previousData === 'object' ? previousData : {};
+      const next = nextData && typeof nextData === 'object' ? nextData : {};
+      const previousRecord = previous.record && typeof previous.record === 'object' ? previous.record : {};
+      const nextRecord = next.record && typeof next.record === 'object' ? next.record : {};
+      const previousResult = previousRecord.result && typeof previousRecord.result === 'object' ? previousRecord.result : {};
+      const nextResult = nextRecord.result && typeof nextRecord.result === 'object' ? nextRecord.result : {};
+      const merged = {
+        ...previous,
+        ...next,
+      };
+      if (previous.record || next.record) merged.record = {
+          ...previousRecord,
+          ...nextRecord,
+          result: { ...previousResult, ...nextResult },
+      };
+      return merged;
+    }
+
+    function mergePhaseEvents(events) {
+      const merged = [];
+      for (const entry of events || []) {
+        const previous = merged[merged.length - 1];
+        if (canMergeToolProgress(previous, entry) || canMergePhaseProgress(previous, entry)) {
+          merged[merged.length - 1] = {
+            ...previous,
+            summary: entry.summary || previous.summary,
+            data: mergeEventData(previous.data, entry.data),
+            timestamp: entry.timestamp || previous.timestamp,
+          };
+        } else {
+          merged.push(entry);
+        }
+      }
+      return merged;
+    }
+
+    function appendPhaseEvent(events, entry) {
+      return mergePhaseEvents([...(events || []), entry]).slice(-300);
+    }
+
     function eventFailure(entry) {
       const result = entry?.data?.record?.result || {};
       return result.status === 'error'
@@ -2060,11 +2643,124 @@
       return kind.replace(/_/g, ' ').toUpperCase();
     }
 
+    function parseJsonText(value) {
+      if (value && typeof value === 'object') return value;
+      if (typeof value !== 'string') return null;
+      const text = value.trim();
+      if (!text || !/^[\[{]/.test(text)) return null;
+      try {
+        const parsed = JSON.parse(text);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function readableStructuredValue(value) {
+      const nested = parseJsonText(value);
+      if (nested && nested !== value) return readableStructuredValue(nested);
+      if (Array.isArray(value)) {
+        return value.map(item => readableStructuredValue(item)).filter(Boolean).join('\n');
+      }
+      if (value && typeof value === 'object') {
+        return Object.entries(value)
+          .map(([key, item]) => `${key}：${readableStructuredValue(item)}`)
+          .join('\n');
+      }
+      return value === null || value === undefined ? '' : String(value);
+    }
+
+    function StructuredNarrative({ value, rawValue, fields }) {
+      const parsed = parseJsonText(value);
+      if (!parsed) return <p className="text-ink whitespace-pre-wrap break-words">{readableStructuredValue(value)}</p>;
+      const visibleFields = (fields || []).filter(([key]) => parsed[key] !== undefined && parsed[key] !== null && readableStructuredValue(parsed[key]).trim());
+      return (
+        <div className="praxic-structured-detail">
+          {visibleFields.map(([key, label]) => (
+            <div key={key} className="praxic-structured-detail__section">
+              <div className="praxic-structured-detail__label">{label}</div>
+              <p className="praxic-structured-detail__text">{readableStructuredValue(parsed[key])}</p>
+            </div>
+          ))}
+          <details className="praxic-raw-detail">
+            <summary>原始数据</summary>
+            <pre>{JSON.stringify(rawValue === undefined ? parsed : rawValue, null, 2)}</pre>
+          </details>
+        </div>
+      );
+    }
+
+    function parseSearchContent(content) {
+      const text = String(content || '').replace(/\r\n/g, '\n');
+      const queryMatch = text.match(/^\s*###\s*搜索[:：]\s*(.+)$/m);
+      const summaryMatch = text.match(/(?:^|\n)\s*📌\s*AI\s*摘要[:：]\s*([\s\S]*?)(?=\n\s*(?:共\s*\d+\s*条结果|\[\d+\])|$)/);
+      const countMatch = text.match(/共\s*(\d+)\s*条结果/);
+      const starts = [];
+      const sourcePattern = /^\s*\[(\d+)\]\s*(.+)$/gm;
+      let match;
+      while ((match = sourcePattern.exec(text))) starts.push({ index: match.index, number: match[1], title: match[2].trim() });
+      const sources = starts.map((source, index) => {
+        const block = text.slice(source.index, index + 1 < starts.length ? starts[index + 1].index : text.length);
+        const url = block.match(/^\s*URL:\s*(.+)$/m)?.[1]?.trim() || '';
+        const contentStart = block.search(/^\s*内容[:：]\s*/m);
+        const snippet = contentStart >= 0 ? block.slice(contentStart).replace(/^\s*内容[:：]\s*/, '').trim() : '';
+        return { ...source, url, snippet };
+      });
+      return {
+        query: queryMatch?.[1]?.trim() || '',
+        summary: summaryMatch?.[1]?.trim() || '',
+        count: countMatch ? Number(countMatch[1]) : sources.length,
+        sources,
+      };
+    }
+
+    function SearchToolDetail({ entry, result }) {
+      const content = result?.content || '';
+      const parsed = parseSearchContent(content);
+      const parameters = entry?.data?.record?.parameters || {};
+      const query = parsed.query || parameters.query || '未记录查询词';
+      const rawData = { parameters, result };
+      return (
+        <div className="praxic-search-detail">
+          <div className="praxic-search-detail__query">
+            <span>查询词</span>
+            <strong>{query}</strong>
+          </div>
+          {parsed.summary && (
+            <div className="praxic-search-detail__summary">
+              <div className="praxic-search-detail__label">AI 摘要</div>
+              <p>{parsed.summary}</p>
+            </div>
+          )}
+          <div className="praxic-search-detail__sources">
+            <div className="praxic-search-detail__label">来源列表 <small>{parsed.count ? `（${parsed.count}）` : ''}</small></div>
+            {parsed.sources.length > 0 ? parsed.sources.map(source => (
+              <div key={source.number} className="praxic-search-source">
+                <a href={source.url || undefined} target="_blank" rel="noreferrer" className="praxic-search-source__title">[{source.number}] {source.title}</a>
+                {source.url && <div className="praxic-search-source__url">{source.url}</div>}
+                {source.snippet && (
+                  <details className="praxic-search-source__excerpt">
+                    <summary>查看摘录</summary>
+                    <p>{source.snippet}</p>
+                  </details>
+                )}
+              </div>
+            )) : <div className="praxic-search-detail__empty">工具尚未返回来源</div>}
+          </div>
+          <details className="praxic-raw-detail">
+            <summary>原始数据</summary>
+            <pre>{JSON.stringify(rawData, null, 2)}</pre>
+          </details>
+        </div>
+      );
+    }
+
     function EventDetail({ entry }) {
       const kind = eventKind(entry);
       if (kind === 'tool_call') {
         const record = entry?.data?.record || {};
         const result = record.result || {};
+        if (eventTool(entry) === 'web_search') return <SearchToolDetail entry={entry} result={result} />;
         return (
           <div className="bg-paper border border-linen/60 p-2 text-[10px] leading-relaxed">
             <div className="flex flex-wrap gap-2 mb-1.5 text-warmgray"><span>工具：{eventTool(entry)}</span><span>状态：{result.state_classification || result.status || '未知'}</span>{result.duration_ms && <span>耗时：{result.duration_ms}ms</span>}</div>
@@ -2087,6 +2783,18 @@
       }
       if (entry?.data) return <div className="bg-paper border border-linen/60 p-2"><PhaseDetail phase={entry.phase} data={entry.data} /></div>;
       return null;
+    }
+
+    function WaveText({ text, offset = 0 }) {
+      return (
+        <span className="praxic-wave-text" aria-label={String(text || '')}>
+          {Array.from(String(text || '')).map((character, index) => (
+            <span key={index} className="praxic-wave-char" aria-hidden="true" style={{ '--wave-order': index + offset }}>
+              {character === ' ' ? '\u00a0' : character}
+            </span>
+          ))}
+        </span>
+      );
     }
 
     function PhaseBlock({ phases, activePhase, completedPhases, running = false, onSteer, steeringCount = 0 }) {
@@ -2116,7 +2824,7 @@
         const known = PHASES.map(phase => ({ ...phase, events: grouped.get(phase.id) || [] })).filter(group => group.events.length > 0);
         const knownIds = new Set(PHASES.map(phase => phase.id));
         const unknown = [...grouped.entries()].filter(([phase]) => !knownIds.has(phase)).map(([phase, events]) => ({
-          id: phase, icon: PHASE_ICONS[phase] || '•', label: PHASE_LABELS[phase] || phase, subtitle: '运行事件', events,
+          id: phase, label: PHASE_LABELS[phase] || phase, subtitle: '运行事件', events,
         }));
         return [...known, ...unknown];
       }, [normalized]);
@@ -2148,7 +2856,7 @@
       return (
         <div className="praxic-phase-stream">
           <div className="praxic-phase-stream__head"><strong>认知过程 / 显式事件流</strong><small>{normalized.length} 条事件 · 当前阶段默认展开</small></div>
-          {groups.map(group => {
+          {groups.map((group, groupIndex) => {
             const pending = group.events.some(entry => eventStatus(entry) === '等待授权');
             const failed = group.events.some(eventFailure);
             const isActive = running && group.id === activePhase;
@@ -2159,28 +2867,27 @@
             const last = group.events[group.events.length - 1];
             const showSummary = group.id !== 'preprocessing';
             return (
-              <section key={group.id} className={'praxic-phase-group praxic-phase-group--' + status + (open ? ' praxic-phase-group--open' : '')}>
+              <section key={group.id} style={{ '--phase-order': groupIndex }} className={'praxic-phase-group praxic-phase-group--' + status + (open ? ' praxic-phase-group--open' : '')}>
                 <button type="button" className="praxic-phase-group__header" onClick={() => togglePhase(group.id, defaultOpen)} aria-expanded={open}>
-                  <span className="praxic-phase-group__icon" aria-hidden="true" />
                   <span className="praxic-phase-group__title"><strong>{group.label}<small>{' · '}{group.subtitle}</small></strong></span>
                   <span className="praxic-phase-group__meta"><strong>{String(actions).padStart(2, '0')}</strong><small>{status === 'active' ? '进行中' : status === 'waiting' ? '等待授权' : status === 'error' ? '需注意' : '已完成'}</small></span>
                   <span className="praxic-phase-group__summary">{showSummary ? (last?.summary || '等待进入') : ''}</span>
-                  <span className="praxic-phase-group__chevron">{open ? '−' : '+'}</span>
                 </button>
                 {open && <div className="praxic-phase-group__events">
                   {group.events.map((entry, idx) => {
                     const key = entry.id || (group.id + '-' + idx);
                     const kind = eventKind(entry);
                     const selected = expandedDetail.has(key);
+                    const activeEvent = running && group.id === activePhase && idx === group.events.length - 1;
+                    const label = eventLabel(entry);
+                    const summary = entry.summary || '状态已更新';
                     return (
-                          <div key={key} className={'praxic-event-wrap ' + (selected ? 'praxic-event-wrap--selected ' : '') + (kind === 'tool_call' ? 'praxic-event-wrap--tool ' : '') + (kind.startsWith('authorization') ? 'praxic-event-wrap--authorization ' : '') + (kind.startsWith('steering') ? 'praxic-event-wrap--steering ' : '') + (eventFailure(entry) ? 'praxic-event-wrap--error' : '')}>
+                          <div key={key} style={{ '--event-order': idx }} className={'praxic-event-wrap ' + (activeEvent ? 'praxic-event-wrap--active ' : '') + (selected ? 'praxic-event-wrap--selected ' : '') + (kind === 'tool_call' ? 'praxic-event-wrap--tool ' : '') + (kind.startsWith('authorization') ? 'praxic-event-wrap--authorization ' : '') + (kind.startsWith('steering') ? 'praxic-event-wrap--steering ' : '') + (eventFailure(entry) ? 'praxic-event-wrap--error' : '')}>
                         <div className="praxic-event-row" role="button" tabIndex="0" onClick={() => toggleDetail(key)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDetail(key); } }}>
                           <span className="praxic-event-index">{String(idx + 1).padStart(2, '0')}</span>
                           <span className="praxic-event-marker" />
-                          <span className="praxic-event-copy"><span className="praxic-event-copy__line"><small>{eventLabel(entry)}</small><strong>{entry.summary || '状态已更新'}</strong></span></span>
-                          <span className="praxic-event-status">{eventStatus(entry, { running, active: isActive, latest: idx === group.events.length - 1 })}</span>
+                          <span className="praxic-event-copy"><span className="praxic-event-copy__line"><small>{activeEvent ? <WaveText text={label} /> : label}</small><strong>{activeEvent ? <WaveText text={summary} offset={Array.from(label).length + 1} /> : summary}</strong></span></span>
                           {running && onSteer && kind !== 'steering' && <button type="button" className="praxic-event-steer" onClick={e => { e.stopPropagation(); setSteerTarget(key); setSteerError(''); }}>插话</button>}
-                          <span className="praxic-event-arrow">↗</span>
                         </div>
                         {steerTarget === key && running && onSteer && <form className="praxic-inline-steer" onSubmit={e => submitSteer(e, entry)}>
                           <div className="praxic-inline-steer__head"><strong>在此小循环后插话</strong><small>{steeringCount ? `此前 ${steeringCount} 条会继续携带` : '插话会进入后续小循环'}</small></div>
@@ -2256,6 +2963,16 @@
           </svg>
         );
       }
+      if (kind === 'metrics') {
+        return (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 19V10" />
+            <path d="M12 19V5" />
+            <path d="M19 19v-7" />
+            <path d="M3.5 19.5h17" />
+          </svg>
+        );
+      }
       if (kind === 'cancel') {
         return (
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2291,7 +3008,30 @@
       );
     }
 
-    function InlineUserEditor({ turn, onCancel, onSend }) {
+    function AgentMessageActions({ turn, onCopy, onContinue, onToggleMetrics, copied, metricsOpen, busy }) {
+      if (!turn || turn.steer) return null;
+      const interrupted = turn.interrupted === true || isInterruptedSummary(turn.summary);
+      return (
+        <div className="praxic-agent-actions" aria-label="回答操作">
+          <button type="button" onClick={() => onCopy(turn)} disabled={busy} title={copied ? '已复制回答' : '复制回答'} aria-label={copied ? '已复制回答' : '复制回答'}>{copied ? <span className="praxic-user-action-check" aria-hidden="true">✓</span> : <UserActionIcon kind="copy" />}</button>
+          {interrupted && <button type="button" onClick={() => onContinue(turn)} disabled={busy} title="继续认知循环" aria-label="继续认知循环"><UserActionIcon kind="resend" /></button>}
+          <button type="button" onClick={() => onToggleMetrics()} title="计量" aria-label="计量" aria-expanded={metricsOpen}><UserActionIcon kind="metrics" /></button>
+        </div>
+      );
+    }
+
+    function AgentMetrics({ turn }) {
+      const metrics = turnMetricData(turn);
+      if (!metrics.durationMs && !metrics.tokenCount) return null;
+      return (
+        <div className="praxic-agent-metrics" aria-label="回答计量">
+          {metrics.durationMs > 0 && <span className="praxic-agent-metric"><span className="praxic-agent-metric__label">用时:</span>{formatDuration(metrics.durationMs)}</span>}
+          {metrics.tokenCount > 0 && <span className="praxic-agent-metric"><span className="praxic-agent-metric__label">token:</span>{formatTokenCount(metrics.tokenCount)}</span>}
+        </div>
+      );
+    }
+
+    function InlineUserEditor({ turn, turnIndex, onCancel, onSend }) {
       const [question, setQuestion] = useState(turn?.question || '');
       const [sending, setSending] = useState(false);
       const textareaRef = useRef(null);
@@ -2326,8 +3066,10 @@
           turn?.reviewStrategy || 'off',
           turn?.model || '',
           turn?.files || [],
+          turnIndex,
+          turn?.sessionId || '',
         );
-      }, [question, sending, onSend, turn]);
+      }, [question, sending, onSend, turn, turnIndex]);
 
       const handleKeyDown = useCallback((event) => {
         if (event.key === 'Escape') {
@@ -2471,6 +3213,183 @@
       );
     }
 
+    function formatWorkspaceSize(bytes) {
+      if (!bytes) return '';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    }
+
+    function WorkspaceTree({ projectId, onOpenFile }) {
+      const [entriesByPath, setEntriesByPath] = useState({});
+      const [expandedPaths, setExpandedPaths] = useState(() => new Set(['']));
+      const [loadingPaths, setLoadingPaths] = useState({});
+      const [errorsByPath, setErrorsByPath] = useState({});
+
+      const loadDirectory = useCallback(async (relativePath) => {
+        setLoadingPaths(previous => ({ ...previous, [relativePath]: true }));
+        setErrorsByPath(previous => ({ ...previous, [relativePath]: '' }));
+        try {
+          const query = '?path=' + encodeURIComponent(relativePath) + '&project_id=' + encodeURIComponent(projectId || '');
+          const response = await fetch('/api/v1/workspace/tree' + query);
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || '目录读取失败');
+          setEntriesByPath(previous => ({ ...previous, [relativePath]: data.entries || [] }));
+        } catch (error) {
+          setErrorsByPath(previous => ({ ...previous, [relativePath]: error?.message || '目录读取失败' }));
+        } finally {
+          setLoadingPaths(previous => {
+            const next = { ...previous };
+            delete next[relativePath];
+            return next;
+          });
+        }
+      }, [projectId]);
+
+      useEffect(() => {
+        setEntriesByPath({});
+        setExpandedPaths(new Set(['']));
+        setErrorsByPath({});
+        loadDirectory('');
+      }, [loadDirectory]);
+
+      const toggleDirectory = useCallback(async (relativePath) => {
+        if (expandedPaths.has(relativePath)) {
+          setExpandedPaths(previous => {
+            const next = new Set(previous);
+            next.delete(relativePath);
+            return next;
+          });
+          return;
+        }
+        setExpandedPaths(previous => new Set([...previous, relativePath]));
+        if (!Object.prototype.hasOwnProperty.call(entriesByPath, relativePath)) {
+          await loadDirectory(relativePath);
+        }
+      }, [entriesByPath, expandedPaths, loadDirectory]);
+
+      const renderDirectory = (relativePath, depth) => {
+        const entries = entriesByPath[relativePath];
+        if (loadingPaths[relativePath] && !entries) {
+          return <div className="praxic-workspace-tree__status" style={{ paddingLeft: `${depth * 12}px` }}>读取中…</div>;
+        }
+        if (errorsByPath[relativePath]) {
+          return <div className="praxic-workspace-tree__status praxic-workspace-tree__error" style={{ paddingLeft: `${depth * 12}px` }}>{errorsByPath[relativePath]}</div>;
+        }
+        if (!entries) return null;
+        if (!entries.length) {
+          return <div className="praxic-workspace-tree__status" style={{ paddingLeft: `${depth * 12}px` }}>空目录</div>;
+        }
+        return entries.map(entry => {
+          const isDirectory = entry.kind === 'directory';
+          const isExpanded = expandedPaths.has(entry.relative_path);
+          return (
+            <React.Fragment key={entry.relative_path}>
+              <button
+                type="button"
+                className="praxic-workspace-tree__row"
+                style={{ paddingLeft: `${depth * 12}px` }}
+                onClick={() => isDirectory ? toggleDirectory(entry.relative_path) : onOpenFile(entry.relative_path, entry.name)}
+                title={entry.relative_path}
+                aria-label={isDirectory ? `${isExpanded ? '收起' : '展开'}文件夹 ${entry.name}` : `打开文件 ${entry.name}`}
+                aria-expanded={isDirectory ? isExpanded : undefined}
+              >
+                <span className="praxic-workspace-tree__icon" aria-hidden="true">{isDirectory ? (isExpanded ? '▾' : '▸') : '□'}</span>
+                <span className="praxic-workspace-tree__name">{entry.name}</span>
+                {!isDirectory && <span className="praxic-workspace-tree__size">{formatWorkspaceSize(entry.size_bytes)}</span>}
+              </button>
+              {isDirectory && isExpanded && renderDirectory(entry.relative_path, depth + 1)}
+            </React.Fragment>
+          );
+        });
+      };
+
+      return <div className="praxic-workspace-tree">{renderDirectory('', 0)}</div>;
+    }
+
+    function WorkspaceInspector({
+      project, conversation, model, running, file, content, loading, dirty, saving, error,
+      projectId, width, onResizeStart, onResizeKeyDown, onOpenEnvironment, onOpenFile, onChange, onSave,
+    }) {
+      const workspaceDir = project?.workspace_dir || '未配置工作目录';
+      const workspaceName = String(workspaceDir).split(/[\\/]/).filter(Boolean).pop() || '工作区';
+      const conversationName = conversation?.name || '未选择对话';
+      const fileTitle = file?.label || file?.relativePath || file?.path || '文件';
+      const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
+
+      return (
+        <aside className="praxic-inspector" style={{ '--praxic-inspector-width': `${width}px` }} aria-label={file ? '文件阅读器' : '项目'}>
+          <div
+            className="praxic-inspector__resize-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整右栏宽度，向右拖动可关闭"
+            tabIndex="0"
+            onPointerDown={onResizeStart}
+            onMouseDown={onResizeStart}
+            onKeyDown={onResizeKeyDown}
+          />
+          <div className="praxic-inspector__header">
+            <div className="min-w-0">
+              <div className="praxic-inspector__eyebrow">{file ? '文件' : '项目'}</div>
+              <div className="praxic-inspector__title" title={file ? fileTitle : workspaceName}>{file ? fileTitle : workspaceName}</div>
+            </div>
+          </div>
+
+          {file ? (
+            <div className="praxic-inspector__body">
+              <div className="praxic-inspector__section">
+                <div className="praxic-inspector__label">路径</div>
+                <div className="praxic-inspector__path" title={file.path}>{file.relativePath || file.path}</div>
+                <div className="praxic-inspector__file-meta">
+                  {file.mime && <span>{file.mime}</span>}
+                  {Number.isFinite(file.sizeBytes) && <span>{(file.sizeBytes / 1024).toFixed(1)} KB</span>}
+                  <span>{file.editable ? '可编辑' : '只读'}</span>
+                </div>
+              </div>
+              {loading && <div className="praxic-inspector__notice">正在读取文件…</div>}
+              {!loading && error && <div className="praxic-inspector__error">{error}</div>}
+              {!loading && !error && file.editable && (
+                <div className="praxic-inspector__editor-wrap">
+                  <textarea className="praxic-inspector__textarea" value={content} onChange={e => onChange(e.target.value)} spellCheck="false" aria-label="文件内容" />
+                  <div className="praxic-inspector__actions">
+                    <span className="praxic-inspector__notice">{dirty ? '有未保存修改' : '已同步磁盘内容'}</span>
+                    <button type="button" className="praxic-inspector__save" onClick={onSave} disabled={!dirty || saving}>{saving ? '保存中…' : '保存文件'}</button>
+                  </div>
+                </div>
+              )}
+              {!loading && !error && !file.editable && <div className="praxic-inspector__notice">该文件不是可编辑文本。</div>}
+              {!loading && <button type="button" className="praxic-inspector__back" onClick={onOpenEnvironment}>← 项目</button>}
+            </div>
+          ) : (
+            <div className="praxic-inspector__body">
+              <div className="praxic-inspector__section">
+                <button type="button" className="praxic-inspector__section-head" onClick={() => setWorkspaceExpanded(previous => !previous)} aria-expanded={workspaceExpanded}>
+                  <span className="praxic-inspector__label">工作区</span>
+                  <span className="praxic-inspector__section-head-icon" aria-hidden="true">{workspaceExpanded ? '−' : '+'}</span>
+                </button>
+                {workspaceExpanded && (
+                  <>
+                    <div className="praxic-inspector__path" title={workspaceDir}>{workspaceDir}</div>
+                    <WorkspaceTree projectId={projectId} onOpenFile={onOpenFile} />
+                  </>
+                )}
+              </div>
+              <div className="praxic-inspector__section">
+                <div className="praxic-inspector__label">当前对话</div>
+                <div className="praxic-inspector__value">{conversationName}</div>
+                <div className="praxic-inspector__file-meta"><span>{conversation?.question_count || 0} 条提问</span><span>{model || '智能路由'}</span></div>
+              </div>
+              <div className="praxic-inspector__section">
+                <div className="praxic-inspector__label">运行状态</div>
+                <div className="praxic-inspector__value"><span className="praxic-inspector__status">{running ? '认知循环进行中' : '等待下一次提问'}</span></div>
+              </div>
+            </div>
+          )}
+        </aside>
+      );
+    }
+
     // ── Phase Detail renderers ───────────────────────────────
     function InvestigationDetail({ data }) {
       const facts = data?.facts || [];
@@ -2584,8 +3503,10 @@
 
     function RationalDetail({ data }) {
       const d=data||{};
+      const rationalFields = [['abstract_from', '抽象'], ['essence', '本质'], ['return_to_concrete', '回到具体'], ['fact_foundation', '事实基础'], ['unexplained_phenomena', '未解释现象']];
       return (<div className="space-y-2 text-xs">
-        {d.essence && <div className="bg-olivewash border border-olive/20 rounded p-2"><div className="font-semibold text-olive mb-1">💡 本质</div><p className="text-ink">{d.essence}</p></div>}
+        {d.essence && <div className="bg-olivewash border border-olive/20 rounded p-2"><div className="font-semibold text-olive mb-1">💡 本质</div><StructuredNarrative value={d.essence} rawValue={d} fields={rationalFields} /></div>}
+        {!d.essence && d.abstract_from && <div className="bg-olivewash border border-olive/20 rounded p-2"><StructuredNarrative value={d.abstract_from} rawValue={d} fields={rationalFields} /></div>}
         {(d.patterns||[]).length>0 && <div>{d.patterns.map((p,i)=><div key={i} className="text-warmgray pl-2 border-l-2 border-olive/30 mb-0.5">• {p}</div>)}</div>}
         {(d.hypotheses||[]).length>0 && <div><div className="font-semibold text-gold mb-1">🧪 假设</div>{d.hypotheses.map((h,i)=><div key={i} className="text-warmgray pl-2 border-l-2 border-gold/30 mb-0.5">• {h}</div>)}</div>}
         {d.qualitative_threshold && <p className="text-[10px] text-seal">临界点：{d.qualitative_threshold}</p>}
@@ -3555,6 +4476,14 @@
         try { return localStorage.getItem('praxic_session_sort') || 'recent'; } catch { return 'recent'; }
       });
       const [projectDialog, setProjectDialog] = useState(null);
+      const [inspectorOpen, setInspectorOpen] = useState(true);
+      const [inspectorFile, setInspectorFile] = useState(null);
+      const [inspectorContent, setInspectorContent] = useState('');
+      const [inspectorLoading, setInspectorLoading] = useState(false);
+      const [inspectorSaving, setInspectorSaving] = useState(false);
+      const [inspectorDirty, setInspectorDirty] = useState(false);
+      const [inspectorError, setInspectorError] = useState('');
+      const [inspectorWidth, setInspectorWidth] = useState(318);
 
       // ── File upload (lifted to App for page-wide drag-and-drop) ──
       const [files, setFiles] = useState([]);
@@ -3562,6 +4491,62 @@
       const [dragOver, setDragOver] = useState(false);
       const dragCounterRef = useRef(0);
       const activeProjectRef = useRef('');
+      const inspectorResizeActiveRef = useRef(false);
+
+      const handleInspectorResizeStart = useCallback((event) => {
+        if (inspectorResizeActiveRef.current) return;
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        inspectorResizeActiveRef.current = true;
+        const startX = event.clientX;
+        const startWidth = inspectorWidth;
+        const moveEventName = event.type === 'pointerdown' ? 'pointermove' : 'mousemove';
+        const endEventName = event.type === 'pointerdown' ? 'pointerup' : 'mouseup';
+        const cancelEventName = event.type === 'pointerdown' ? 'pointercancel' : 'mouseleave';
+        const previousUserSelect = document.body.style.userSelect;
+        const previousCursor = document.body.style.cursor;
+        let finished = false;
+
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = 'col-resize';
+
+        const cleanup = () => {
+          if (finished) return;
+          finished = true;
+          document.removeEventListener(moveEventName, handleMove);
+          document.removeEventListener(endEventName, cleanup);
+          document.removeEventListener(cancelEventName, cleanup);
+          inspectorResizeActiveRef.current = false;
+          document.body.style.userSelect = previousUserSelect;
+          document.body.style.cursor = previousCursor;
+        };
+        const handleMove = (moveEvent) => {
+          const nextWidth = startWidth + startX - moveEvent.clientX;
+          if (nextWidth <= 190) {
+            cleanup();
+            setInspectorOpen(false);
+            return;
+          }
+          setInspectorWidth(Math.min(520, Math.max(220, nextWidth)));
+        };
+
+        document.addEventListener(moveEventName, handleMove);
+        document.addEventListener(endEventName, cleanup, { once: true });
+        document.addEventListener(cancelEventName, cleanup, { once: true });
+      }, [inspectorWidth]);
+
+      const handleInspectorResizeKeyDown = useCallback((event) => {
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          setInspectorWidth(previous => Math.min(520, previous + 24));
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          setInspectorWidth(previous => Math.max(220, previous - 24));
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          setInspectorOpen(false);
+        }
+      }, []);
 
       const handleFiles = useCallback(async (fileList) => {
         const arr = Array.from(fileList || []);
@@ -3614,6 +4599,7 @@
       const [completedPhases, setCompletedPhases] = useState(() => new Set());
       const [phaseLogs, setPhaseLogs] = useState([]);
       const [historyProcessOpen, setHistoryProcessOpen] = useState({});
+      const [metricsOpen, setMetricsOpen] = useState({});
       const [editRequest, setEditRequest] = useState(null);
       const [copiedTurnKey, setCopiedTurnKey] = useState('');
       const copyResetRef = useRef(null);
@@ -3625,6 +4611,10 @@
 
       useEffect(() => {
         setEditRequest(null);
+        setMetricsOpen({});
+        setInspectorFile(null);
+        setInspectorError('');
+        setInspectorDirty(false);
       }, [activeConvId]);
 
       useEffect(() => () => {
@@ -3657,6 +4647,60 @@
 
       const activeConversation = (list || []).find(c => c.id === activeConvId);
       activeProjectRef.current = activeConversation?.project_id || (activeProjectId === null ? '' : activeProjectId);
+      const inspectorProjectId = activeConversation?.project_id ?? (activeProjectId === null ? '' : activeProjectId);
+      const activeProject = (projects || []).find(project => project.id === inspectorProjectId) || (projects || []).find(project => project.id === '');
+
+      const openWorkspaceFile = useCallback(async (file, label = '') => {
+        const rawPath = typeof file === 'string' ? file : file?.path;
+        if (!rawPath) return;
+        const nextFile = {
+          path: String(rawPath),
+          label: label || (typeof file === 'object' && file?.name) || String(rawPath).split(/[\\/]/).pop(),
+          relativePath: '',
+          mime: '',
+          sizeBytes: 0,
+          editable: false,
+        };
+        setInspectorFile(nextFile);
+        setInspectorOpen(true);
+        setInspectorContent('');
+        setInspectorDirty(false);
+        setInspectorError('');
+        setInspectorLoading(true);
+        try {
+          const query = '?path=' + encodeURIComponent(String(rawPath)) + '&project_id=' + encodeURIComponent(inspectorProjectId || '');
+          const response = await fetch('/api/v1/workspace/file-content' + query);
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || '文件读取失败');
+          setInspectorFile({ ...nextFile, relativePath: data.relative_path || '', mime: data.mime || '', sizeBytes: data.size_bytes || 0, editable: data.editable === true });
+          setInspectorContent(data.content || '');
+        } catch (error) {
+          setInspectorError(error?.message || '文件读取失败');
+        } finally {
+          setInspectorLoading(false);
+        }
+      }, [inspectorProjectId]);
+
+      const saveWorkspaceFile = useCallback(async () => {
+        if (!inspectorFile?.path || !inspectorDirty || inspectorSaving) return;
+        setInspectorSaving(true);
+        setInspectorError('');
+        try {
+          const response = await fetch('/api/v1/workspace/file-content', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: inspectorFile.path, content: inspectorContent, project_id: inspectorProjectId || '' }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || '文件保存失败');
+          setInspectorDirty(false);
+          setInspectorFile(previous => previous ? { ...previous, sizeBytes: data.size_bytes || previous.sizeBytes } : previous);
+        } catch (error) {
+          setInspectorError(error?.message || '文件保存失败');
+        } finally {
+          setInspectorSaving(false);
+        }
+      }, [inspectorFile, inspectorDirty, inspectorSaving, inspectorContent, inspectorProjectId]);
 
       const sortedConversations = useMemo(() => {
         const convs = [...(list || [])];
@@ -3799,7 +4843,7 @@
           data: data || null,
           timestamp: new Date().toISOString(),
         };
-        const append = previous => [...previous, entry].slice(-300);
+        const append = previous => appendPhaseEvent(previous, entry);
         capturedPhaseLogsRef.current = append(capturedPhaseLogsRef.current);
 
         const previousPhase = activePhaseRef.current;
@@ -3963,7 +5007,7 @@
             const status = await statusRes.json();
             if (status.status === 'running') {
               console.log('[recovery] SSE stream alive for', recoveringConvId, '— attaching');
-              setTurns([...historyEntries, { type: 'turn', question: lastTurn.question, running: true, summary: '', actions: [], files: [] }]);
+              setTurns([...historyEntries, { type: 'turn', question: lastTurn.question, running: true, summary: '', actions: [], files: [], startedAt: lastTurn.created_at || new Date().toISOString() }]);
               setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set()); activePhaseRef.current = null;
               steeringHistoryRef.current = []; setSteeringCount(0);
               capturedPhaseLogsRef.current = [];
@@ -3989,10 +5033,13 @@
                   const rawSummary = result.error ? '**运行出错**\n\n' + result.error : (result.summary || '');
                   const summary = cleanPromptLeakage(rawSummary);
                   const actions = result.error ? [] : (result.action_items || []);
+                  const completedAt = new Date().toISOString();
+                  const interrupted = Boolean(result.error) || isInterruptedSummary(summary);
+                  const metrics = result.metrics || result.metadata || null;
                   const resultEntry = { id: `${Date.now()}-result`, phase: 'reflection', summary, data: { event_type: result.error ? 'error' : 'result', result }, timestamp: new Date().toISOString() };
                   const finalPhaseLogs = [...capturedPhaseLogsRef.current, resultEntry];
                   capturedPhaseLogsRef.current = [];
-                  setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, running: false, summary, actions, phaseLogs: finalPhaseLogs } : t));
+                  setTurns(prev => prev.map((t, i) => i === prev.length - 1 ? { ...t, running: false, summary, actions, phaseLogs: finalPhaseLogs, completedAt, interrupted, metrics } : t));
                   setPhaseLogs([]);
                 refreshRef.current();
                 },
@@ -4081,7 +5128,7 @@
           // Add user bubble
           const fileInfos = (files || []).map(f => typeof f === 'string' ? { name: f, path: f } : f);
           const filePaths = fileInfos.map(f => f.path);
-          const nextTurn = { type: 'turn', question, context, mode, reviewStrategy, model, running: true, summary: '', actions: [], files: fileInfos };
+          const nextTurn = { type: 'turn', question, context, mode, reviewStrategy, model, running: true, summary: '', actions: [], files: fileInfos, startedAt: new Date().toISOString(), interrupted: false, metrics: null };
           setTurns(prev => shouldReplaceTurn ? [...prev.slice(0, turnIdx), nextTurn] : [...prev, nextTurn]);
           setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set()); activePhaseRef.current = null;
           steeringHistoryRef.current = []; setSteeringCount(0);
@@ -4107,19 +5154,22 @@
               const summary = cleanPromptLeakage(rawSummary);
               const actions = result.error ? [] : (result.action_items || []);
               const generatedFiles = result.error ? [] : (result.generated_files || []);
+              const completedAt = new Date().toISOString();
+              const interrupted = Boolean(result.error) || isInterruptedSummary(summary);
+              const metrics = result.metrics || result.metadata || null;
               // Capture phase logs from the direct ref (always fresh, no React batching race)
               const resultEntry = { id: `${Date.now()}-result`, phase: 'reflection', summary, data: { event_type: result.error ? 'error' : 'result', result }, timestamp: new Date().toISOString() };
               const finalPhaseLogs = [...capturedPhaseLogsRef.current, resultEntry];
               capturedPhaseLogsRef.current = [];
               setTurns(prev => {
                 const copy = [...prev];
-                if (copy[turnIdx]) copy[turnIdx] = { ...copy[turnIdx], sessionId: result.session_id || copy[turnIdx].sessionId || '', running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs };
+                if (copy[turnIdx]) copy[turnIdx] = { ...copy[turnIdx], sessionId: result.session_id || copy[turnIdx].sessionId || '', running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs, completedAt, interrupted, metrics };
                 return copy;
               });
               // Also update cache for background-switch recovery
               if (convStateCacheRef.current[cid]) {
                 const cachedTurns = convStateCacheRef.current[cid].turns || [];
-                const update = t => ({ ...t, sessionId: result.session_id || t.sessionId || '', running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs });
+                const update = t => ({ ...t, sessionId: result.session_id || t.sessionId || '', running: false, summary, actions, generatedFiles, phaseLogs: finalPhaseLogs, completedAt, interrupted, metrics });
                 convStateCacheRef.current[cid].turns = shouldReplaceTurn
                   ? [...cachedTurns.slice(0, turnIdx), update(cachedTurns[turnIdx] || {})]
                   : cachedTurns.map((t, i) => i === turnIdx ? update(t) : t);
@@ -4167,9 +5217,9 @@
         });
       }, [running]);
 
-      const sendEditedTurn = useCallback((question, context, mode, reviewStrategy, model, files) => {
+      const sendEditedTurn = useCallback((question, context, mode, reviewStrategy, model, files, turnIndex, replaceSessionId) => {
         setEditRequest(null);
-        handleSend(question, context, mode, reviewStrategy, model || selectedModel, files);
+        handleSend(question, context, mode, reviewStrategy, model || selectedModel, files, turnIndex, replaceSessionId);
       }, [handleSend, selectedModel]);
 
       const resendTurn = useCallback((turn, turnIndex) => {
@@ -4186,19 +5236,24 @@
         );
       }, [handleSend, running, selectedModel]);
 
-      const copyTurn = useCallback(async (turn, key) => {
-        const text = String(turn.question || '');
-        if (!text) return;
+      const continueTurn = useCallback((turn, turnIndex) => {
+        if (!turn?.interrupted && !isInterruptedSummary(turn?.summary)) return;
+        resendTurn(turn, turnIndex);
+      }, [resendTurn]);
+
+      const copyText = useCallback(async (text, key) => {
+        const value = String(text || '');
+        if (!value) return;
         try {
           if (navigator.clipboard?.writeText) {
-            await navigator.clipboard.writeText(text);
+            await navigator.clipboard.writeText(value);
           } else {
             throw new Error('clipboard API unavailable');
           }
         } catch {
           try {
             const area = document.createElement('textarea');
-            area.value = text;
+            area.value = value;
             area.style.position = 'fixed';
             area.style.opacity = '0';
             document.body.appendChild(area);
@@ -4215,6 +5270,9 @@
         if (copyResetRef.current) clearTimeout(copyResetRef.current);
         copyResetRef.current = setTimeout(() => setCopiedTurnKey(''), 1600);
       }, []);
+
+      const copyTurn = useCallback((turn, key) => copyText(turn.question, key), [copyText]);
+      const copyAnswer = useCallback((turn, key) => copyText(turn.summary, key), [copyText]);
 
       const handleNewSession = useCallback(() => {
         setProjectDialog({
@@ -4286,7 +5344,7 @@
                    animTitleId={animTitleId} runningConvs={runningConvs} onSettings={() => setShowSettings(true)}
                    sessionSort={sessionSort} onSortChange={setSessionSort} />
           <div className="w-px bg-clay/30 flex-shrink-0" />
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="praxic-main-pane flex flex-col min-w-0">
             {/* Chat header */}
             <div className="praxic-toolbar px-4 py-2 border-b border-linen/60 bg-cream flex items-center justify-end">
               <div className="flex items-center gap-2">
@@ -4329,10 +5387,10 @@
                     {/* User bubble */}
                     {turn.type !== 'recovering' && (
                     <div className="flex justify-end">
-                      <div className="praxic-user-message group">
+                      <div className={'praxic-user-message group ' + (editRequest?.turnIndex === i ? 'praxic-user-message--editing' : '')}>
                         <div className={'praxic-user-bubble max-w-full rounded-2xl rounded-tr-md px-5 py-3 ' + (turn.steer ? 'bg-cream border border-clay/20 text-ink' : 'bg-seal text-white')}>
                           {editRequest?.turnIndex === i ? (
-                            <InlineUserEditor key={editRequest.key} turn={turn} onCancel={() => setEditRequest(null)} onSend={sendEditedTurn} />
+                            <InlineUserEditor key={editRequest.key} turn={turn} turnIndex={i} onCancel={() => setEditRequest(null)} onSend={sendEditedTurn} />
                           ) : (
                             <>
                               {turn.steer && <div className="text-[10px] text-olive font-semibold uppercase tracking-wide mb-0.5">引导</div>}
@@ -4340,9 +5398,9 @@
                               {turn.files && turn.files.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-2">
                                   {turn.files.map((f, i) => (
-                                    <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] text-white/80">
+                                    <button key={i} type="button" onClick={() => openWorkspaceFile(f, f.name || f.path)} title="在右栏阅读文件" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] text-white/80 hover:bg-white/30 cursor-pointer">
                                       📎 {f.name}
-                                    </span>
+                                    </button>
                                   ))}
                                 </div>
                               )}
@@ -4375,12 +5433,12 @@
                     {/* Agent bubble */}
                     {!turn.running && turn.summary && (
                       <div className="flex justify-start">
-                        <div className="praxic-agent-bubble max-w-[80%] bg-cream border border-linen/50 rounded-2xl rounded-tl-md px-5 py-3">
+                        <div className="praxic-agent-result">
+                          <div className="praxic-agent-bubble max-w-[80%] bg-cream border border-linen/50 rounded-2xl rounded-tl-md px-5 py-3">
                           {turn.phaseLogs && turn.phaseLogs.length > 0 && uiSettings.show_thinking_after_answer !== false ? (
                             <button type="button" className="praxic-agent-heading" onClick={() => setHistoryProcessOpen(prev => ({ ...prev, [i]: !prev[i] }))}
                               aria-expanded={!!historyProcessOpen[i]} aria-controls={'history-process-' + i} title={historyProcessOpen[i] ? '收起历史思维过程' : '展开历史思维过程'}>
                               <span className="flex items-center gap-1.5"><BrandMark size={16} />Praxic分析</span>
-                              <span className="praxic-agent-heading__chevron" aria-hidden="true">{historyProcessOpen[i] ? '−' : '+'}</span>
                             </button>
                           ) : (
                             <div className="praxic-agent-heading"><span className="flex items-center gap-1.5"><BrandMark size={16} />Praxic分析</span></div>
@@ -4414,12 +5472,12 @@
                                   return (
                                     <div key={j}>
                                       {isImg ? (
-                                        <div className="mt-2">
+                                        <button type="button" className="block mt-2 text-left cursor-zoom-in" onClick={() => openWorkspaceFile(f.path, f.description || f.path)} title="在右栏打开文件">
                                           <img src={url} alt={f.description || f.path} className="max-w-full rounded-lg border border-linen/50" loading="lazy" />
                                           <div className="text-[10px] text-warmgray mt-0.5 truncate">{f.path}</div>
-                                        </div>
+                                        </button>
                                       ) : (
-                                        <a href={url} target="_blank" className="flex items-center gap-2 text-xs text-seal hover:text-seal-light hover:underline p-1.5 rounded hover:bg-dust/40 transition-colors">
+                                        <a href={url} target="_blank" onClick={event => { event.preventDefault(); openWorkspaceFile(f.path, f.description || f.path); }} className="flex items-center gap-2 text-xs text-seal hover:text-seal-light hover:underline p-1.5 rounded hover:bg-dust/40 transition-colors">
                                           <span className="text-[10px]">📄</span>
                                           <span className="truncate flex-1">{f.path}</span>
                                           {f.size_bytes > 0 && <span className="text-[10px] text-clay flex-shrink-0">{(f.size_bytes / 1024).toFixed(1)}KB</span>}
@@ -4433,6 +5491,17 @@
                           )}
                            </div>
                          </div>
+                          <AgentMessageActions
+                            turn={turn}
+                            onCopy={message => copyAnswer(message, 'answer-' + i)}
+                            onContinue={message => continueTurn(message, i)}
+                            onToggleMetrics={() => setMetricsOpen(prev => ({ ...prev, [i]: !prev[i] }))}
+                            copied={copiedTurnKey === 'answer-' + i}
+                            metricsOpen={!!metricsOpen[i]}
+                            busy={running}
+                          />
+                          {metricsOpen[i] && <AgentMetrics turn={turn} />}
+                        </div>
                       </div>
                     )}
 
@@ -4462,6 +5531,30 @@
             )}
             <InputBar onSend={handleSend} running={running} onStop={stopCurrent} onSteer={handleSteer} model={selectedModel} availableModels={availableModels} onModelChange={v => { setSelectedModel(v); try { localStorage.setItem('praxic_selected_model', v); } catch {} }} files={files} setFiles={setFiles} uploading={uploading} handleFiles={handleFiles} awaitingClarification={!!(clarify && clarify.convId === activeConvId)} onAnswer={submitAnswer} />
           </div>
+          {inspectorOpen ? (
+            <WorkspaceInspector
+              project={activeProject}
+              conversation={activeConversation}
+              model={selectedModel}
+              running={running}
+              file={inspectorFile}
+              content={inspectorContent}
+              loading={inspectorLoading}
+              dirty={inspectorDirty}
+              saving={inspectorSaving}
+              error={inspectorError}
+              projectId={inspectorProjectId}
+              width={inspectorWidth}
+              onResizeStart={handleInspectorResizeStart}
+              onResizeKeyDown={handleInspectorResizeKeyDown}
+              onOpenEnvironment={() => { setInspectorFile(null); setInspectorError(''); setInspectorDirty(false); }}
+              onOpenFile={openWorkspaceFile}
+              onChange={value => { setInspectorContent(value); setInspectorDirty(true); }}
+              onSave={saveWorkspaceFile}
+            />
+          ) : (
+            <button type="button" className="praxic-inspector-toggle" onClick={() => setInspectorOpen(true)} title="打开项目与文件阅读器" aria-label="打开项目与文件阅读器">‹</button>
+          )}
           {showSettings && <SettingsDialog uiSettings={uiSettings} availableModels={availableModels} devMode={devMode} setDevMode={setDevMode} onSave={(s) => {
             setUiSettings(s);
             try { localStorage.setItem('praxic_ui_settings', JSON.stringify(s)); } catch {}

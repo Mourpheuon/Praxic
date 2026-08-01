@@ -12,6 +12,9 @@
 User Input
    │
    ▼
+⓪ Question Preprocessing — parse intent, task nature, complexity, and phase plan
+   │
+   ▼
 ① Investigation — No investigation, no right to speak (web search + file reading + web fetching)
    │
    ▼
@@ -21,16 +24,15 @@ User Input
 ③ Rational Synthesis — Discard the dross, select the essential; eliminate the false, retain the true
    │
    ▼
-④ Decision — Despise the enemy strategically, take full account of him tactically (action items + feasibility assessment)
+④ Practice — Despise the enemy strategically, take full account of him tactically.
+                Distill falsifiable claims from prior phases, plan actions autonomously,
+                call tools, analyze results, and hand verification evidence to reflection
    │
    ▼
-⑤ Practice — Multi-round progressive experiments: auto-write code, execute, analyze, repair
+⑤ Reflection — Practice is the sole criterion of truth (convergence judgment + evidence pipeline)
    │
    ▼
-⑥ Reflection — Practice is the sole criterion of truth (convergence judgment + evidence pipeline)
-   │
-   ▼
-Converged? → If not, re-investigate (with reflection hints carried forward)
+Converged? → If not, re-investigate (with reflection hints carried forward, bounded by max_iterations)
 ```
 
 ---
@@ -87,8 +89,8 @@ python -m praxic
 **Electron Desktop App (Windows):**
 
 ```powershell
-.\scripts\build-electron.ps1
-# Run dist-electron/win-unpacked/Praxic.exe after build
+npm run electron:build
+# Run dist-electron/win-unpacked/即物穷理.exe after build
 ```
 
 **Python SDK:**
@@ -116,9 +118,9 @@ asyncio.run(main())
 
 | Mode | Description | Use Case |
 |------|-------------|----------|
-| `fast` | Skip contradiction/practice/reflection, single round | Simple Q&A, information lookup |
-| `standard` | Full six-phase loop, multi-round practice | Most scenarios |
-| `deep` | Multi-round iteration + multi-perspective review | Complex analysis, decision simulation |
+| `fast` | Investigation followed by fast contradiction/rational passes; skips practice and reflection, single round | Simple Q&A, information lookup |
+| `standard` | Full cognitive loop (preprocessing + five phases), multi-round practice | Most scenarios |
+| `deep` | Multi-round iteration with a higher iteration cap (at least 7), reflection-driven re-investigation | Complex analysis, decision simulation |
 | `custom` | Skip specified phases (e.g. `skip=contradiction,practice`) | Flexible control |
 
 ---
@@ -127,14 +129,19 @@ asyncio.run(main())
 
 | Feature | Description |
 |---------|-------------|
+| **Cognitive Loop** | Preprocessing → Investigation → Contradiction → Rational Synthesis → Practice → Reflection |
 | **Web Search** | Tavily + web fetching, multi-result parallel |
 | **File Reading** | TXT, code, PDF (multi-fallback + OCR), DOCX, XLSX, PPTX, IPYNB |
-| **Multi-LLM Backend** | DeepSeek, OpenAI, Anthropic, Ollama, custom proxy |
-| **Practice Engine** | Auto write code, execute, analyze results, repair errors — multi-round progressive |
-| **Skill System** | Extensible skill registry, batch import (94+ skills) |
-| **Project System** | Conversations organized by project, working memory shared across sessions |
-| **Conversation Management** | History, SSE streaming, user steering / interrupt / termination |
-| **Termination Evidence Pipeline** | Sub-question coverage + action verification + contradiction status — structured convergence |
+| **Multi-LLM Backend** | DeepSeek, OpenAI, Anthropic, Ollama, custom compatible endpoint |
+| **Practice Engine** | Distills falsifiable claims from prior phases, plans actions, calls tools, analyzes results — multi-round progressive with auto-repair |
+| **Permissions & Authorization** | Reads auto-approved; writes, deletes, and external side effects gated by permission checks and async authorization, with change logs and read-back verification |
+| **Tool Registry** | Unified tool contract, structured serialization of results, distinguishes tool failure from unchanged world state |
+| **Credibility Tracing** | Evidence-based caps on claim credibility (V3/V2), preventing assertions beyond the evidence |
+| **Context Caching** | App-level KV cache + provider prompt cache, isolated by session/project/model/version, with hit and token metrics |
+| **Skill System** | Extensible skill registry, injected per cognitive phase, batch import supported |
+| **Project System** | Conversations organized by project, session pinning, memory shared across sessions, historical phase-log replay |
+| **Conversation Management** | History, SSE streaming, user steering / interrupt / terminate / resume |
+| **Live Activity Stream** | Frontend shows phases, tool activity, pending authorization, verification and failure states in real time |
 | **Settings Persistence** | UI settings stored in `config.toml`, account config written to `.env` |
 | **Electron Shell** | Windows installer, auto-launches Python backend |
 
@@ -147,16 +154,13 @@ Praxic/
 ├── praxic/                          # Core package
 │   ├── core/                      # Cognitive engine
 │   │   ├── cognitive_loop.py      # Cognitive loop controller (main entry)
+│   │   ├── question_preprocessing.py  # Question preprocessing (intent/task/phase plan)
 │   │   ├── investigation.py       # Investigation
 │   │   ├── contradiction.py       # Contradiction analysis
 │   │   ├── rational.py            # Rational synthesis
-│   │   ├── decision.py            # Decision engine
 │   │   ├── practice.py            # Practice (multi-round experiments + auto-repair)
 │   │   ├── practice_harness.py    # Practice execution prompts (high-churn, isolated)
-│   │   ├── practice_classifier.py # Practice feasibility classification
-│   │   ├── perspectives.py        # Multi-perspective review
 │   │   ├── reflection.py          # Reflection engine (convergence + evidence pipeline)
-│   │   ├── question_preprocessing.py  # Five-step preprocessing pipeline
 │   │   ├── loop_controller.py     # Steering / interrupt / termination control
 │   │   ├── skill_manager.py       # Skill loading & management
 │   │   ├── skill_importer.py      # Batch skill import
@@ -168,18 +172,22 @@ Praxic/
 │   │   ├── claude.py              # Anthropic Claude
 │   │   └── openai_compatible.py   # OpenAI / DeepSeek / Ollama
 │   ├── tools/                     # Tool system
+│   │   ├── base.py                # Tool abstraction
+│   │   ├── registry.py            # Tool registry
+│   │   ├── permissions.py         # Permission / authorization gate
 │   │   ├── filesystem.py          # File I/O
 │   │   ├── file_loader.py         # Multi-format file reader
 │   │   ├── pdf_converter.py       # PDF multi-fallback conversion + OCR
 │   │   ├── web_search.py          # Tavily web search
 │   │   ├── web_fetch.py           # Web content fetching
-│   │   ├── search.py              # Search tool base
-│   │   ├── local_retriever.py     # Local knowledge retrieval
-│   │   └── base.py                # Tool abstraction
+│   │   ├── shell.py / python_exec.py  # Command execution
+│   │   ├── user_context.py        # User context
+│   │   └── local_retriever.py     # Local knowledge retrieval
 │   ├── memory/                    # Memory system
 │   │   ├── working_memory.py      # Cross-round context passing
 │   │   ├── episodic_memory.py     # Episodic memory (SQLite)
-│   │   └── semantic_memory.py     # Semantic memory
+│   │   ├── semantic_memory.py     # Semantic memory
+│   │   └── context_cache.py       # Context compilation & caching
 │   ├── api/                       # REST API (FastAPI)
 │   │   ├── server.py
 │   │   ├── routes/
@@ -187,9 +195,10 @@ Praxic/
 │   │   │   ├── setup.py           # Settings / config / build routes
 │   │   │   └── conversations.py   # Conversation + project management
 │   │   └── schemas/models.py      # Pydantic data models
+│   ├── skills/                    # Skill packages & registry
 │   ├── cli.py                     # Command-line interface
 │   ├── config.py                  # Config management (TOML + env vars)
-│   ├── web/                       # Frontend (React + Vite + Tailwind)
+│   ├── web/                       # Frontend (actual entry: index.html; src/ is an unmerged TypeScript tree)
 │   └── __main__.py                # Desktop entry (uvicorn subprocess + hot reload)
 ├── electron/                      # Electron shell
 │   ├── main.js                    # Main process (Python subprocess management)
@@ -213,7 +222,8 @@ Praxic/
 ├── pyproject.toml
 ├── package.json                   # Electron dependencies
 ├── electron-builder.yml           # Electron packaging config
-└── Dockerfile                     # Docker image
+├── Dockerfile / docker-compose.yml
+└── PROJECT_HANDOFF.md             # Internal handoff doc (git-ignored)
 ```
 
 ---
@@ -231,7 +241,8 @@ base_url = "https://api.deepseek.com"
 model = "deepseek-v4-pro"
 
 [runtime]
-autonomy_level = "standard"      # standard | high | low
+autonomy_level = "standard"      # behavior autonomy: read_only | sandboxed | standard | elevated
+permission_mode = "ask"           # permission mode: read_only | ask | auto_review | full
 max_iterations = 5
 web_search_enabled = true
 ```
@@ -263,9 +274,8 @@ The Web UI Settings dialog supports:
 
 ```powershell
 npm install
-cd praxic/web; npx vite build; cd ..\..
-npx electron-builder
-# Output: dist-electron/Praxic Setup *.exe
+npm run electron:build
+# Output: dist-electron/即物穷理 Setup *.exe
 ```
 
 ### Docker Image

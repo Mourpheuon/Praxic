@@ -1,6 +1,12 @@
 """
-自主性控制 —— 根据 AutonomyLevel 精细化控制各阶段的推理行为。
-独立自主原则的核心：系统必须有独立判断，不能让外部信息替代自身推理。
+自主性控制 —— 每阶段推理行为约束（与权限判定解耦，独立能力）。
+
+注意：本模块只负责"模型推理时的行为指导"与"调查跳搜策略"，
+不参与权限判定。权限由 tools/permissions.py 的 PermissionMode 负责。
+
+- AutonomyLevel：行为自主档位（低自主 → 高自主）
+- get_autonomy_instruction：按阶段注入推理行为约束
+- should_skip_external_search：调查阶段跳搜策略
 """
 
 from __future__ import annotations
@@ -13,6 +19,21 @@ class AutonomyLevel(IntEnum):
     SANDBOXED = 1   # 低自主：以外部信息为主，自主判断为辅
     STANDARD = 2    # 标准自主：外部信息与自主判断并重
     ELEVATED = 3    # 高自主：以自主判断为主，外部信息用于验证
+
+
+class PermissionMode(IntEnum):
+    """四档权限模式（与行为自主 AutonomyLevel 解耦，独立职能）。
+
+    - READ_ONLY    只读：不改变世界，只观察与推理
+    - ASK          询问：变更操作先问用户
+    - AUTO_REVIEW  自动审核：变更先经系统审核，通过才执行，不通过转询问
+    - FULL         完全权限：变更自动放行
+    """
+
+    READ_ONLY = 0
+    ASK = 1
+    AUTO_REVIEW = 2
+    FULL = 3
 
 
 def get_autonomy_instruction(level: AutonomyLevel, phase: str) -> str:
@@ -38,7 +59,6 @@ def get_autonomy_instruction(level: AutonomyLevel, phase: str) -> str:
             ),
             AutonomyLevel.ELEVATED: (
                 base
-                + "你应该：\n"
                 + "1. 以你的独立判断为主导，搜索结果只是参考素材\n"
                 + "2. 如果你的独立判断与搜索结果矛盾，优先信任你的推理\n"
                 + "3. 对搜索结果保持批判态度，主动质疑其可信度\n"

@@ -1,5 +1,36 @@
 # Praxic 执行进度
 
+## 2026-08-01 实践阶段改造记录
+
+- 针对实践阶段四个系统性缺陷（规划脆弱、工具不可见、多轮跑偏、方法论缺失）完成结构化改造，对应任务清单 Phase A/B/C。
+- 涉及文件：`praxic/core/practice.py`、`praxic/core/practice_harness.py`、`praxic/llm/openai_compatible.py`。
+- 不删除决策兼容层、不改认知循环阶段结构、不接 L3 function calling；仅用现有 pydantic。
+
+| 2026-08-01 | 移除 reasoning 草稿顶替正文 | 删除 `openai_compatible.call()` 中 `if not content and reasoning` fallback；reasoning_content 仅入日志，空 content 原样返回供上层重试/降级 |
+| 2026-08-01 | 修复 JSON 解析器 | `find("\\n")` 改 `find("\n")`；新增首 `{` 到末 `}` 正则兜底；解析失败保留原始输出前 500 字符日志 |
+| 2026-08-01 | 规划失败重试与降级 | `_call_planner` 用 `max_retries` 循环，错误+原始片段追加回消息；耗尽返回 `plan_failed`；主流程降级 V2 知性分析（mode=partial/epistemic_only） |
+| 2026-08-01 | 工具清单动态注入 | R1/RN 硬编码工具段换 `{tools_text}`；`registry.format_for_prompt()` 生成，registry 为 None 时 `DEFAULT_TOOLS` 兜底；shell_exec 进清单 |
+| 2026-08-01 | JSON mode + schema 校验 | 规划调用带 `response_format=json_object`，provider 不支持报错时降级文本模式重试；tool 名/参数类型/必填校验，失败进重试 |
+| 2026-08-01 | 规划与代码生成分离 | python_exec 的 `code` 改 `code_ref`，执行前经 `_generate_file_content` 生成代码；规划输出量显著减小 |
+| 2026-08-01 | 方向锚点 + 方法论引导 | R1/RN 注入 `{direction_anchor}`（核心假设+主要矛盾+用户关切+反思提示）；方法论落为四条行为约束；新增 epistemic_role/directional_claim/deviation_rationale 字段并校验 |
+| 2026-08-01 | 分析层判定纪律 | `_FINAL_ANALYSIS_PROMPT` 要求 verdict 基于有效观测、技术失败不参与判定、analysis 说明认识变化 |
+| 2026-08-01 | C5 方向状态更新 | 每轮执行后把证据对锚点的影响回写下一轮 `{direction_anchor}`；已验证 R2 提示词包含“本轮证据对锚点的影响” |
+| 2026-08-01 | C5 方向状态结构化 | 新增 `DirectionStateUpdate`，`PracticeRound` 记录单轮状态，`PracticeReport` 保存当前状态和历史，并以结构化 JSON 注入下一轮规划 |
+| 2026-08-01 | 旧契约方向字段软校验 | `files_to_create`/`commands_to_run` 缺失方向字段时记录 warning，继续执行兼容路径 |
+| 2026-08-01 | 实践闭环与最终复验 | `test_practice_integration.py`、`test_full_loop_integration.py` 均 `OVERALL: PASS`；`pytest` 60 passed，compileall、CLI 和前端生产构建通过 |
+
+## 2026-08-01 L0 工具扩充记录
+
+- 方向：补 L0 工具触达缺口。授权分级话题挂起，本轮只做不涉及授权模型的 observe 类只读工具；change 类（file_edit、archive_tool）冻结，待授权分级定案后再做。
+- 涉及文件：`praxic/tools/file_query.py`（新建）、`praxic/core/cognitive_loop.py`、`praxic/core/practice.py`、`tests/test_file_query.py`（新建）。
+- 约束：仅用标准库；全部 OBSERVE 自动放行；路径经 PathGuard 约束在 workspace 内；输出路径归一化为正斜杠。
+
+| 2026-08-01 | file_grep | 工作区内内容搜索，支持正则、glob 过滤、递归开关、忽略大小写、匹配上限；输出 `路径:行号: 内容` |
+| 2026-08-01 | file_batch_read | 一次读多个文件，每文件按行数截断并标记；批量审计与对比 |
+| 2026-08-01 | file_stat | 文件/目录元数据：大小、修改时间、类型、SHA256 摘要 |
+| 2026-08-01 | 注册与呈现 | 两个 registry 构造点（cognitive_loop、practice）注册三工具；B1 动态注入自动生效，`format_for_prompt()` 呈现验证通过 |
+| 2026-08-01 | 测试与复验 | 新增 `tests/test_file_query.py` 12 项（跨文件匹配、glob/递归、正则/大小写、非法正则、无匹配、路径逃逸、批量截断、stat、注册契约、提示词呈现）；全量 `pytest` 81 passed，compileall 通过，两个集成脚本 OVERALL PASS |
+
 ## 2026-07-30 前端恢复记录
 
 - 用户明确前端授权范围是视觉风格调整；当前恢复工作以迁移前完整入口的功能为基线，不新增替代性业务流程。
@@ -18,7 +49,7 @@
 
 ## 当前会话摘要
 
-用户已授权执行完整改进计划：完成品牌迁移、真实世界行动引擎、权限和验证、上下文/KV cache、构成主义实时前端、测试、提交和推送。
+实践阶段改造已完成：规划可重试、工具可见、方向锚定、认识有定位；C5 方向状态和旧契约软校验已正式落地并完成验证。
 
 ## 工具使用
 
@@ -98,7 +129,13 @@
 
 后续实现验证：
 
-- `python -m pytest -q`：44 通过。
+- `python -m pytest -q`：60 通过。
+- `python -m compileall -q praxic`：通过。
+- 显式集成脚本 `tests/test_practice_integration.py`、`tests/test_full_loop_integration.py`：OVERALL PASS。
+- mock LLM 四场景验证：新 tool_calls 契约（code_ref → 生成 → 执行）、非法 JSON 后重试成功、恒失败降级 V2 不空跑、空 directional_claim 触发重试；R1 提示词含 shell_exec 及完整参数说明；R2 含方向锚点与上一轮证据影响。
+
+此前基线：
+
 - `python -m pytest tests/test_cognitive_loop.py -q`：9 通过。
 - `python -m pytest tests/test_tools_and_cache.py -q`：19 通过。
 - 前端 `tsc` 与 `vite build`：通过，33 个模块完成转换。
@@ -109,6 +146,5 @@
 
 ## 下一步
 
-1. 对照父提交的 `App` 与现有 API，形成旧功能契约清单。
-2. 恢复设置、项目/会话和开发调试入口。
-3. 完成构建与浏览器验收。
+1. 根据用户决定是否继续扩展实践阶段的真实工具覆盖和前端展示。
+2. 本轮不打包 Electron，不提交或推送 Git。

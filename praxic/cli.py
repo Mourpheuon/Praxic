@@ -39,7 +39,9 @@ def cmd_run(
                                          help="多轮对话ID，同ID共享历史上下文"),
     no_trace: bool = typer.Option(False, "--no-trace", help="不输出完整轨迹"),
     autonomy: str = typer.Option("standard", "--autonomy",
-                                  help="权限级别：read_only | sandboxed | standard | elevated"),
+                                  help="行为自主：read_only | sandboxed | standard | elevated"),
+    permission_mode: str = typer.Option("ask", "--permission-mode", "-pm",
+                                         help="权限模式：read_only | ask | auto_review | full"),
     review: str = typer.Option("once", "--review", "-rv",
                                 help="多视角审查：off | once | iterative"),
     files: str = typer.Option("", "--files", "-f",
@@ -50,12 +52,19 @@ def cmd_run(
     """运行认知循环，分析问题"""
     from .core.cognitive_loop import CognitiveLoop
     from .config import settings, AutonomyLevel
+    from .tools.permissions import PermissionMode
     import uuid
 
     try:
         settings.autonomy_level = AutonomyLevel[autonomy.upper()]
     except KeyError:
-        console.print(f"[red]未知权限级别：{autonomy}[/red]")
+        console.print(f"[red]未知行为自主级别：{autonomy}[/red]")
+        raise typer.Exit(1)
+
+    try:
+        settings.permission_mode = PermissionMode[permission_mode.upper()]
+    except KeyError:
+        console.print(f"[red]未知权限模式：{permission_mode}[/red]")
         raise typer.Exit(1)
 
     cid = conversation_id or str(uuid.uuid4())[:8]
@@ -151,6 +160,7 @@ def config_show():
     table.add_column("值", style="white")
     table.add_row("default_model", settings.default_model)
     table.add_row("autonomy_level", settings.autonomy_level.name)
+    table.add_row("permission_mode", settings.permission_mode.name)
     table.add_row("max_iterations", str(settings.max_iterations))
     table.add_row("data_dir", str(settings.data_dir))
     table.add_row(
