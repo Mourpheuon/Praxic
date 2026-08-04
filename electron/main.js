@@ -18,6 +18,22 @@ const net = require('net');
 const HOST = '127.0.0.1';
 const PYTHON_COMMAND = process.platform === 'win32' ? 'python' : 'python3';
 
+// 打包后的后端可执行文件：优先使用 PyInstaller 产物（生产模式），
+// 找不到时回退到系统 Python（开发模式）。
+// - 生产（electron-builder extraResources）: resources/backend/即物穷理.exe
+// - 本地 PyInstaller 构建: dist/即物穷理.exe
+function resolveBackendExecutable() {
+    const fs = require('fs');
+    const candidates = [
+        path.join(process.resourcesPath || '', 'backend', '即物穷理.exe'),
+        path.join(PROJECT_ROOT, 'dist', '即物穷理.exe'),
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) return c;
+    }
+    return null;
+}
+
 // 项目根目录：electron/ 的父目录
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
@@ -47,20 +63,32 @@ function startPythonBackend(port) {
         // Ensure .env file env vars are read by Python
         // (python-dotenv loads them in praxic/config.py)
 
-        pythonProcess = spawn(PYTHON_COMMAND, [
-            '-m', 'uvicorn',
-            'praxic.api.server:app',
-            '--host', HOST,
-            '--port', String(port),
-        ], {
-            cwd: PROJECT_ROOT,
-            env,
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
+        // 生产模式：优先使用 PyInstaller 打包好的后端 exe（自包含，无需外部 Python）
+        const bundledExe = resolveBackendExecutable();
+        if (bundledExe) {
+            // 后端进程工作目录设为其所在目录，单文件 exe 会在那里生成数据/找配置
+            pythonProcess = spawn(bundledExe, ['--host', HOST, '--port', String(port)], {
+                cwd: path.dirname(bundledExe),
+                env,
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+        } else {
+            // 开发模式：回退到系统 Python
+            pythonProcess = spawn(PYTHON_COMMAND, [
+                '-m', 'uvicorn',
+                'praxic.api.server:app',
+                '--host', HOST,
+                '--port', String(port),
+            ], {
+                cwd: PROJECT_ROOT,
+                env,
+                stdio: ['ignore', 'pipe', 'pipe'],
+            });
+        }
 
         pythonProcess.on('error', (err) => {
-            console.error('[praxic] Python 启动失败:', err.message);
-            reject(new Error(`无法启动 Python: ${err.message}\n请确认已安装 Python 3.11+ 及依赖 (pip install -e ".[web]")`));
+            console.error('[praxic] 后端启动失败:', err.message);
+            reject(new Error(`无法启动后端: ${err.message}\n请确认已安装 Python 3.11+ 及依赖 (pip install -e ".[web]")`));
         });
 
         pythonProcess.on('exit', (code, signal) => {

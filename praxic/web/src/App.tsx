@@ -2,6 +2,7 @@ import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useS
 import { useSSE } from './hooks/useSSE'
 import type { ActivityEvent, AuthorizationRequest, RunStatus, SSEDoneEvent } from './types'
 import { PHASES, PHASE_ICONS, PHASE_LABELS } from './types'
+import SettingsDialog from './components/SettingsDialog'
 
 function newConversationId() {
   return Math.random().toString(36).slice(2, 10)
@@ -241,6 +242,9 @@ export default function App() {
   const [steerTargetId, setSteerTargetId] = useState('')
   const [steeringBusy, setSteeringBusy] = useState(false)
   const [steeringError, setSteeringError] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+  const [permissionMode, setPermissionMode] = useState('')
+  const [devMode, setDevMode] = useState(false)
   const lastPhaseRef = useRef('')
 
   const reset = useCallback(() => {
@@ -449,6 +453,58 @@ export default function App() {
     }
   }
 
+  const loadPermissionMode = useCallback(async () => {
+    try {
+      const response = await fetch('/api/v1/settings')
+      if (!response.ok) return
+      const payload = await response.json()
+      if (payload && typeof payload.permission_mode === 'string') {
+        setPermissionMode(payload.permission_mode)
+      }
+      if (payload && typeof payload.dev_enabled === 'boolean') {
+        setDevMode(payload.dev_enabled)
+      }
+    } catch {
+      // 静默失败：保持默认值
+    }
+  }, [])
+
+  const saveDevMode = async (enabled: boolean) => {
+    try {
+      const response = await fetch('/api/v1/settings/dev', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+      if (!response.ok) throw new Error('保存失败')
+      setDevMode(enabled)
+      return true
+    } catch (cause) {
+      setSteeringError(cause instanceof Error ? cause.message : '开发者模式设置保存失败')
+      return false
+    }
+  }
+
+  const savePermissionMode = async (mode: string) => {
+    try {
+      const response = await fetch('/api/v1/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permission_mode: mode }),
+      })
+      if (!response.ok) throw new Error('保存失败')
+      setPermissionMode(mode)
+      return true
+    } catch (cause) {
+      setSteeringError(cause instanceof Error ? cause.message : '权限设置保存失败')
+      return false
+    }
+  }
+
+  useEffect(() => {
+    loadPermissionMode()
+  }, [loadPermissionMode])
+
   const resolveAuthorization = async (request: AuthorizationRequest, action: 'approve' | 'deny') => {
     setAuthorizationBusy(request.request_id)
     setAuthorizationError('')
@@ -485,6 +541,7 @@ export default function App() {
             <div><strong>PRAXIC</strong><span>REAL-WORLD INTELLIGENCE</span></div>
           </div>
           <div className="topbar-meta"><span className={`status-pip status-pip--${pendingAuthorization ? 'waiting' : status}`} /> {pendingAuthorization ? '等待授权' : statusLabel(status)} <i /> {elapsed.toString().padStart(2, '0')}s</div>
+          <button type="button" className="topbar-settings" onClick={() => { setShowSettings(true); loadPermissionMode() }} aria-label="设置">⚙</button>
         </header>
 
         <main className="workbench">
@@ -629,6 +686,15 @@ export default function App() {
           </aside>
         </main>
       </div>
+      {showSettings && (
+        <SettingsDialog
+          permissionMode={permissionMode}
+          onSavePermissionMode={savePermissionMode}
+          devMode={devMode}
+          onSetDevMode={saveDevMode}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </>
   )
 }

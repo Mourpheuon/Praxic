@@ -1,5 +1,39 @@
 # Praxic 执行进度
 
+## 2026-08-03 编排深化与 done 语义修复记录
+
+- 方向：深化 L2 编排——补上"上一轮执行状态"结构化注入，模型不再从文本日志归纳；顺带修 done 信号吞掉收尾轮的真 bug。
+- 涉及文件：`praxic/core/practice.py`、`praxic/core/practice_harness.py`、`tests/test_practice_toolchain.py`（新建）。
+
+| 2026-08-03 | 工具链集成测试 | 新增 test_practice_toolchain.py：多步工具链（解压→查询→清洗→打包）端到端 + 台账跨轮注入断言 |
+| 2026-08-03 | done 语义修复 | 原逻辑在规划后执行前 break，done=true 且带收尾工具的轮次被整轮吞掉；改为 finish_after_round 标记，本轮 tool_calls 照常执行完再结束 |
+| 2026-08-03 | 执行状态摘要 | 新增 `_execution_status_text`：上一轮每个工具成功/技术中断/权限拒绝（含失败原因）结构化注入下一轮；RN_PLAN 新增"上一轮工具执行状态（结构化，优先参考）"段；配套 `_last_round_detail` 实例属性 |
+| 2026-08-03 | 编排注入全景 | 下一轮提示词含三块结构化状态：方向锚点（C1/C5）、可用产物（L2 台账）、工具执行状态（本轮新增）+ 原始记录兜底 |
+| 2026-08-03 | 复验 | `pytest` 119 passed，compileall 通过，集成脚本 PASS；端到端验证 R2 含 `[成功] archive_extract` 与 `[技术中断] data_query` 分类 |
+
+## 2026-08-03 工具扩充与装配器重构记录
+
+- 方向：台账智能注入（不设轮数上限的配套）；批量补工具并按四档权限分级；消除注册重复。
+- 涉及文件：`praxic/tools/assembler.py`（新建）、`praxic/tools/file_ops.py`（新建）、`praxic/tools/environment.py`（新建）、`praxic/tools/archive.py`、`praxic/core/practice.py`、`praxic/core/cognitive_loop.py`。
+
+| 2026-08-03 | 台账智能注入 | 去重（同路径保留最新+来源轮次标记）；注入分层——最近两轮+被引用过的产物全量，更早的只列路径提示 file_list 探索；轮数无上限下提示词不膨胀 |
+| 2026-08-03 | 新工具批（7 个） | file_copy/file_move/file_tail（change/observe）、archive_create（change）、file_download（external+SSRF）、process_list/disk_info（observe，psutil 7.0.0 已确认） |
+| 2026-08-03 | 权限分级 | 27→25 个工具按四档：observe 13 个全档自动、change 8 个四档、external 2 个四档+SSRF、compute 2 个；由工具声明 action_kind+属性，PermissionPolicy 统一判定 |
+| 2026-08-03 | 装配器单一注册源 | 新建 assembler.py `register_workspace_tools()`；cognitive_loop 与 practice 共用一个注册函数，删除两处 20 行重复注册表；加工具只改一处 |
+| 2026-08-03 | 复验 | `pytest` 117 passed，compileall 通过；真实 CognitiveLoop 装配断言 25 个工具全部注册 |
+
+## 2026-08-03 实践能力加强（1→2→4→3）记录
+
+- 方向：按用户拍板顺序推进实践能力——1 解冻 change 类工具 → 2 结构化数据工具 → 4 真实任务试跑录断点 → 3 L2 跨轮编排。
+- 涉及文件：`praxic/tools/filesystem.py`（file_edit）、`praxic/tools/archive.py`（新建）、`praxic/tools/data_query.py`（新建）、`praxic/core/practice.py`、`praxic/core/practice_harness.py`、`praxic/core/cognitive_loop.py`、`praxic/tools/__init__.py`。
+
+| 2026-08-03 | file_edit | 工作区内精确替换（old_text→new_text），唯一性校验、count 显式替换、回读摘要验证；模型不再被迫全量重写文件 |
+| 2026-08-03 | archive_extract | zip/tar/tar.gz 解压（新建 archive.py），zip slip 防护，路径沙箱内约束；change 类解冻 |
+| 2026-08-03 | data_query | CSV/JSON/JSONL 结构化查询（overview/filter/stats/head），字段类型推断、数值筛选、聚合统计；模型不用写代码模板 |
+| 2026-08-03 | 真实任务试跑 | “解压→分析”任务暴露真实 bug：zip 条目自带顶层目录时与 target_dir 叠层（raw/raw/data.csv）；修复为剥离公共顶层目录（须所有条目共享且双重确认，含 .. 条目直接拒） |
+| 2026-08-03 | L2 产物台账 | 每轮后 `_collect_artifacts` 提取 file_write/file_edit/archive_extract 产物，累积注入下一轮 RN_PLAN“可用产物”段，模型直接引用路径不再猜；archive 返回完整相对路径（含 target_dir 前缀） |
+| 2026-08-03 | 复验 | `pytest` 104 passed，compileall 通过；台账端到端：R2 提示词含“可用产物”段与 raw/data.csv 引用，占位符全解析 |
+
 ## 2026-08-01 实践阶段改造记录
 
 - 针对实践阶段四个系统性缺陷（规划脆弱、工具不可见、多轮跑偏、方法论缺失）完成结构化改造，对应任务清单 Phase A/B/C。

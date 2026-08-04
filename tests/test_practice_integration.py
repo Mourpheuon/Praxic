@@ -74,6 +74,11 @@ class FakeLLM(BaseLLM):
 async def main():
     print("=== Practice phase integration test (FakeLLM) ===")
 
+    # 权限模式设为 AUTO_REVIEW：沙箱内变更自动放行，本脚本验证实践流程而非权限交互。
+    from praxic.core.autonomy import PermissionMode
+    from praxic.config import settings as _settings
+    _settings.permission_mode = PermissionMode.AUTO_REVIEW
+
     # Workspace in a temp dir
     tmpdir = tempfile.mkdtemp(prefix="praxic_test_ws_")
     ws = WorkspaceToolkit(workspace_dir=tmpdir)

@@ -128,7 +128,7 @@
       border-radius: 0 !important;
     }
     .praxic-toolbar {
-      min-height: 52px;
+      min-height: 60px;
       background: var(--construct-ink) !important;
       border-bottom: 4px solid var(--construct-red) !important;
     }
@@ -1548,7 +1548,7 @@
     .praxic-session-item__pin.is-pinned { color: #8C0000; }
 
     .praxic-toolbar {
-      min-height: 52px;
+      min-height: 60px;
       color: #fcfaf5 !important;
       background: #1C1916 !important;
       border-bottom: 4px solid #8C0000 !important;
@@ -1676,8 +1676,8 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 10px;
-      min-height: 92px;
-      padding: 10px 13px 14px;
+      min-height: 60px;
+      padding: 8px 13px 10px;
       color: #fcfaf5;
       background: #1C1916;
       border-bottom: 4px solid #8C0000;
@@ -1695,7 +1695,7 @@
       margin-top: 0;
       overflow: hidden;
       color: #fcfaf5;
-      font: 900 31px/.96 'Noto Serif SC', serif;
+      font: 900 31px/1.1 'Noto Serif SC', serif;
       letter-spacing: .01em;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1975,11 +1975,12 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel" data-type="module">
-    const { useState, useCallback, useEffect, useRef, useMemo } = React;
+    const { useState, useCallback, useEffect, useRef, useMemo, useLayoutEffect } = React;
     const LS_KEY = 'praxic_app_state';
     const BRAND_MARK_URLS = {
       dark: '/assets/brand/praxic-mark-v2.svg',
       red: '/assets/brand/praxic-mark-red-outline-v2.svg',
+      gold: '/assets/brand/praxic-mark-gold-outline-v2.svg',
     };
 
     function BrandMark({ size = 20, className = '', variant = 'dark' }) {
@@ -2545,7 +2546,7 @@
       return (
         <aside className={'praxic-sidebar flex flex-col flex-shrink-0 ' + (collapsed ? 'praxic-sidebar--collapsed' : '')}>
           <div className="praxic-sidebar-head">
-            <span className="praxic-sidebar-title"><BrandMark size={30} variant="red" /></span>
+            <span className="praxic-sidebar-title"><BrandMark size={30} variant="gold" /></span>
             <div className="praxic-sidebar-actions">
               <button onClick={onNewSession} title="新建对话" aria-label="新建对话">＋</button>
               <button onClick={onSettings} title="设置" aria-label="设置">⚙</button>
@@ -3481,6 +3482,30 @@
       const conversationName = conversation?.name || '未选择对话';
       const fileTitle = file?.label || file?.relativePath || file?.path || '文件';
       const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
+      const titleText = file ? fileTitle : workspaceName;
+      const titleRef = useRef(null);
+      const titleTextRef = useRef(null);
+      const [titleFontSize, setTitleFontSize] = useState(31);
+
+      useLayoutEffect(() => {
+        const container = titleRef.current;
+        const text = titleTextRef.current;
+        if (!container || !text) return;
+        const fit = () => {
+          let fs = 31;
+          text.style.fontSize = fs + 'px';
+          const maxW = container.clientWidth;
+          while (fs > 14 && text.getBoundingClientRect().width > maxW) {
+            fs -= 1;
+            text.style.fontSize = fs + 'px';
+          }
+          setTitleFontSize(fs);
+        };
+        fit();
+        const ro = new ResizeObserver(fit);
+        ro.observe(container);
+        return () => ro.disconnect();
+      }, [titleText]);
 
       return (
         <aside className="praxic-inspector" style={{ '--praxic-inspector-width': `${width}px` }} aria-label={file ? '文件阅读器' : '项目'}>
@@ -3496,7 +3521,9 @@
           />
           <div className="praxic-inspector__header">
             <div className="min-w-0">
-              <div className="praxic-inspector__title" title={file ? fileTitle : workspaceName}>{file ? fileTitle : workspaceName}</div>
+              <div className="praxic-inspector__title" ref={titleRef} style={{ fontSize: titleFontSize + 'px' }} title={titleText}>
+                <span ref={titleTextRef} style={{ whiteSpace: 'nowrap' }}>{titleText}</span>
+              </div>
             </div>
           </div>
 
@@ -3845,6 +3872,9 @@
       const [knowledge, setKnowledge] = useState(uiSettings.custom_knowledge || '');
       const [phaseModels, setPhaseModels] = useState(uiSettings.phase_models || {});
       const [showThinking, setShowThinking] = useState(uiSettings.show_thinking_after_answer !== false);
+      const [annotateOn, setAnnotateOn] = useState(() => {
+        try { const v = localStorage.getItem('praxic_dev_annotate'); return v === '1' || v === 'true'; } catch { return false; }
+      });
       const [maxIterations, setMaxIterations] = useState(uiSettings.max_iterations || 0);
       const [practiceRounds, setPracticeRounds] = useState(uiSettings.practice_rounds || 0);
       const [searchMaxResults, setSearchMaxResults] = useState(uiSettings.web_search_max_results || 0);
@@ -4445,6 +4475,28 @@
                     <p className="text-xs text-warmgray/50 leading-relaxed">
                       启用开发者模式后，主界面显示 DEV 标记。在源码环境（非 Electron 壳）下可执行 Electron 包壳构建。
                     </p>
+
+                    {devMode && (
+                      <div className="mt-4 space-y-3 bg-cream/60 border border-clay/15 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs font-semibold text-ink">元素标注 selector</div>
+                          <label className="flex items-center gap-2 cursor-pointer" onClick={() => {
+                            const next = !annotateOn;
+                            setAnnotateOn(next);
+                            try { localStorage.setItem('praxic_dev_annotate', next ? '1' : '0'); } catch {}
+                            if (window.__praxicAnnotateSetEnabled) window.__praxicAnnotateSetEnabled(next);
+                          }}>
+                            <span className="text-[10px] text-warmgray/60">{annotateOn ? '已启用' : '已禁用'}</span>
+                            <div className={'relative w-10 h-5 rounded-full transition-colors ' + (annotateOn ? 'bg-olive' : 'bg-clay')}>
+                              <div className={'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ' + (annotateOn ? 'left-5' : 'left-0.5')} />
+                            </div>
+                          </label>
+                        </div>
+                        <p className="text-[10px] text-warmgray/50 leading-relaxed">
+                          点击页面任意元素，右下角标注台显示其精确 selector，可复制用于定位组件代码。切换后立即生效。快捷键：Ctrl+Shift+A
+                        </p>
+                      </div>
+                    )}
 
                     {devMode && !isElectronShell && (
                       <div className="mt-4 space-y-3 bg-cream/60 border border-clay/15 rounded-lg p-4">
@@ -5635,17 +5687,6 @@
                            <div className={'praxic-agent-answer' + (historyProcessOpen[i] && turn.phaseLogs && turn.phaseLogs.length > 0 ? ' praxic-agent-answer--separated' : '')}>
                              <div className="text-sm text-ink leading-relaxed markdown-body"
                                dangerouslySetInnerHTML={{__html: renderMarkdown(turn.summary)}} />
-                          {turn.actions && turn.actions.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-linen/40">
-                              <div className="text-xs font-semibold text-olive mb-1.5">✅ 行动建议</div>
-                              {turn.actions.map((a,j) => (
-                                <div key={j} className="flex items-start gap-2 text-xs text-warmgray mb-1">
-                                  <span className="w-4 h-4 rounded-full bg-olive text-white text-[9px] flex items-center justify-center flex-shrink-0 mt-0.5">{j+1}</span>
-                                  <span>{a}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
                           {turn.generatedFiles && turn.generatedFiles.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-linen/40">
                               <div className="text-xs font-semibold text-seal mb-1.5">📎 生成文件</div>
@@ -5787,5 +5828,6 @@
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<RouteGuard />);
   </script>
+  <script src="/annotate.js"></script>
 </body>
 </html>

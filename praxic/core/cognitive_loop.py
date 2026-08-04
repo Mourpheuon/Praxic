@@ -13,7 +13,6 @@ from ..memory.episodic_memory import EpisodicMemory
 from ..memory.working_memory import WorkingMemory
 from ..tools.filesystem import WorkspaceToolkit
 from ..tools.registry import ToolRegistry
-from ..tools.filesystem import FileReadTool, FileWriteTool, FileListTool, FileDeleteTool
 from ..tools.permissions import PermissionPolicy
 from ..tools.shell import ShellTool
 from ..tools.web_search import WebSearchTool
@@ -222,14 +221,8 @@ class CognitiveLoop:
         except Exception:
             pass
         if self.workspace:
-            self._registry.register(FileReadTool(self.workspace.workspace))
-            self._registry.register(FileWriteTool(self.workspace.workspace))
-            self._registry.register(FileListTool(self.workspace.workspace))
-            self._registry.register(FileDeleteTool(self.workspace.workspace))
-            from ..tools.file_query import FileGrepTool, FileBatchReadTool, FileStatTool
-            self._registry.register(FileGrepTool(self.workspace.workspace))
-            self._registry.register(FileBatchReadTool(self.workspace.workspace))
-            self._registry.register(FileStatTool(self.workspace.workspace))
+            from ..tools.assembler import register_workspace_tools
+            register_workspace_tools(self._registry, self.workspace.workspace)
             self._registry.register(ShellTool(allowed_roots=(self.workspace.workspace,)))
         self._registry.register(WebSearchTool(
             api_key=settings.tavily_api_key,

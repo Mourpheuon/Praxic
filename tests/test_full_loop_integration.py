@@ -119,6 +119,9 @@ async def main():
     settings.practice_rounds = 1
     settings.web_search_enabled = False
     settings.web_fetch_enabled = False
+    # 沙箱内变更自动放行，验证完整认知循环而非权限交互。
+    from praxic.core.autonomy import PermissionMode
+    settings.permission_mode = PermissionMode.AUTO_REVIEW
 
     fake = UniversalFake()
     loop = CognitiveLoop(llm=fake)

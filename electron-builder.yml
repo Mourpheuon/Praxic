@@ -44,6 +44,14 @@ files:
   - "!**/.git/**"
   - "!**/.gitkeep"
 
+# 打包后的 Python 后端 exe（PyInstaller 产物）随安装包分发。
+# Electron 生产模式会从 resources/backend/即物穷理.exe 启动它，
+# 见 electron/main.js -> resolveBackendExecutable()。
+extraResources:
+  - from: dist/即物穷理.exe
+    to: backend/即物穷理.exe
+    filter: ["**/*"]
+
 # 不打包进 asar——Python 需要导入普通文件
 asar: false
 

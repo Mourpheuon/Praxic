@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ...config import settings, CONFIG_TOML, save_config_section, save_config_key, _toml_value
+from ...core.autonomy import PermissionMode
 from .agent import init_agent_resources
 
 router = APIRouter(prefix="/api/v1", tags=["setup", "settings"])
@@ -93,6 +94,7 @@ class UiSettings(BaseModel):
     web_fetch_max_urls: int = 0       # 网页抓取最大URL数
     web_fetch_max_chars_per_page: int = 0  # 单页最大字符数
     web_fetch_max_total_chars: int = 0     # 总抓取最大字符数
+    permission_mode: str = ""             # 权限模式：read_only | ask | auto_review | full（空=用默认）
 
 
 def _get_default_ui_settings() -> dict:
@@ -111,6 +113,7 @@ def _get_default_ui_settings() -> dict:
         "web_fetch_max_urls": 0,
         "web_fetch_max_chars_per_page": 0,
         "web_fetch_max_total_chars": 0,
+        "permission_mode": "",
     }
 
 
@@ -137,6 +140,8 @@ async def get_settings():
     for k in ["max_iterations", "practice_rounds", "web_search_max_results",
                "web_fetch_max_urls", "web_fetch_max_chars_per_page", "web_fetch_max_total_chars"]:
         data[k] = legacy.get(k, _get_default_ui_settings().get(k, 0))
+    data["permission_mode"] = settings.permission_mode.name.lower()
+    data["dev_enabled"] = settings.dev_enabled
     return data
 
 
@@ -163,6 +168,8 @@ async def save_settings(req: UiSettings):
         save_config_key("runtime", "max_iterations", req.max_iterations)
     if req.practice_rounds > 0:
         save_config_key("runtime", "practice_rounds", req.practice_rounds)
+    if req.permission_mode:
+        save_config_key("runtime", "permission_mode", req.permission_mode)
 
     # Still write ui-settings.json for legacy compatibility (runtime params)
     data = req.model_dump()
@@ -178,6 +185,8 @@ async def save_settings(req: UiSettings):
     settings.ui_phase_models = json.dumps(req.phase_models, ensure_ascii=False) if req.phase_models else ""
     if req.max_iterations > 0:
         settings.max_iterations = req.max_iterations
+    if req.permission_mode:
+        settings.permission_mode = PermissionMode[req.permission_mode.upper()]
 
     log.info("ui_settings_saved")
     return {"ok": True}

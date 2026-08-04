@@ -138,6 +138,9 @@ RN_PLAN = """
 前一轮的证据使这个论断的状态发生了什么变化？本轮成功或失败分别意味着什么？
 然后在 directional_claim 中写出答案。
 
+## 可用产物（前序轮次已生成/修改的文件，可直接引用路径，不必重新探索）
+{artifacts_text}
+
 ## 认知上下文（所有轮次共享）
 
 ### 原始问题
@@ -168,6 +171,9 @@ RN_PLAN = """
 
 ### 上一轮工具调用结果
 {prev_round_results}
+
+### 上一轮工具执行状态（结构化，优先参考）
+{execution_status_text}
 
 ### 上一轮耗时
 {prev_round_duration}

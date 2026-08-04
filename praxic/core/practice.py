@@ -21,12 +21,11 @@ from ..tools.base import ActionKind, ToolCallRecord, ToolStatus
 from ..tools.registry import ToolRegistry
 from ..tools.permissions import PermissionPolicy
 from ..tools.shell import ShellTool
-from ..tools.filesystem import FileReadTool, FileWriteTool, FileListTool, FileDeleteTool
 from ..tools.python_exec import PythonExecTool
 from ..tools.user_context import ReadUserContextTool
 
 from . import practice_harness as harness
-from .autonomy import get_autonomy_instruction
+from .autonomy import get_autonomy_instruction, PermissionMode
 
 log = structlog.get_logger(__name__)
 
@@ -116,6 +115,8 @@ class PracticeModule:
         self._fallback_registry: ToolRegistry | None = None
         self._direction_state = DirectionStateUpdate()
         self._direction_state_update = ""
+        self._artifacts: list[dict] = []
+        self._last_round_detail = None
 
     @property
     def can_execute(self) -> bool:
@@ -138,6 +139,8 @@ class PracticeModule:
         self._current_wm = wm
         self._direction_state = DirectionStateUpdate()
         self._direction_state_update = ""
+        self._artifacts = []
+        self._last_round_detail = None
         hyps = []
         if trace.rational_synthesis:
             hyps = trace.rational_synthesis.hypotheses[:8]
@@ -224,6 +227,9 @@ class PracticeModule:
         )
         r1_detail.direction_state = r1_direction_state
         direction_state_history.append(r1_direction_state)
+        self._last_round_detail = r1_detail
+        # 产物台账：收集本轮生成/修改的文件，供下一轮直接引用。
+        self._merge_artifacts(self._collect_artifacts(r1_detail, 1))
 
         for r in range(2, self.practice_rounds + 1):
             bg_results = await self._collect_background_results()
@@ -232,11 +238,13 @@ class PracticeModule:
                     bg_log = f"[后台完成] {bg['cmd'][:60]} exit={bg['returncode']} dur={bg['duration']:.1f}s"
                     full_execution_log.append(bg_log)
 
+            # 标记上一轮引用过的产物为活跃（供智能注入分层）。
+            if round_records:
+                self._mark_artifacts_used(round_records[-1].tool_calls)
             ctx = self._build_next_round_context(r, question, trace, round_contexts, full_execution_log)
             rn_plan = await self._plan_next_round(ctx, registry=registry)
-            if rn_plan.get("done"):
-                log.info("practice.rounds_done_early", rounds_completed=r - 1)
-                break
+            # done 是结束信号：本轮 tool_calls 照常执行（收尾动作不丢），执行完再结束。
+            finish_after_round = bool(rn_plan.get("done"))
 
             if rn_plan.get("plan_failed"):
                 # 后续轮规划连续失败：补齐方向状态日志后提前收束，不耗尽剩余轮次。
@@ -290,6 +298,12 @@ class PracticeModule:
             )
             rn_detail.direction_state = rn_direction_state
             direction_state_history.append(rn_direction_state)
+            self._last_round_detail = rn_detail
+            # 产物台账：本轮产物并入累积清单。
+            self._merge_artifacts(self._collect_artifacts(rn_detail, r))
+            if finish_after_round:
+                log.info("practice.rounds_done", rounds_completed=r)
+                break
 
         all_log_text = "\\n\\n".join(full_execution_log)
         analysis = await self._analyze_all_rounds(question, trace, overall_rationale, all_log_text)
@@ -342,19 +356,20 @@ class PracticeModule:
             return self._fallback_registry
         workspace = self.workspace.workspace if self.workspace else None
         roots = (workspace,) if workspace else ()
-        policy = PermissionPolicy(allowed_roots=roots)
+        policy = PermissionPolicy(
+            permission_mode=settings.permission_mode,
+            allowed_roots=roots,
+        )
         registry = ToolRegistry(policy=policy)
         if workspace:
-            registry.register(FileReadTool(workspace))
-            registry.register(FileWriteTool(workspace))
-            registry.register(FileListTool(workspace))
-            registry.register(FileDeleteTool(workspace))
-            from ..tools.file_query import FileGrepTool, FileBatchReadTool, FileStatTool
-            registry.register(FileGrepTool(workspace))
-            registry.register(FileBatchReadTool(workspace))
-            registry.register(FileStatTool(workspace))
+            from ..tools.assembler import register_workspace_tools
+            register_workspace_tools(registry, workspace)
             registry.register(PythonExecTool(workspace_dir=workspace))
             registry.register(ShellTool(allowed_roots=roots))
+        if policy.permission_mode == PermissionMode.AUTO_REVIEW:
+            # 与 CognitiveLoop 一致：AUTO_REVIEW 下为越界/外部操作挂语义审核器。
+            from ..core.reviewer import build_reviewer
+            policy.reviewer = build_reviewer(self.llm, max_tokens=256)
         registry.register(ReadUserContextTool())
         self._fallback_registry = registry
         return registry
@@ -869,12 +884,38 @@ class PracticeModule:
             "contradiction_text": ct, "essence_text": et, "hypotheses_text": ht,
             "practice_direction_text": practice_direction_text,
             "direction_anchor": current_anchor,
+            "artifacts_text": self._artifacts_text(),
+            "execution_status_text": self._execution_status_text(),
             "prev_round_num": str(prev.get("round_num", round_num - 1)),
             "prev_round_plan": prev.get("plan_json", "（无）")[:3000],
             "prev_round_results": prev.get("results", "（无）")[:3000],
             "prev_round_duration": prev.get("duration", "未知"),
             "all_rounds_log": "\\n\\n".join(full_execution_log)[:4000] if full_execution_log else "（无）",
         }
+
+    def _execution_status_text(self) -> str:
+        """把前一轮工具执行结果结构化：成功 / 技术中断 / 权限拒绝，含失败原因。
+
+        供下一轮规划直接看到执行状态，不用从日志文本里翻。
+        """
+        last = getattr(self, "_last_round_detail", None)
+        if last is None or not (last.tool_calls or []):
+            return "（暂无执行记录）"
+        lines = [f"第 {last.round_num} 轮工具执行结果："]
+        for record in (last.tool_calls or []):
+            tool = record.get("tool", "?")
+            result = record.get("result") or {}
+            status = result.get("status", "?")
+            classification = result.get("state_classification", "")
+            error = str(result.get("error") or "")[:120]
+            if status == "error" or classification in ("tool_error", "verification_failed", "permission_denied", "authorization_expired"):
+                tag = "[技术中断]"
+                if "permission" in classification or "authorization" in classification:
+                    tag = "[权限拒绝]"
+                lines.append(f"  {tag} {tool}: {error or classification}")
+            else:
+                lines.append(f"  [成功] {tool}: {classification or status}")
+        return "\n".join(lines)
 
     def _summarise_round(self, r: int, plan: dict, outcomes, unexpected, failures, all_ok):
         return f"第{r}轮: {plan.get('round_rationale','')[:100]} ok={all_ok}"
@@ -1093,6 +1134,71 @@ class PracticeModule:
                 still[cmd] = info
         self._background_procs = still
         return completed
+
+    def _collect_artifacts(self, round_detail, round_num: int) -> list[dict]:
+        """从一轮的工具调用记录中提取产物（生成/修改的文件）。
+
+        供下一轮上下文注入：模型可直接引用这些路径，不必猜。
+        """
+        artifacts: list[dict] = []
+        for record in (round_detail.tool_calls or []):
+            tool = record.get("tool")
+            result = record.get("result") or {}
+            if result.get("status") == "error":
+                continue
+            if tool == "file_write":
+                path = (result.get("metadata") or {}).get("path") or (record.get("params") or {}).get("path", "")
+                if path:
+                    artifacts.append({"path": path, "tool": "file_write", "kind": "created", "round": round_num})
+            elif tool == "file_edit":
+                path = (result.get("metadata") or {}).get("path") or (record.get("params") or {}).get("path", "")
+                if path:
+                    artifacts.append({"path": path, "tool": "file_edit", "kind": "modified", "round": round_num})
+            elif tool == "archive_extract":
+                for name in ((result.get("data") or {}).get("extracted") or []):
+                    artifacts.append({"path": name, "tool": "archive_extract", "kind": "extracted", "round": round_num})
+        return artifacts
+
+    def _merge_artifacts(self, new_artifacts: list[dict]) -> None:
+        """并入新产物：同路径保留最新记录，避免台账重复条目无限增长。"""
+        for a in new_artifacts:
+            replaced = False
+            for i, existing in enumerate(self._artifacts):
+                if existing["path"] == a["path"]:
+                    self._artifacts[i] = a
+                    replaced = True
+                    break
+            if not replaced:
+                self._artifacts.append(a)
+
+    def _mark_artifacts_used(self, tool_calls: list[dict]) -> None:
+        """标记本轮被引用/读取过的产物为活跃（供智能注入分层）。"""
+        referenced = set()
+        for record in (tool_calls or []):
+            params = record.get("params") or {}
+            for key in ("path", "query", "code_ref", "command"):
+                val = params.get(key)
+                if isinstance(val, str):
+                    referenced.add(val)
+        for a in self._artifacts:
+            a["used"] = bool(referenced and a["path"] in referenced)
+
+    def _artifacts_text(self) -> str:
+        """智能注入：最近两轮 + 被引用过的产物全量；更早的只列路径提示可探索。"""
+        items = getattr(self, "_artifacts", [])
+        if not items:
+            return "（暂无已生成的产物）"
+        latest_round = max((a.get("round", 0) for a in items), default=0)
+        active = [a for a in items if a.get("used") or a.get("round", 0) >= latest_round - 1]
+        historical = [a for a in items if a not in active]
+
+        lines = []
+        for a in active:
+            lines.append(f"- {a['path']}  [{a['tool']} / {a['kind']} / 第{a.get('round', '?')}轮]")
+        if historical:
+            paths = ", ".join(a["path"] for a in historical)
+            lines.append(f"- （更早产物，未列详情，可直接用 file_list 探索工作区：{paths[:300]}）")
+        return "\n".join(lines) if lines else "（暂无已生成的产物）"
 
     def _parse_json_safe(self, raw: str, default=None):
         if default is None: default = {}

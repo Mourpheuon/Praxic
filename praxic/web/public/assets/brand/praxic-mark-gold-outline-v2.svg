@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Praxic</title>
+  <desc id="desc">A gold asymmetrical constructivist spark built from offset diagonal planes.</desc>
+  <g fill="none" stroke="#F4C95D" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M36 190 105 36" stroke-width="16" />
+    <path d="M78 216 145 78" stroke-width="9" />
+    <path d="M122 54 216 101" stroke-width="13" />
+    <path d="M158 139 216 171" stroke-width="8" />
+    <path d="M62 178 113 64 181 110 127 207Z" stroke-width="10" />
+    <path d="M106 146 130 94 157 115 132 170Z" stroke-width="7" />
+    <rect x="185" y="178" width="24" height="24" stroke-width="7" />
+  </g>
+</svg>
