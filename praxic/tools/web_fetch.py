@@ -74,6 +74,8 @@ class WebFetchTool(BaseTool):
     """并发抓取 URL 全文，提取清洗后的正文"""
 
     name = "web_fetch"
+    category = "knowledge"
+    group = "web_fetch"
     description = "获取指定网页的正文内容，用于读取在线文档和核验事实"
     requires_network = True
     action_kind = ActionKind.OBSERVE

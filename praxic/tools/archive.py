@@ -30,6 +30,8 @@ class ArchiveExtractTool(BaseTool):
     """解压 zip/tar 归档到工作区内"""
 
     name = "archive_extract"
+    category = "file"
+    group = "archive"
     description = "解压 zip/tar/tar.gz 归档到工作区指定目录（防路径穿越）"
     requires_network = False
     action_kind = ActionKind.CHANGE
@@ -155,6 +157,8 @@ class ArchiveCreateTool(BaseTool):
     """把工作区内文件/目录压缩为 zip 归档"""
 
     name = "archive_create"
+    category = "file"
+    group = "archive"
     description = "把工作区内文件/目录压缩为 zip 归档"
     requires_network = False
     action_kind = ActionKind.CHANGE

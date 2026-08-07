@@ -33,6 +33,8 @@ class FileGrepTool(BaseTool):
     """在 workspace 内按内容搜索文件（关键词/正则）"""
 
     name = "file_grep"
+    category = "file"
+    group = "search"
     description = "在工作区内搜索包含指定文本或正则的文件，返回匹配的文件与行号"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -122,6 +124,8 @@ class FileBatchReadTool(BaseTool):
     """一次读取多个文件（带每文件截断），用于批量审计与对比"""
 
     name = "file_batch_read"
+    category = "file"
+    group = "read"
     description = "一次读取工作区内多个文件的内容，每文件按行数截断"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -176,6 +180,8 @@ class FileStatTool(BaseTool):
     """读取文件/目录元数据（大小、修改时间、类型、摘要）"""
 
     name = "file_stat"
+    category = "file"
+    group = "read"
     description = "查看工作区内文件或目录的元数据：大小、修改时间、类型、SHA256 摘要"
     requires_network = False
     action_kind = ActionKind.OBSERVE

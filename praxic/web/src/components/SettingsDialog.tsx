@@ -1,9 +1,20 @@
+import { useEffect, useState } from 'react'
+
 interface SettingsDialogProps {
   permissionMode: string
   onSavePermissionMode: (mode: string) => Promise<boolean>
   devMode: boolean
   onSetDevMode: (enabled: boolean) => Promise<boolean>
   onClose: () => void
+}
+
+interface PluginEntry {
+  name: string
+  description: string
+  category: string
+  action_kind: string
+  status: string
+  error?: string
 }
 
 const PERMISSION_MODES: Array<{ value: string; label: string; desc: string }> = [
@@ -23,13 +34,51 @@ export default function SettingsDialog({
   const current = permissionMode || 'ask'
   const select = (mode: string) => onSavePermissionMode(mode)
 
+  const [plugins, setPlugins] = useState<PluginEntry[]>([])
+  const [pluginsDir, setPluginsDir] = useState('')
+  const [pluginBusy, setPluginBusy] = useState(false)
+  const [pluginError, setPluginError] = useState('')
+
+  const loadPlugins = async () => {
+    setPluginBusy(true)
+    setPluginError('')
+    try {
+      const response = await fetch('/api/v1/plugins')
+      if (!response.ok) throw new Error('加载插件列表失败')
+      const payload = await response.json()
+      setPlugins(payload.plugins || [])
+      setPluginsDir(payload.dir || '')
+    } catch (cause) {
+      setPluginError(cause instanceof Error ? cause.message : '加载插件列表失败')
+    } finally {
+      setPluginBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    loadPlugins()
+  }, [])
+
+  const rescan = async () => {
+    setPluginBusy(true)
+    setPluginError('')
+    try {
+      const response = await fetch('/api/v1/plugins/scan', { method: 'POST' })
+      if (!response.ok) throw new Error('扫描插件失败')
+      await loadPlugins()
+    } catch (cause) {
+      setPluginError(cause instanceof Error ? cause.message : '扫描插件失败')
+      setPluginBusy(false)
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
       onClick={onClose}
     >
       <div
-        className="bg-cream rounded-xl border border-linen/60 shadow-2xl p-6 w-[420px] max-w-[90vw]"
+        className="bg-cream rounded-xl border border-linen/60 shadow-2xl p-6 w-[440px] max-w-[92vw] max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold text-ink mb-4 font-display">⚙ 设置</h2>
@@ -89,6 +138,53 @@ export default function SettingsDialog({
             />
           </button>
         </label>
+
+        <div className="mb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-ink">插件</div>
+              <div className="text-xs text-warmgray mt-0.5">
+                用户添加的非核心工具，放在 {pluginsDir || 'data/plugins'} 目录（manifest.yaml 声明）
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={rescan}
+              disabled={pluginBusy}
+              className="px-3 py-1.5 rounded-lg bg-seal text-white text-xs font-semibold hover:bg-seal-light transition-colors flex-shrink-0 ml-3"
+            >
+              {pluginBusy ? '扫描中…' : '↻ 扫描'}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2 mb-6">
+          {pluginError && <p className="form-error text-xs text-red-600">{pluginError}</p>}
+          {plugins.length === 0 && !pluginBusy && (
+            <div className="text-xs text-warmgray bg-dust rounded-lg px-3 py-2">（暂无插件）</div>
+          )}
+          {plugins.map(plugin => (
+            <div
+              key={plugin.name}
+              className={`px-3 py-2 rounded-lg border text-xs ${
+                plugin.status === 'loaded'
+                  ? 'bg-white border-linen'
+                  : 'bg-white border-red-300'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-ink">{plugin.name}</span>
+                <span className={`text-[10px] ${plugin.status === 'loaded' ? 'text-seal' : 'text-red-500'}`}>
+                  {plugin.status === 'loaded' ? `已加载 · ${plugin.category}` : '加载失败'}
+                </span>
+              </div>
+              {plugin.description && (
+                <div className="text-warmgray mt-0.5">{plugin.description}</div>
+              )}
+              {plugin.error && <div className="text-red-500 mt-0.5">{plugin.error}</div>}
+            </div>
+          ))}
+        </div>
 
         <div className="flex justify-end gap-3">
           <button

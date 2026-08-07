@@ -118,6 +118,27 @@ def create_app() -> FastAPI:
     app.include_router(setup_router)
     app.include_router(conversations_router)
 
+    # 静态资源：前端 public 目录（favicon、assets、annotate 等）。
+    # 直接走后端托管时（无 vite dev server），这些文件不会被自动服务。
+    from fastapi.staticfiles import StaticFiles
+    _public_dir = WEB_DIR / "public"
+    if _public_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=_public_dir / "assets"), name="assets")
+
+        @app.get("/favicon.svg", include_in_schema=False)
+        async def favicon():
+            _fav = _public_dir / "favicon.svg"
+            if _fav.is_file():
+                return FileResponse(str(_fav), media_type="image/svg+xml")
+            raise HTTPException(status_code=404, detail="favicon 不存在")
+
+        @app.get("/annotate.js", include_in_schema=False)
+        async def annotate_js():
+            _js = _public_dir / "annotate.js"
+            if _js.is_file():
+                return FileResponse(str(_js), media_type="text/javascript")
+            raise HTTPException(status_code=404, detail="annotate.js 不存在")
+
     # ── 调试：路径信息（判断当前连的是哪个后端实例）────────────────
     @app.get("/api/v1/debug/info", include_in_schema=False)
     async def debug_info():

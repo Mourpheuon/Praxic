@@ -60,6 +60,7 @@ class EnvTool(BaseTool):
     """查询系统环境信息（工作区路径、平台、Python 版本、环境变量白名单）"""
 
     name = "env_tool"
+    category = "system"
     description = "查看当前环境：平台、Python 版本、工作区路径、环境变量（白名单）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -113,6 +114,7 @@ class TimeTool(BaseTool):
     """查询当前时间与时区"""
 
     name = "time_tool"
+    category = "system"
     description = "查看当前 UTC 时间、本地时间和时区偏移"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -140,6 +142,7 @@ class HttpRequestTool(BaseTool):
     """HTTP 请求（external 类，按权限模式分级）。"""
 
     name = "http_request"
+    category = "network"
     description = "发起 HTTP GET/POST 请求到外部 URL，返回状态码与正文（外部网络动作）"
     requires_network = True
     action_kind = ActionKind.EXTERNAL
@@ -233,6 +236,7 @@ class ProcessListTool(BaseTool):
     """列出当前进程（只读诊断，observe）"""
 
     name = "process_list"
+    category = "system"
     description = "查看当前运行的进程（PID、名称、内存），只读诊断"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -273,6 +277,7 @@ class DiskInfoTool(BaseTool):
     """查询磁盘空间（observe）"""
 
     name = "disk_info"
+    category = "system"
     description = "查看磁盘使用情况：总量、已用、剩余"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -308,6 +313,7 @@ class FileDownloadTool(BaseTool):
     """从 URL 下载文件到工作区（external 类，按权限分级）"""
 
     name = "file_download"
+    category = "network"
     description = "从 URL 下载文件到工作区指定路径（外部网络动作）"
     requires_network = True
     action_kind = ActionKind.EXTERNAL

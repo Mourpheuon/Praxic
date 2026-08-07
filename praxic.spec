@@ -1,11 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for 即物穷理.exe — 单文件打包"""
+"""PyInstaller spec for praxic-backend — 平台感知单文件打包"""
 
 import sys
 from pathlib import Path
 
 # SPECPATH is injected by PyInstaller
 _root = Path(SPECPATH)
+
+# ── 平台感知 ──────────────────────────────────────────────────
+IS_WIN = sys.platform.startswith("win")
+IS_MAC = sys.platform.startswith("darwin")
+
+# 后端可执行文件名：Windows 带 .exe，macOS/Linux 无扩展名
+BACKEND_NAME = "praxic-backend.exe" if IS_WIN else "praxic-backend"
+
+# 图标：Windows 用 ico，macOS 用 icns（由 CI 的 iconutil 从 iconset 生成），Linux 用 png
+if IS_WIN:
+    _icon = str(_root / "assets" / "icon.ico") if (_root / "assets" / "icon.ico").exists() else None
+elif IS_MAC:
+    _icon = str(_root / "assets" / "icon.icns") if (_root / "assets" / "icon.icns").exists() else None
+else:
+    _icon = None  # Linux EXE 不支持图标，由 electron-builder 设置
 
 # 收集 tiktoken 数据文件（Rust 扩展模型文件）
 try:
@@ -160,7 +175,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="即物穷理",
+    name=BACKEND_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -173,5 +188,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # 图标 —— 可后续添加 .ico 文件: str(_root / "assets" / "praxic.ico")
+    icon=_icon,
 )

@@ -14,6 +14,8 @@ from .base import (
 from .filesystem import FileReadTool, FileWriteTool, FileEditTool, FileListTool, FileDeleteTool, WorkspaceToolkit
 from .file_query import FileGrepTool, FileBatchReadTool, FileStatTool
 from .data_query import DataQueryTool
+from .sqlite_query import SqliteQueryTool
+from .pdf_extract import PdfExtractTool
 from .environment import EnvTool, TimeTool, HttpRequestTool, ProcessListTool, DiskInfoTool, FileDownloadTool
 from .file_ops import FileCopyTool, FileMoveTool, FileTailTool
 from .archive import ArchiveExtractTool, ArchiveCreateTool
@@ -30,6 +32,7 @@ __all__ = [
     "FileReadTool", "FileWriteTool", "FileEditTool", "FileListTool", "FileDeleteTool",
     "FileGrepTool", "FileBatchReadTool", "FileStatTool",
     "DataQueryTool",
+    "SqliteQueryTool", "PdfExtractTool",
     "EnvTool", "TimeTool", "HttpRequestTool", "ProcessListTool", "DiskInfoTool", "FileDownloadTool",
     "FileCopyTool", "FileMoveTool", "FileTailTool",
     "ArchiveExtractTool", "ArchiveCreateTool",

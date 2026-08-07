@@ -207,6 +207,47 @@ async def set_dev_mode(req: DevModeRequest):
     return {"ok": True, "dev_enabled": req.enabled}
 
 
+# ── Plugins ──────────────────────────────────────────────────
+
+
+def _plugins_dir() -> Path:
+    return settings.data_dir / "plugins"
+
+
+@router.get("/plugins")
+async def list_plugins():
+    """列出插件目录中已发现的插件及加载状态。"""
+    from ...tools.plugin import PluginScanner
+    scanner = PluginScanner(_plugins_dir())
+    items = []
+    for manifest_path in sorted(scanner.plugins_dir.rglob("manifest.yaml")):
+        entry = {"name": manifest_path.parent.name, "path": str(manifest_path.parent), "status": "error", "error": ""}
+        try:
+            tool = scanner._load_manifest(manifest_path)
+            if tool is not None:
+                entry.update({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "category": tool.category,
+                    "action_kind": tool.action_kind.value,
+                    "group": tool.group,
+                    "status": "loaded",
+                })
+        except Exception as exc:
+            entry["error"] = str(exc)
+        items.append(entry)
+    return {"plugins": items, "dir": str(_plugins_dir())}
+
+
+@router.post("/plugins/scan")
+async def scan_plugins():
+    """重新扫描插件目录（下次新建 CognitiveLoop 时生效）。"""
+    from ...tools.plugin import PluginScanner, load_plugins
+    scanner = PluginScanner(_plugins_dir())
+    tools = scanner.scan()
+    return {"ok": True, "found": len(tools), "names": [t.name for t in tools]}
+
+
 # ── Models endpoint ──────────────────────────────────────────
 
 @router.get("/models")

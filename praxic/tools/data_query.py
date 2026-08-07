@@ -33,6 +33,7 @@ class DataQueryTool(BaseTool):
     """查询 CSV/JSON/JSONL 结构化数据（只读）"""
 
     name = "data_query"
+    category = "data"
     description = "查询 CSV/JSON/JSONL 数据文件：概述、筛选、统计、取行（只读）"
     requires_network = False
     action_kind = ActionKind.OBSERVE

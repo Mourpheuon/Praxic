@@ -30,6 +30,8 @@ def register_workspace_tools(registry: ToolRegistry, workspace: Path) -> None:
     )
     from .file_query import FileGrepTool, FileBatchReadTool, FileStatTool
     from .data_query import DataQueryTool
+    from .sqlite_query import SqliteQueryTool
+    from .pdf_extract import PdfExtractTool
     from .environment import (
         EnvTool, TimeTool, HttpRequestTool,
         ProcessListTool, DiskInfoTool, FileDownloadTool,
@@ -48,6 +50,8 @@ def register_workspace_tools(registry: ToolRegistry, workspace: Path) -> None:
     registry.register(FileBatchReadTool(workspace))
     registry.register(FileStatTool(workspace))
     registry.register(DataQueryTool(workspace))
+    registry.register(SqliteQueryTool(workspace))
+    registry.register(PdfExtractTool(workspace))
     # ── 环境 / 网络 ──
     registry.register(EnvTool(workspace))
     registry.register(TimeTool())

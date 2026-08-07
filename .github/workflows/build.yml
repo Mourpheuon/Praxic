@@ -1,0 +1,94 @@
+# 即物穷理 Praxic —— 三平台构建 & 发布
+# 触发：push tag v* 时构建并发布 GitHub Releases；也可手动 workflow_dispatch
+# 每个平台独立跑：PyInstaller 打后端 → electron-builder 打安装包
+
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: praxic-windows
+            ext: ".exe"
+            builder_args: --win
+          - os: macos-latest
+            artifact: praxic-macos
+            ext: ".dmg"
+            builder_args: --mac
+          - os: ubuntu-latest
+            artifact: praxic-linux
+            ext: ".AppImage"
+            builder_args: --linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Python 环境 ────────────────────────────────────────
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install "fastapi>=0.111.0" "uvicorn[standard]>=0.30.0" "sqlalchemy[asyncio]>=2.0.0" aiosqlite "pydantic>=2.7.0" structlog "httpx>=0.27.0" "openai>=1.35.0" "anthropic>=0.28.0" "tiktoken>=0.7.0" "python-dotenv>=1.0.0" "typer>=0.12.0" "rich>=13.7.0" networkx
+          pip install pyinstaller
+
+      # ── 后端：PyInstaller 单文件 ────────────────────────────
+      - name: Build backend (PyInstaller)
+        run: |
+          pyinstaller praxic.spec --noconfirm --clean
+
+      # ── macOS 图标：从 iconset 生成 icns ────────────────────
+      - name: Generate macOS icns
+        if: runner.os == 'macOS'
+        run: |
+          iconutil -c icns assets/icon.iconset -o assets/icon.icns
+
+      # ── Node / 前端 ─────────────────────────────────────────
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install npm deps
+        # --ignore-scripts: 避免 postinstall 自动安装前端（下面单独处理）
+        run: npm ci --ignore-scripts
+
+      - name: Build frontend (Vite)
+        run: |
+          cd praxic/web
+          npm ci
+          npm run build
+
+      # ── Electron 打包 ───────────────────────────────────────
+      - name: Package (electron-builder)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder ${{ matrix.builder_args }}
+
+      # ── 产物上传 ────────────────────────────────────────────
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist-electron/*${{ matrix.ext }}
+            dist-electron/*.zip
+            dist-electron/*.deb
+            dist-electron/*.blockmap
+            dist-electron/latest*.yml
+          if-no-files-found: warn

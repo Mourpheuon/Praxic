@@ -29,6 +29,7 @@ class FileCopyTool(BaseTool):
     """复制工作区内文件/目录"""
 
     name = "file_copy"
+    category = "file"
     description = "复制工作区内文件或目录到新位置"
     requires_network = False
     action_kind = ActionKind.CHANGE
@@ -91,6 +92,7 @@ class FileMoveTool(BaseTool):
     """移动/重命名工作区内文件"""
 
     name = "file_move"
+    category = "file"
     description = "移动或重命名工作区内文件/目录"
     requires_network = False
     action_kind = ActionKind.CHANGE
@@ -151,6 +153,8 @@ class FileTailTool(BaseTool):
     """读取文件尾部 N 行（日志查看）"""
 
     name = "file_tail"
+    category = "file"
+    group = "read"
     description = "读取文件最后 N 行（适合查看日志、长输出）"
     requires_network = False
     action_kind = ActionKind.OBSERVE

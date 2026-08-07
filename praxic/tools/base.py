@@ -193,10 +193,17 @@ class ToolResult:
 
 
 class BaseTool(ABC):
-    """工具基类 —— 所有工具必须实现这个接口"""
+    """工具基类 —— 所有工具必须实现这个接口
+
+    category：工具分类（file/data/network/system/code/physical/user/knowledge），
+              用于渐进式披露的阶段映射。
+    group：同质工具组。组内只披露一个代表，其余按需展开（如 web_search 组）。
+    """
 
     name: str = "base_tool"
     description: str = "基础工具"
+    category: str = "misc"
+    group: str = ""
     requires_network: bool = False
     action_kind: ActionKind = ActionKind.COMPUTE
     requires_authorization: bool = False
@@ -227,6 +234,8 @@ class BaseTool(ABC):
         return {
             "name": self.name,
             "description": self.description,
+            "category": self.category,
+            "group": self.group,
             "action_kind": self.action_kind.value,
             "requires_network": self.requires_network,
             "requires_authorization": self.requires_authorization,

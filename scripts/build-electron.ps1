@@ -1,4 +1,4 @@
-# 即物穷理 Praxic —— Electron 壳构建脚本 (Windows PowerShell)
+﻿# 即物穷理 Praxic —— Electron 壳构建脚本 (Windows PowerShell)
 # 用法：.\scripts\build-electron.ps1
 # 前置条件：Node.js >= 18, npm
 
@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $projectRoot
 
-$version = (Get-Content package.json | ConvertFrom-Json).version
+$version = (Get-Content package.json -Encoding UTF8 | ConvertFrom-Json).version
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  即物穷理 Electron 壳构建  v$version" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
@@ -65,6 +65,11 @@ if (Test-Path "praxic/web") {
 } else {
     Write-Host "       praxic/web/ 不存在，跳过" -ForegroundColor Yellow
 }
+
+# 3.5 后端 exe 闸门：确保 PyInstaller 产物存在，否则拒绝打包（防空壳包）
+Write-Host "[3.5] 检查后端 exe..."
+& (Join-Path $projectRoot "scripts\check-backend-exe.ps1")
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 # 4. Electron Builder 打包
 Write-Host "[4/4] 打包 Electron 应用..."

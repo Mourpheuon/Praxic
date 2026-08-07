@@ -1,5 +1,14 @@
 # Praxic 执行进度
 
+## 2026-08-03 数据类工具补充记录
+
+- 方向：继续补工具——数据库查询与 PDF 文本提取，复用现有基础设施（sqlite3 标准库、现成 PdfConverter）。
+- 涉及文件：`praxic/tools/sqlite_query.py`（新建）、`praxic/tools/pdf_extract.py`（新建）、`praxic/tools/assembler.py`、`praxic/tools/__init__.py`、`tests/test_sqlite_pdf.py`（新建）。
+
+| 2026-08-03 | sqlite_query | 工作区 .db/.sqlite 只读查询（SELECT/PRAGMA/EXPLAIN/WITH 白名单，拒写语句与多语句拼接），行数上限 500 截断标记；observe 全档自动 |
+| 2026-08-03 | pdf_extract | 包装现成 PdfConverter（pymupdf→markitdown→OCR→图片），文本提取+扫描件 OCR 可选；observe 全档自动；pymupdf 1.27.2 确认可用 |
+| 2026-08-03 | 复验 | `pytest` 128 passed（新增 9 项），compileall 通过；装配器断言 27 个工具全部注册 |
+
 ## 2026-08-03 编排深化与 done 语义修复记录
 
 - 方向：深化 L2 编排——补上"上一轮执行状态"结构化注入，模型不再从文本日志归纳；顺带修 done 信号吞掉收尾轮的真 bug。

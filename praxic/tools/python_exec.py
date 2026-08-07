@@ -34,6 +34,7 @@ class PythonExecTool(BaseTool):
     """
 
     name = "python_exec"
+    category = "code"
     description = "执行 Python 代码片段，返回 stdout、stderr、exit_code 和解析后的结构化数据"
     action_kind = ActionKind.COMPUTE
     requires_authorization = True

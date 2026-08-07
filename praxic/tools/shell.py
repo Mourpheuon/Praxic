@@ -30,6 +30,7 @@ class ShellTool(BaseTool):
     """
 
     name = "shell_exec"
+    category = "code"
     description = "在允许的工作目录中执行结构化命令并返回 stdout、stderr 和退出码"
     requires_network = False
     action_kind = ActionKind.COMPUTE

@@ -33,6 +33,7 @@ class SqliteQueryTool(BaseTool):
     """对 SQLite 数据库执行只读查询"""
 
     name = "sqlite_query"
+    category = "data"
     description = "对工作区内 SQLite 数据库（.db/.sqlite）执行只读 SELECT/PRAGMA 查询"
     requires_network = False
     action_kind = ActionKind.OBSERVE

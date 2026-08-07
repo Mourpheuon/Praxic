@@ -495,30 +495,68 @@ class ToolRegistry:
             descs.append(desc)
         return descs
 
-    def format_for_prompt(self) -> str:
-        """格式化为 LLM 可读的工具列表字符串。"""
-        lines = ["## 可用工具\n"]
-        for name, tool in self._tools.items():
-            lines.append(f"### {name}")
-            lines.append(f"{getattr(tool, 'description', '')}")
-            kind = getattr(tool, "action_kind", ActionKind.COMPUTE)
-            kind = kind.value if isinstance(kind, ActionKind) else str(kind)
-            lines.append(f"行动类型：{kind}")
-            if getattr(tool, "requires_authorization", False):
-                lines.append("授权：需要授权（限定工作区的沙箱变更可由策略自动允许）")
-            import inspect
+    def format_for_prompt(
+        self,
+        categories: list[str] | None = None,
+        grouped: bool = False,
+    ) -> str:
+        """格式化为 LLM 可读的工具列表字符串。
 
-            sig = inspect.signature(tool.run)
-            sig_params = [p for p in sig.parameters if p not in ("self", "kwargs")]
-            if sig_params:
-                lines.append("参数：")
-                for pname in sig_params:
-                    param = sig.parameters[pname]
-                    default = ""
-                    if param.default is not inspect.Parameter.empty:
-                        default = f" (默认={param.default})"
-                    lines.append(f"  - {pname}{default}")
+        categories：只披露指定分类的工具（None=全部）。
+        grouped：同质组内只给代表全描述，其余工具只列名（按需展开）。
+        """
+        tools = list(self._tools.values())
+        if categories is not None:
+            tools = [t for t in tools if getattr(t, "category", "misc") in categories]
+
+        lines = ["## 可用工具\n"]
+        # 组内代表：每个 group 取第一个，其余归入隐藏列表
+        disclosed: list = []
+        hidden: list = []
+        if grouped:
+            seen_groups: dict[str, object] = {}
+            for t in tools:
+                g = getattr(t, "group", "")
+                if g and g in seen_groups:
+                    hidden.append(t)
+                else:
+                    if g:
+                        seen_groups[g] = t
+                    disclosed.append(t)
+        else:
+            disclosed = tools
+
+        for tool in disclosed:
+            lines.append(self._format_tool(tool))
+
+        if hidden:
+            lines.append("### 其他同类工具（按需展开，需要时在规划中说明工具名）")
+            for t in hidden:
+                lines.append(f"- {t.name}：{getattr(t, 'description', '')[:40]}")
             lines.append("")
+        return "\n".join(lines)
+
+    def _format_tool(self, tool) -> str:
+        lines = [f"### {tool.name}"]
+        lines.append(f"{getattr(tool, 'description', '')}")
+        kind = getattr(tool, "action_kind", ActionKind.COMPUTE)
+        kind = kind.value if isinstance(kind, ActionKind) else str(kind)
+        lines.append(f"行动类型：{kind}")
+        if getattr(tool, "requires_authorization", False):
+            lines.append("授权：需要授权（限定工作区的沙箱变更可由策略自动允许）")
+        import inspect
+
+        sig = inspect.signature(tool.run)
+        sig_params = [p for p in sig.parameters if p not in ("self", "kwargs")]
+        if sig_params:
+            lines.append("参数：")
+            for pname in sig_params:
+                param = sig.parameters[pname]
+                default = ""
+                if param.default is not inspect.Parameter.empty:
+                    default = f" (默认={param.default})"
+                lines.append(f"  - {pname}{default}")
+        lines.append("")
         return "\n".join(lines)
 
 

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "concurrently -n py,web -c blue,green \"python -m uvicorn praxic.api.server:app --host 127.0.0.1 --port 8000\" \"cd praxic/web && npx vite\"",
     "electron:dev": "concurrently -n py,electron -c blue,magenta \"python -m uvicorn praxic.api.server:app --host 127.0.0.1 --port 8000\" \"npx electron .\"",
-    "electron:build": "cd praxic/web && node node_modules/vite/bin/vite.js build && cd ../.. && node node_modules/electron-builder/cli.js",
+    "electron:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-backend-exe.ps1 && cd praxic/web && node node_modules/vite/bin/vite.js build && cd ../.. && node node_modules/electron-builder/cli.js",
     "postinstall": "cd praxic/web && npm install"
   },
   "devDependencies": {

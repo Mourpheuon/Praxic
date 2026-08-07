@@ -20,13 +20,15 @@ const PYTHON_COMMAND = process.platform === 'win32' ? 'python' : 'python3';
 
 // 打包后的后端可执行文件：优先使用 PyInstaller 产物（生产模式），
 // 找不到时回退到系统 Python（开发模式）。
-// - 生产（electron-builder extraResources）: resources/backend/即物穷理.exe
-// - 本地 PyInstaller 构建: dist/即物穷理.exe
+// - 生产（electron-builder extraResources）: resources/backend/praxic-backend(.exe)
+// - 本地 PyInstaller 构建: dist/praxic-backend(.exe)
 function resolveBackendExecutable() {
     const fs = require('fs');
+    const isWin = process.platform === 'win32';
+    const backendName = isWin ? 'praxic-backend.exe' : 'praxic-backend';
     const candidates = [
-        path.join(process.resourcesPath || '', 'backend', '即物穷理.exe'),
-        path.join(PROJECT_ROOT, 'dist', '即物穷理.exe'),
+        path.join(process.resourcesPath || '', 'backend', backendName),
+        path.join(PROJECT_ROOT, 'dist', backendName),
     ];
     for (const c of candidates) {
         if (fs.existsSync(c)) return c;

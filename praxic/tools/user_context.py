@@ -9,6 +9,7 @@ class ReadUserContextTool(BaseTool):
     """Return user-supplied background only after an explicit approval."""
 
     name = "read_user_context"
+    category = "user"
     description = "申请查看用户补充的背景文本；用户批准后才返回内容"
     action_kind = ActionKind.OBSERVE
     requires_authorization = True

@@ -51,6 +51,7 @@ class FileReadTool(BaseTool):
     """读取 workspace 内的文件内容"""
 
     name = "file_read"
+    category = "file"
     description = "读取工作区内指定文件的内容"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -93,6 +94,7 @@ class FileWriteTool(BaseTool):
     """在 workspace 内写入/追加文件内容"""
 
     name = "file_write"
+    category = "file"
     description = "在工作区内写入或追加文件内容"
     requires_network = False
     action_kind = ActionKind.CHANGE
@@ -167,6 +169,7 @@ class FileListTool(BaseTool):
     """列出 workspace 内目录的文件"""
 
     name = "file_list"
+    category = "file"
     description = "列出工作区内指定目录下的文件和子目录"
     requires_network = False
     action_kind = ActionKind.OBSERVE
@@ -223,6 +226,7 @@ class FileEditTool(BaseTool):
     """
 
     name = "file_edit"
+    category = "file"
     description = "在工作区内精确替换文件内容（old_text→new_text），old_text 必须唯一匹配"
     requires_network = False
     action_kind = ActionKind.CHANGE
@@ -333,6 +337,7 @@ class FileDeleteTool(BaseTool):
     """删除 workspace 内的文件（READ_ONLY 权限模式下不可用）"""
 
     name = "file_delete"
+    category = "file"
     description = "删除工作区内的文件（需要高权限）"
     requires_network = False
     action_kind = ActionKind.CHANGE

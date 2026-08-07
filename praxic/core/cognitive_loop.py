@@ -231,6 +231,9 @@ class CognitiveLoop:
         if _web and settings.web_fetch_enabled:
             self._registry.register(WebFetchTool())
         self._registry.register(ReadUserContextTool())
+        # 插件（档 3）：用户/第三方工具，从 data_dir/plugins 自动加载。
+        from ..tools.plugin import load_plugins
+        load_plugins(self._registry, settings.data_dir / "plugins")
         self.max_iterations = settings.max_iterations
         self.convergence_threshold = 0.85
         self.enable_trajectory_logging = settings.enable_trajectory_logging

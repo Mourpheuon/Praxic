@@ -15,14 +15,13 @@ files:
   # Electron 主进程
   - electron/**/*
   - package.json
-  # Python 源码
-  - praxic/**/*
-  - pyproject.toml
-  - config.toml.example
   # 技能包
   - praxic/skills/**/*
   # ── 运行时不需要的内容 ──
-  # praxic/web/ 下只保留 index.html，其余全是开发工具
+  # 后端已打成自包含 exe（extraResources），不再分发 Python 源码
+  # - praxic/**/*
+  # - pyproject.toml
+  # - config.toml.example
   - "!praxic/web/node_modules"
   - "!praxic/web/node_modules/**"
   - "!praxic/web/src"
@@ -45,23 +44,24 @@ files:
   - "!**/.gitkeep"
 
 # 打包后的 Python 后端 exe（PyInstaller 产物）随安装包分发。
-# Electron 生产模式会从 resources/backend/即物穷理.exe 启动它，
+# Electron 生产模式会从 resources/backend/praxic-backend(.exe) 启动它，
 # 见 electron/main.js -> resolveBackendExecutable()。
 extraResources:
-  - from: dist/即物穷理.exe
-    to: backend/即物穷理.exe
+  - from: dist/praxic-backend.exe
+    to: backend/praxic-backend.exe
     filter: ["**/*"]
 
 # 不打包进 asar——Python 需要导入普通文件
 asar: false
 
-# macOS 配置
+# macOS 配置（未签名：无 Apple Developer 证书，用户首次打开需右键→打开）
 mac:
   category: public.app-category.productivity
   target:
     - dmg
     - zip
   icon: assets/icon.icns
+  identity: null
   extendInfo:
     LSEnvironment:
       PRAXIC_PROJECTS_DIR: "~/Documents/PraxicProjects"
@@ -86,6 +86,7 @@ linux:
     - deb
   category: Office
   icon: assets/icon.png
+  executableName: praxic
 
 # 发布配置（GitHub Releases）
 publish:
