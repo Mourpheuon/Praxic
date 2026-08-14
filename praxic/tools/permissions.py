@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import IntEnum
 from pathlib import Path
 from time import time
 from typing import Awaitable, Callable, Optional
@@ -20,6 +21,95 @@ from .base import (
     PermissionDecision,
     PermissionRecord,
 )
+
+
+class SandboxLevel(IntEnum):
+    """沙箱权限范围维度（与 PermissionMode 交互方式维度正交）。
+
+    升级图（参考 DSH WIDER_MODES / ESCALATION_TARGETS）：
+        read_only（地板）→ workspace_write / danger_full_access
+        workspace_write → danger_full_access
+
+    升级必须携带 justification（理由），且受 PermissionMode 门槛约束：
+    - READ_ONLY 模式禁止任何升级（只读是地板，也是权限模式的约束）
+    - ASK / AUTO_REVIEW 模式允许升级到 workspace_write，danger 需走用户授权
+    - FULL 模式本身已放行使变更，无需升级
+    """
+
+    READ_ONLY = 0      # 只读：观察与计算，不改变世界
+    WORKSPACE_WRITE = 1  # 工作区写：只能在允许根目录内变更
+    DANGER_FULL_ACCESS = 2  # 完全访问：可改变工作区外状态
+
+    @property
+    def label(self) -> str:
+        return self.name.lower()
+
+
+# 沙箱升级图：key=当前档位，value=可达的最高档位（含自身，用于边界判断）
+SANDBOX_ESCALATION_GRAPH: dict[SandboxLevel, set[SandboxLevel]] = {
+    SandboxLevel.READ_ONLY: {
+        SandboxLevel.READ_ONLY,
+        SandboxLevel.WORKSPACE_WRITE,
+        SandboxLevel.DANGER_FULL_ACCESS,
+    },
+    SandboxLevel.WORKSPACE_WRITE: {
+        SandboxLevel.WORKSPACE_WRITE,
+        SandboxLevel.DANGER_FULL_ACCESS,
+    },
+    SandboxLevel.DANGER_FULL_ACCESS: {
+        SandboxLevel.DANGER_FULL_ACCESS,
+    },
+}
+
+
+def sandbox_from_string(value) -> SandboxLevel:
+    """把 'read_only' / 'workspace_write' / 'danger_full_access' 等解析为 SandboxLevel。"""
+    if isinstance(value, SandboxLevel):
+        return value
+    if value is None:
+        return SandboxLevel.READ_ONLY
+    norm = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    for level in SandboxLevel:
+        if level.name.lower() == norm:
+            return level
+    # 兼容常见别名
+    aliases = {
+        "danger": SandboxLevel.DANGER_FULL_ACCESS,
+        "full_access": SandboxLevel.DANGER_FULL_ACCESS,
+        "workspace": SandboxLevel.WORKSPACE_WRITE,
+        "write": SandboxLevel.WORKSPACE_WRITE,
+        "read": SandboxLevel.READ_ONLY,
+    }
+    if norm in aliases:
+        return aliases[norm]
+    raise ValueError(f"未知沙箱档位: {value!r}")
+
+
+def escalation_allowed(from_level: SandboxLevel, to_level: SandboxLevel) -> bool:
+    """D1: 升级图判断——只有图中可达的前进方向才合法，拒绝降级与跨级回退。"""
+    return to_level in SANDBOX_ESCALATION_GRAPH.get(from_level, set())
+
+
+def build_escalation_hint(*, tool_name: str, current_mode: PermissionMode) -> str:
+    """C2/D1: 生成权限拒绝后的升级提示（escalationHintMarker）。
+
+    告诉模型：可用 sandbox_permissions 参数重试一次（取最窄可达档位）+
+    justification 理由，会弹给用户批准。fail-closed：无理由或无批准一律拒绝。
+    """
+    from ..core.autonomy import PermissionMode as _PM
+
+    if current_mode == _PM.READ_ONLY:
+        return (
+            f"[升级提示] {tool_name} 被拒：当前为只读权限模式，禁止任何变更/外部操作。"
+            "若要执行，需管理员将权限模式提升到 ASK 或更高档位（这不是模型可自行请求的升级）。"
+        )
+    # ASK / AUTO_REVIEW 下模型可请求最窄的 workspace_write 升级带理由。
+    return (
+        f"[升级提示] {tool_name} 被权限拒绝。若确有执行必要，可用最窄的 "
+        f"`sandbox_permissions='workspace_write'`（或确需外部影响时 'danger_full_access'）参数重试一次，"
+        f"并携带 `justification` 说明为何这一步必须执行、会产生什么改变；"
+        f"会弹给用户批准，无理由/被拒/取消一律不会执行。"
+    )
 
 
 class PathGuard:

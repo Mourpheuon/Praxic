@@ -37,6 +37,7 @@ class WebSearchTool(BaseTool):
     description = "联网搜索获取最新信息，用于补全调查阶段的信息缺口"
     requires_network = True
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
 
     def __init__(
         self,

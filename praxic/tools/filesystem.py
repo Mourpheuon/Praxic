@@ -52,9 +52,10 @@ class FileReadTool(BaseTool):
 
     name = "file_read"
     category = "file"
-    description = "读取工作区内指定文件的内容"
+    description = "读取工作区内指定文件的内容（path 为相对工作区的路径，不带工作区前缀）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {"path": {"type": "string"}, "encoding": {"type": "string", "default": "utf-8"}}
 
     def __init__(self, workspace: Optional[Path] = None):
@@ -95,7 +96,7 @@ class FileWriteTool(BaseTool):
 
     name = "file_write"
     category = "file"
-    description = "在工作区内写入或追加文件内容"
+    description = "在工作区内写入或追加文件内容（path 为相对工作区的路径，不带工作区前缀）"
     requires_network = False
     action_kind = ActionKind.CHANGE
     requires_authorization = True
@@ -170,9 +171,10 @@ class FileListTool(BaseTool):
 
     name = "file_list"
     category = "file"
-    description = "列出工作区内指定目录下的文件和子目录"
+    description = "列出工作区内指定目录下的文件和子目录（path 为相对工作区的路径，默认 .）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
 
     def __init__(self, workspace: Optional[Path] = None):
         self.workspace = (workspace or DEFAULT_WORKSPACE).resolve()
@@ -227,7 +229,7 @@ class FileEditTool(BaseTool):
 
     name = "file_edit"
     category = "file"
-    description = "在工作区内精确替换文件内容（old_text→new_text），old_text 必须唯一匹配"
+    description = "在工作区内精确替换文件内容（old_text→new_text），old_text 必须唯一匹配；path 为相对工作区路径"
     requires_network = False
     action_kind = ActionKind.CHANGE
     requires_authorization = True
@@ -338,7 +340,7 @@ class FileDeleteTool(BaseTool):
 
     name = "file_delete"
     category = "file"
-    description = "删除工作区内的文件（需要高权限）"
+    description = "删除工作区内的文件（需要高权限；path 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.CHANGE
     requires_authorization = True

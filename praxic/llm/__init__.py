@@ -1,7 +1,6 @@
 """Praxic LLM factory."""
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 
 import structlog
@@ -35,41 +34,15 @@ def get_llm(provider=None, model=None):
     raise ValueError(f"Unknown provider: {p!r}")
 
 
-def _config_phase_model(phase_name: str) -> str | None:
-    """Read the config.toml [ui].phase_models JSON blob defensively."""
-    raw = settings.ui_phase_models
-    if not raw:
-        return None
-
-    try:
-        phase_models = raw if isinstance(raw, dict) else json.loads(raw)
-        if not isinstance(phase_models, dict):
-            raise TypeError("phase_models must decode to an object")
-    except (TypeError, ValueError) as exc:
-        log.warning("llm.phase_models_config_invalid", error=str(exc))
-        return None
-
-    model = phase_models.get(phase_name)
-    return model.strip() if isinstance(model, str) and model.strip() else None
-
-
 def get_phase_llm(phase_name):
-    cfg = settings.phase(phase_name)
-    # config.toml 是初始默认值；运行中的 UI 设置拥有更高优先级。
-    model = _config_phase_model(phase_name) or cfg.model or None
-    try:
-        path = settings.data_dir / "ui-settings.json"
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                raise TypeError("ui-settings.json must contain an object")
-            pm = data.get("phase_models", {})
-            ui_model = pm.get(phase_name) if isinstance(pm, dict) else None
-            if isinstance(ui_model, str) and ui_model.strip():
-                model = ui_model.strip()
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as exc:
-        log.warning("llm.ui_settings_read_failed", error=str(exc))
-    return get_llm(model=model)
+    """返回认知循环各阶段使用的 LLM。
+
+    深度体系改造后全部阶段统一使用同一模型（settings.default_model），
+    不再按阶段路由、不再读 ui_phase_models / ui-settings.json。参数保留以兼容
+    外部调用。settings.ui_phase_models 字段仍保留在配置里但不再被消费。
+    """
+    del phase_name  # unused：全阶段同一模型
+    return get_llm()
 
 
 __all__ = ["get_llm", "get_phase_llm", "BaseLLM"]

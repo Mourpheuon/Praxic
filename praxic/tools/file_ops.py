@@ -30,7 +30,7 @@ class FileCopyTool(BaseTool):
 
     name = "file_copy"
     category = "file"
-    description = "复制工作区内文件或目录到新位置"
+    description = "复制工作区内文件或目录到新位置（source/dest 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.CHANGE
     requires_authorization = True
@@ -93,7 +93,7 @@ class FileMoveTool(BaseTool):
 
     name = "file_move"
     category = "file"
-    description = "移动或重命名工作区内文件/目录"
+    description = "移动或重命名工作区内文件/目录（source/dest 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.CHANGE
     requires_authorization = True
@@ -155,7 +155,7 @@ class FileTailTool(BaseTool):
     name = "file_tail"
     category = "file"
     group = "read"
-    description = "读取文件最后 N 行（适合查看日志、长输出）"
+    description = "读取文件最后 N 行（适合查看日志、长输出；path 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
     parameter_schema = {

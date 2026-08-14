@@ -192,8 +192,8 @@ class TestJsonModeDegrade:
             registry=practice._get_fallback_registry(),
         )
         assert not plan.get("plan_failed"), "降级后应成功"
-        assert fake.calls[0]["kwargs_keys"] == ["response_format"], "首次调用应带 response_format"
-        assert fake.calls[1]["kwargs_keys"] == [], "降级后不应带 response_format"
+        assert "response_format" in fake.calls[0]["kwargs_keys"], "首次调用应带 response_format"
+        assert "response_format" not in fake.calls[1]["kwargs_keys"], "降级后不应带 response_format"
 
 
 class TestAnchorAndTools:
@@ -268,6 +268,49 @@ class TestDirectionState:
         assert plan["epistemic_role"] == "exploration"
         assert plan["directional_claim"] == ""
         assert plan["deviation_rationale"] == ""
+
+
+class TestPlanDeviation:
+    def _record(self, tool, status="success", classification="observed", error=""):
+        return {"tool": tool, "result": {"status": status, "state_classification": classification, "error": error}}
+
+    def test_planned_but_not_executed_flagged(self):
+        practice = PracticeModule()
+        practice._last_round_plan = {
+            "tool_calls": [
+                {"tool": "file_read", "params": {"path": "a.txt"}},
+                {"tool": "web_search", "params": {"query": "y"}},
+            ]
+        }
+        practice._last_round_detail = type("D", (), {
+            "round_num": 1,
+            "tool_calls": [self._record("file_read")],
+        })()
+        text = practice._execution_status_text()
+        assert "[成功] file_read" in text
+        assert "计划偏差" in text
+        assert "web_search" in text and "未执行" in text
+
+    def test_no_deviation_when_all_executed(self):
+        practice = PracticeModule()
+        practice._last_round_plan = {
+            "tool_calls": [{"tool": "file_read", "params": {"path": "a.txt"}}]
+        }
+        practice._last_round_detail = type("D", (), {
+            "round_num": 1,
+            "tool_calls": [self._record("file_read")],
+        })()
+        text = practice._execution_status_text()
+        assert "计划偏差" not in text
+
+    def test_technical_failure_tagged(self):
+        practice = PracticeModule()
+        practice._last_round_detail = type("D", (), {
+            "round_num": 1,
+            "tool_calls": [self._record("python_exec", status="error", classification="tool_error", error="语法错误")],
+        })()
+        text = practice._execution_status_text()
+        assert "[技术中断] python_exec" in text
 
 
 class TestCodeRefDecoupling:

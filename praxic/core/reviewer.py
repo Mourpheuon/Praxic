@@ -41,15 +41,21 @@ _REVIEW_PROMPT = """\
 ## 输出格式（严格 JSON）
 {{
   "approved": true,
-  "reason": "一句话说明放行或拒绝的理由"
+  "reason": "一句话说明放行或拒绝的理由",
+  "next_step": "拒绝时给出可操作建议（如：缩小目标范围、改用只读替代、或说明为何需用户批准），放行时填空字符串"
 }}
 """
 
 
-def build_reviewer(llm, max_tokens: int = 256):
-    """构造语义审核器回调，绑定到指定 LLM。"""
+def build_reviewer(llm, max_tokens: int = 512):
+    """构造语义审核器回调。
 
-    async def reviewer(tool_name: str, action_kind, params: dict, reason: str) -> bool:
+    返回 dict：{"approved": bool, "reason": str, "next_step": str}。
+    拒绝时 next_step 携带可操作的升级/修正路径（D2），供模型拿到"不通过"后的下一步。
+    """
+
+    async def reviewer(tool_name: str, action_kind, params: dict, reason: str) -> dict:
+        result = {"approved": False, "reason": "", "next_step": ""}
         try:
             safe_params = {
                 str(k): str(v)[:200] for k, v in dict(params).items()
@@ -70,15 +76,17 @@ def build_reviewer(llm, max_tokens: int = 256):
             if start != -1 and end > start:
                 raw = raw[start:end + 1]
             data = json.loads(raw)
-            approved = bool(data.get("approved", False))
+            result["approved"] = bool(data.get("approved", False))
+            result["reason"] = str(data.get("reason", "") or "")[:300]
+            result["next_step"] = str(data.get("next_step", "") or "")[:300]
             log.info(
                 "reviewer.decision",
-                tool=tool_name, approved=approved,
-                reason=str(data.get("reason", ""))[:200],
+                tool=tool_name, approved=result["approved"],
+                reason=result["reason"],
             )
-            return approved
         except Exception as exc:
             log.warning("reviewer.error", tool=tool_name, error=str(exc))
-            return False
+            result["reason"] = f"审核异常: {exc}"
+        return result
 
     return reviewer

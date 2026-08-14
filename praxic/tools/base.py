@@ -74,6 +74,68 @@ def stable_digest(value: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+_TRUNCATE_MARKER = "[... 中段省略 ...]"
+
+
+def head_tail_truncate(
+    text: object,
+    *,
+    head_chars: int = 4096,
+    tail_chars: int = 1024,
+    max_len: int = 0,
+) -> str:
+    """A2: 保头尾截断，替换只留头的硬截断。
+
+    超阈值时保留头部（关键输出/结构化开头）+ 尾部（错误信息、最新状态），
+    中间用 marker 替代。默认阈值为 head+tail+marker；若显式给出 max_len，
+    则在守恒约束下等比缩小 head/tail。
+    """
+    s = str(text or "")
+    if max_len and max_len > 0:
+        total = max_len
+        head, tail = head_chars, tail_chars
+        # 阈值守恒：head+tail+marker ≤ total
+        if head + tail + len(_TRUNCATE_MARKER) > total:
+            scale = (total - len(_TRUNCATE_MARKER)) / (head + tail)
+            head = max(1, int(head * scale))
+            tail = max(1, int(tail * scale))
+    else:
+        total = head_chars + tail_chars + len(_TRUNCATE_MARKER)
+        head, tail = head_chars, tail_chars
+    if len(s) <= total:
+        return s
+    return s[:head] + _TRUNCATE_MARKER + s[-tail:]
+
+
+def ensure_summary(result, *, head_chars: int = 300, tail_chars: int = 120) -> str:
+    """A1: 从 ToolResult 提取一句话摘要，供回填上下文使用。
+
+    统一处理管道（所有类型输出同一条规则）：
+    - error：保头尾错误信息（自纠需求，错误信息常在尾部）；
+    - 成功 + 显式 summary：直接用 summary（结论型工具提供，摘要即结论）；
+    - 成功 + 无 summary：统一占位指向（内容型自然落入此处，不搬正文）。
+
+    框架不再猜测输出类型（content/conclusion/auto 启发式全部移除）：
+    是否可摘要由工具作者在返回点显式声明（给 summary 就可摘要，
+    不给就占位）——fail-closed：默认不搬，显式放行才搬。
+    """
+    if result is None:
+        return ""
+    explicit = getattr(result, "summary", "") or ""
+    if not result.ok:
+        return head_tail_truncate(
+            getattr(result, "error", "") or getattr(result, "state_classification", "tool_error"),
+            head_chars=head_chars,
+            tail_chars=tail_chars,
+        )
+    if explicit:
+        return explicit
+    content = getattr(result, "content", "") or ""
+    if not content:
+        return getattr(result, "state_classification", "observed")
+    return f"（{len(content)} 字符，见日志/产物）"
+
+
 @dataclass
 class PermissionRecord:
     decision: PermissionDecision
@@ -135,6 +197,11 @@ class ToolResult:
     started_at: str = ""
     duration_ms: float = 0.0
     failure_class: str = ""
+    # A1: 人类可读的一句话结论。实践阶段回填下一轮上下文时用 summary 替代
+    # content 全量，避免模型把前一轮工具原始输出整段抄进规划导致 JSON 超长截断。
+    # 统一管道：有 summary 则直接用；无 summary 且成功则占位指向（不搬正文）；
+    # 失败则保头尾错误信息。摘要责任在工具作者（给 summary 就可摘要，不给就占位）。
+    summary: str = ""
 
     @property
     def ok(self) -> bool:
@@ -209,6 +276,9 @@ class BaseTool(ABC):
     requires_authorization: bool = False
     authorization_reason: str = ""
     sandbox_safe: bool = False
+    # B1: 只读工具是否可并行。默认为 False（fail-closed：未显式声明一律串行），
+    # 只有 file_read / data_query / web_search 等无副作用工具显式声明为 True。
+    is_concurrency_safe: bool = False
     parameter_schema: dict[str, dict[str, Any]] = {}
 
     @abstractmethod
@@ -240,6 +310,7 @@ class BaseTool(ABC):
             "requires_network": self.requires_network,
             "requires_authorization": self.requires_authorization,
             "sandbox_safe": self.sandbox_safe,
+            "is_concurrency_safe": self.is_concurrency_safe,
             "parameters": _jsonable(self.parameter_schema),
         }
 

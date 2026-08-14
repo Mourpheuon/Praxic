@@ -16,7 +16,7 @@ from pathlib import Path
 
 import structlog
 
-from .base import ActionKind, BaseTool, ChangeRecord, ToolResult, ToolStatus
+from .base import ActionKind, BaseTool, ChangeRecord, ToolResult, ToolStatus, head_tail_truncate
 
 log = structlog.get_logger(__name__)
 
@@ -35,7 +35,7 @@ class PythonExecTool(BaseTool):
 
     name = "python_exec"
     category = "code"
-    description = "执行 Python 代码片段，返回 stdout、stderr、exit_code 和解析后的结构化数据"
+    description = "执行 Python 代码片段，返回 stdout、stderr、exit_code 和解析后的结构化数据。数据分析请用标准库 csv/json/statistics，不要 import pandas（未安装）；可只读 open 工作区内文件（写模式禁止）"
     action_kind = ActionKind.COMPUTE
     requires_authorization = True
     parameter_schema = {
@@ -122,21 +122,27 @@ class PythonExecTool(BaseTool):
         "globals",
         "input",
         "locals",
-        "open",
         "setattr",
         "vars",
     }
+    # 内置 open() 允许只读（数据分析读文件的基础），写模式由 _check_safety 拦截。
+    _OPEN_WRITE_MODES = {"w", "a", "x", "+"}
     _SAFE_IMPORTS = {
         "array",
+        "base64",
         "bisect",
         "collections",
+        "csv",
         "dataclasses",
         "datetime",
         "decimal",
         "enum",
         "fractions",
         "functools",
+        "glob",
+        "hashlib",
         "heapq",
+        "io",
         "itertools",
         "json",
         "math",
@@ -256,7 +262,7 @@ class PythonExecTool(BaseTool):
                             content="",
                             error=f"依赖安装超时：{pkg}",
                             action_kind=action_kind,
-                            failure_class="tool_error",
+                            failure_class="timeout",
                         )
                     if proc.returncode:
                         detail = (install_stderr or install_stdout or b"").decode(
@@ -293,12 +299,16 @@ class PythonExecTool(BaseTool):
                     error=f"执行超时 ({timeout_seconds}s)",
                     data={"exit_code": -1, "stdout": "", "stderr": ""},
                     action_kind=action_kind,
-                    failure_class="tool_error",
+                    failure_class="timeout",
                 )
 
             stdout_s = stdout.decode("utf-8", errors="replace") if stdout else ""
             stderr_s = stderr.decode("utf-8", errors="replace") if stderr else ""
             exit_code = proc.returncode or 0
+
+            # C1: 输出超限分类——模型应裁剪打印量，而非改逻辑
+            output_cap = 2_000_000
+            output_limit_hit = exit_code == 0 and len(stdout_s) > output_cap
 
             # ── 解析 JSON ──
             parsed = None
@@ -326,12 +336,14 @@ class PythonExecTool(BaseTool):
                     },
                 )
                 metadata = {"world_state_may_have_changed": True}
+            if output_limit_hit:
+                stdout_s = head_tail_truncate(stdout_s, head_chars=4000, tail_chars=2000)
             result = ToolResult(
                 status=status,
                 content=stdout_s,
                 data={
                     "exit_code": exit_code,
-                    "stdout": stdout_s,
+                    "stdout": stdout_s if output_limit_hit else stdout_s,
                     "stderr": stderr_s,
                     "parsed": parsed,
                 },
@@ -339,7 +351,17 @@ class PythonExecTool(BaseTool):
                 action_kind=action_kind,
                 change=change,
                 metadata=metadata,
-                failure_class="tool_error" if exit_code != 0 else "",
+                failure_class=(
+                    "output_limit"
+                    if output_limit_hit
+                    else ("tool_error" if exit_code != 0 else "")
+                ),
+                # A1: 回填摘要复用解析后的 data，不给全量 stdout
+                summary=(
+                    f"exit_code={exit_code}，输出超限已截断至 {len(stdout_s)} 字符"
+                    if output_limit_hit
+                    else f"exit_code={exit_code}，parsed={'有' if parsed is not None else '无'}，stdout {len(stdout_s)} 字符"
+                ),
             )
             return result
 
@@ -394,8 +416,38 @@ class PythonExecTool(BaseTool):
                     node.id.startswith("__") and node.id != "__name__"
                 ) or node.id in self._BLOCKED_CALL_NAMES:
                     return False, f"禁止引用 {node.id}"
+            # 内置 open() 只允许只读模式（数据分析读文件基础）；写模式拦截。
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "open":
+                mode = self._open_mode_arg(node)
+                if mode is None:
+                    # 无法静态确定 mode（如变量）→ 保守拦截
+                    return False, "open() 的 mode 必须显式为只读（如 'r'），不允许变量或省略"
+                if any(m in mode for m in self._OPEN_WRITE_MODES):
+                    return False, f"open() 写模式被禁止：mode={mode!r}"
+            # open 被赋值给变量会绕过 mode 检查（writer = open），禁止此类别名。
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and isinstance(node.value, ast.Name) and node.value.id == "open":
+                        return False, "禁止将 open 赋值给变量（会绕过只读检查）"
 
         return True, ""
+
+    @staticmethod
+    def _open_mode_arg(call_node: ast.Call):
+        """提取 open() 的 mode 参数（第 2 个位置参数或 mode= 关键字）。"""
+        args = list(call_node.args)
+        if len(args) >= 2:
+            arg = args[1]
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                return arg.value
+            return None
+        for kw in call_node.keywords:
+            if kw.arg == "mode":
+                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    return kw.value.value
+                return None
+        # 未提供 mode：默认 'r'，允许
+        return "r"
 
     def _inject_headers(self, code: str) -> str:
         """自动注入编码头和 stdout 编码配置。"""

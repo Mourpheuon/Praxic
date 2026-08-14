@@ -6,7 +6,7 @@
 provider = "openai_compatible"
 base_url = "https://api.deepseek.com"
 api_key  = "sk-your-key-here"
-model    = "deepseek-v4-pro"
+model    = "deepseek-v4-flash"
 
 # --- Runtime ---
 [runtime]

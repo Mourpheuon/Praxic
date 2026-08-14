@@ -125,7 +125,8 @@ async def test_preprocessing_runs_step3_and_step4_concurrently():
     assert result.contradiction_in_question == "意图矛盾"
     assert result.questionable_premises == ["待核实预设"]
     assert result.overlooked_factors == ["遗漏因素"]
-    assert all(call["kwargs"].get("reasoning_effort") == "low" for call in llm.calls)
+    # 深度体系不再透传 reasoning_effort（provider 私有推理参数）
+    assert all("reasoning_effort" not in call["kwargs"] for call in llm.calls)
 
 
 @pytest.mark.asyncio
@@ -138,7 +139,8 @@ async def test_preprocessing_combined_fast_path_uses_two_calls():
     assert result.contradiction_in_question == "意图矛盾"
     assert result.questionable_premises == ["待核实预设"]
     assert result.expanded_question == "扩展问题"
-    assert all(call["kwargs"].get("reasoning_effort") == "low" for call in llm.calls)
+    # 深度体系不再透传 reasoning_effort
+    assert all("reasoning_effort" not in call["kwargs"] for call in llm.calls)
 
 
 @pytest.mark.asyncio
@@ -166,7 +168,8 @@ async def test_parallel_analysis_keeps_per_step_fallbacks():
     assert result.expanded_question == "扩展问题"
 
 
-def test_phase_model_priority_and_invalid_config_fallback(monkeypatch, tmp_path: Path):
+def test_get_phase_llm_ignores_phase_model_config(monkeypatch, tmp_path: Path):
+    """深度体系：get_phase_llm 全阶段统一默认模型，不再读 ui_phase_models / ui-settings.json。"""
     selected_models: list[str | None] = []
 
     def fake_get_llm(provider=None, model=None):
@@ -186,31 +189,21 @@ def test_phase_model_priority_and_invalid_config_fallback(monkeypatch, tmp_path:
         json.dumps({"preprocessing": "config-flash"}),
     )
 
-    assert llm_factory.get_phase_llm("preprocessing").default_model == "config-flash"
-
-    (tmp_path / "ui-settings.json").write_text(
-        json.dumps({"phase_models": {}}), encoding="utf-8"
-    )
-    assert llm_factory.get_phase_llm("preprocessing").default_model == "config-flash"
+    # 即使配置了 phase model / ui model，get_phase_llm 也不再按阶段路由
+    assert llm_factory.get_phase_llm("preprocessing") \
+        .default_model == llm_factory.settings.default_model
 
     (tmp_path / "ui-settings.json").write_text(
         json.dumps({"phase_models": {"preprocessing": "ui-latest"}}),
         encoding="utf-8",
     )
-    assert llm_factory.get_phase_llm("preprocessing").default_model == "ui-latest"
+    assert llm_factory.get_phase_llm("preprocessing") \
+        .default_model == llm_factory.settings.default_model
 
-    monkeypatch.setattr(llm_factory.settings, "ui_phase_models", "{broken json")
-    assert llm_factory.get_phase_llm("preprocessing").default_model == "ui-latest"
-
-    (tmp_path / "ui-settings.json").unlink()
-    assert llm_factory.get_phase_llm("preprocessing").default_model == "phase-model"
-    assert selected_models == [
-        "config-flash",
-        "config-flash",
-        "ui-latest",
-        "ui-latest",
-        "phase-model",
-    ]
+    # 所有阶段返回同一默认模型（get_llm() 不带 model，model 参数恒为 None）
+    for ph in ("preprocessing", "investigation", "contradiction", "rational", "practice", "reflection"):
+        llm_factory.get_phase_llm(ph)
+    assert selected_models == [None] * 8
 
 
 def _completion_response(content: str = "ok"):

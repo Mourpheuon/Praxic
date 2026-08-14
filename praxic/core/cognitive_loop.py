@@ -19,6 +19,7 @@ from ..tools.web_search import WebSearchTool
 from ..tools.web_fetch import WebFetchTool
 from ..tools.user_context import ReadUserContextTool
 from .contradiction import ContradictionAnalyzer
+from .depth import initial_depth_for
 from .dev_tracer import DevTracer, TracingLLMWrapper
 from .investigation import InvestigationModule
 from .loop_controller import (
@@ -232,8 +233,8 @@ class CognitiveLoop:
             self._registry.register(WebFetchTool())
         self._registry.register(ReadUserContextTool())
         # 插件（档 3）：用户/第三方工具，从 data_dir/plugins 自动加载。
-        from ..tools.plugin import load_plugins
-        load_plugins(self._registry, settings.data_dir / "plugins")
+        from ..tools.assembler import register_plugins
+        register_plugins(self._registry)
         self.max_iterations = settings.max_iterations
         self.convergence_threshold = 0.85
         self.enable_trajectory_logging = settings.enable_trajectory_logging
@@ -251,7 +252,6 @@ class CognitiveLoop:
             str(event.get("summary", "授权状态更新")),
             data={"event_type": event.get("event_type", "authorization"), **event},
         )
-
 
 
 
@@ -596,13 +596,20 @@ class CognitiveLoop:
         _skips = [_p for _p, _n in _phase_necessity.items() if _n == "skip"]
         working_mem.set("skip_phases", _skips)
 
-        # light_phases：轻量执行（提示各阶段模块可用更短的 prompt）
-        _lights = [_p for _p, _n in _phase_necessity.items() if _n == "light"]
-        working_mem.set("light_phases", _lights)
+        # D1：第一轮初始深度表（替代原 light_phases 死配置）。
+        # 按任务性质×复杂度查 INITIAL_DEPTH_TABLE，为各阶段生成初始深度档位。
+        # 反思阶段（D2）通过 phase_budgets 在后续轮次覆盖。
+        _task_nature = getattr(preprocessed, "task_nature", "other")
+        _task_complexity = getattr(preprocessed, "task_complexity", "standard")
+        _initial_depths = {
+            _phase: initial_depth_for(_task_nature, _task_complexity, _phase).value
+            for _phase in ["investigation", "contradiction", "rational", "practice", "reflection"]
+        }
+        working_mem.set("initial_depths", _initial_depths)
 
         # 记录任务性质供各阶段 prompt 自行适配
-        working_mem.set("task_nature", getattr(preprocessed, "task_nature", ""))
-        working_mem.set("task_complexity", getattr(preprocessed, "task_complexity", "standard"))
+        working_mem.set("task_nature", _task_nature)
+        working_mem.set("task_complexity", _task_complexity)
 
         if on_phase:
             _nature_display = {
@@ -646,7 +653,7 @@ class CognitiveLoop:
         log.info("cognitive_loop.phase_plan",
                  task_nature=getattr(preprocessed, "task_nature", ""),
                  task_complexity=getattr(preprocessed, "task_complexity", ""),
-                 skips=_skips, lights=_lights, mode=mode)
+                 skips=_skips, mode=mode)
 
         # ── 无需调查：LLM 知识可直接回答 → 跳过全部认知阶段，直接生成回复 ──
         if not getattr(preprocessed, "needs_investigation", True):
@@ -720,6 +727,18 @@ class CognitiveLoop:
                 working_mem.set_contradiction(trace.contradictions)
             skip_phases = working_mem.get("skip_phases") or []
             focus_hints = working_mem.get("focus_hints") or {}
+            # 下一轮各阶段执行预算（上一轮反思写入；本迭代各阶段只读，反思后覆盖）
+            phase_budgets = working_mem.get("phase_budgets") or {}
+            # D2：把第一轮初始深度表作为各阶段缺省 depth 合并进预算
+            # （反思阶段 phase_budgets.depth 是后续轮次的最终裁决，优先于此缺省）。
+            _initial_depths = working_mem.get("initial_depths") or {}
+            _merged_budgets = dict(phase_budgets)
+            for _phase in ["investigation", "contradiction", "rational", "practice", "reflection"]:
+                _b = dict(_merged_budgets.get(_phase, {}) or {})
+                _b.setdefault("depth", _initial_depths.get(_phase, "standard"))
+                _merged_budgets[_phase] = _b
+            phase_budgets = _merged_budgets
+            working_mem.set("phase_budgets", _merged_budgets)
             def _hint(phase):
                 h = focus_hints.get(phase, "")
                 return "\n[反思专项提示] " + h if h else ""
@@ -770,6 +789,7 @@ class CognitiveLoop:
                 fact_report = await self.investigation.investigate(
                     question=effective_question,
                     additional_context=extra_ctx,
+                    budget=phase_budgets.get("investigation", {}),
                     on_progress=(
                         (lambda _tool, summary, data=None: _emit_phase(
                             on_phase, CognitivePhaseName.INVESTIGATION, summary, data=data
@@ -792,11 +812,11 @@ class CognitiveLoop:
                     )
             if mode == "fast":
                 _emit_phase(on_phase, CognitivePhaseName.CONTRADICTION, "正在矛盾分析（快速模式）")
-                contradiction_graph = await self.contradiction.analyze(fact_report, effective_question, additional_context=working_mem.get_context_for_phase("contradiction"))
+                contradiction_graph = await self.contradiction.analyze(fact_report, effective_question, additional_context=working_mem.get_context_for_phase("contradiction"), budget=phase_budgets.get("contradiction", {}))
                 trace.contradictions = contradiction_graph
                 _emit_phase(on_phase, CognitivePhaseName.RATIONAL, "正在形成理性认识（快速模式）")
                 rational = await self.rational.synthesize(effective_question, fact_report, contradiction_graph,
-                    system_model=contradiction_graph.system_model)
+                    system_model=contradiction_graph.system_model, budget=phase_budgets.get("rational", {}))
                 trace.rational_synthesis = rational
                 _emit_phase(on_phase, "done", "快速模式完成")
                 break
@@ -809,7 +829,7 @@ class CognitiveLoop:
                 self.skill_manager.inject_phase_skills("contradiction", working_mem)
                 _emit_phase(on_phase, CognitivePhaseName.CONTRADICTION, "正在进行矛盾分析")
                 t1 = datetime.now()
-                contradiction_graph = await self.contradiction.analyze(fact_report=fact_report, question=effective_question + _hint("contradiction") + _steer("contradiction"), additional_context=working_mem.get_context_for_phase("contradiction"))
+                contradiction_graph = await self.contradiction.analyze(fact_report=fact_report, question=effective_question + _hint("contradiction") + _steer("contradiction"), additional_context=working_mem.get_context_for_phase("contradiction"), budget=phase_budgets.get("contradiction", {}))
                 trace.contradictions = contradiction_graph
                 working_mem.set_contradiction(contradiction_graph)
                 # 存储系统模型供下游阶段使用
@@ -841,7 +861,7 @@ class CognitiveLoop:
                 self.skill_manager.inject_phase_skills("rational", working_mem)
                 _emit_phase(on_phase, CognitivePhaseName.RATIONAL, "正在形成理性认识")
                 t2 = datetime.now()
-                rational_synthesis = await self.rational.synthesize(question=effective_question + _hint("rational") + _steer("rational"), fact_report=fact_report, contradiction_graph=contradiction_graph, system_model=contradiction_graph.system_model)
+                rational_synthesis = await self.rational.synthesize(question=effective_question + _hint("rational") + _steer("rational"), fact_report=fact_report, contradiction_graph=contradiction_graph, system_model=contradiction_graph.system_model, budget=phase_budgets.get("rational", {}))
                 trace.rational_synthesis = rational_synthesis
                 _record_duration(trace, "rational", t2)
                 _emit_phase(
@@ -918,7 +938,12 @@ class CognitiveLoop:
             termination_evidence = await self._gather_termination_evidence(trace, working_mem)
             working_mem.set("_termination_evidence", termination_evidence)
             reflection_question = effective_question + working_mem.get("_micro_steering", "")
-            reflection_report = await self.reflection.reflect(question=reflection_question, trace=trace, termination_evidence=termination_evidence)
+            reflection_report = await self.reflection.reflect(
+                question=reflection_question,
+                trace=trace,
+                termination_evidence=termination_evidence,
+                depth=phase_budgets.get("reflection", {}).get("depth"),
+            )
             trace.reflection = reflection_report
             _record_duration(trace, "reflection", t4)
             if on_phase:
@@ -999,6 +1024,9 @@ class CognitiveLoop:
                 next_skip.remove("practice")
             working_mem.set("skip_phases", next_skip)
             if reflection_report.focus_hints: working_mem.set("focus_hints", reflection_report.focus_hints)
+            # 下一轮各阶段执行预算：反思输出的 phase_budgets 写入 working_mem，
+            # 由循环起始读取并注入各阶段；未设置（空）则与现状等价。
+            working_mem.set("phase_budgets", getattr(reflection_report, "phase_budgets", None) or {})
             if reflection_report.recommended_mode and reflection_report.recommended_mode != mode:
                 log.info("cognitive_loop.mode_switch", old=mode, new=reflection_report.recommended_mode)
                 mode = reflection_report.recommended_mode

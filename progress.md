@@ -1,5 +1,64 @@
 # Praxic 执行进度
 
+## 2026-08-14 执行层升级（DSH 借鉴：上下文纪律 + 并发 + 失败分类 + 升级图 + 技能/压缩）
+
+- 方向：按 `docs/execution-layer-upgrade-prompt.md` 对照 DeepSeek Harness 源码提炼的可执行改进 `A→B→C→D→E→F(仅记录)` 全部实施。核心理念升级：执行层从「每轮规划工具调用」走向「有纪律的执行机器」。
+- 涉及文件：`praxic/tools/base.py`、`praxic/tools/permissions.py`、`praxic/tools/registry.py`、`praxic/tools/skill.py`（新建）、`praxic/tools/{filesystem,file_query,data_query,pdf_extract,sqlite_query,environment,web_search,web_fetch,python_exec,shell}.py`、`praxic/core/{practice,reviewer,skill_manager}.py`、`tests/test_execution_layer_upgrade.py`（新建）。
+
+| 2026-08-14 | Phase A1 摘要回填裁剪 | `ToolResult` 增 `summary`；data_query（overview/head/stats/group/missing）+python_exec 显式摘要；`_execute_round` 回填日志改用 `ensure_summary()`，多行输出只留 `（N 字符，见日志/产物）` 占位，消除“模型抄前轮证据致 JSON 截断”
+| 2026-08-14 | Phase A2 保头尾截断 | 新增 `head_tail_truncate()`（超阈值保头尾 + `[... 中段省略 ...]` marker）；替换 prev_round_results/all_rounds_log/失败 error 的硬 `[:N]`；实测 5000 字符单行输出压到 452，尾部错误信号保留。取舍见下方备注
+| 2026-08-14 | Phase B1 只读工具并发标记 | `BaseTool.is_concurrency_safe=False`（fail-closed 默认串行）；file_read/list/stat/grep/batch_read/data_query/sqlite_query/pdf_extract/env_tool/time_tool/web_search/web_fetch/skill 声明 True
+| 2026-08-14 | Phase B2 同轮并发调度 | 新增 `_schedule_tool_calls`：安全工具进 max_parallel=4 有界并行池，非安全工具构成独占屏障（先排空池再串行），结果按声明顺序提交；实测执行序 `safe1,safe2→barrier→unsafe→safe4`，提交序与声明一致
+| 2026-08-14 | Phase C1 失败分类细化 | python_exec/shell 超时改 `failure_class=timeout`，python_exec 输出超限改 `output_limit`；`_execution_status_text` 按 failure_class 打 `[超时]/[输出超限]/[权限拒绝]/[执行中断]` 标签，模型能区分“加大超时重试”vs“裁剪输出”vs“升级权限”
+| 2026-08-14 | Phase C2 升级提示机制 | 权限拒绝结果 error 附 `[升级提示] sandbox_permissions + justification`，指引用最窄档位带理由重试，fail-closed 无理由/被拒/取消一律不执行
+| 2026-08-14 | Phase D1 沙箱升级图 | `permissions.py` 新增 `SandboxLevel` + `SANDBOX_ESCALATION_GRAPH`（read_only→workspace_write→danger_full_access 单向）+ `escalation_allowed`；registry 增 `_try_escalation` 升级授权流程，缺 justification/只读模式 fail-closed
+| 2026-08-14 | Phase D2 审核升级吸收 | `build_reviewer` 改为返回 `{approved, reason, next_step}`；拒绝原因追加 `[审核建议]`，模型拿到“不通过”后的可操作路径
+| 2026-08-14 | Phase E1 技能按需加载 | 实践阶段注入技能目录摘要（`get_phase_skill_catalog`，name+描述，不含正文）；新增 `skill` 工具按名加载完整指令，实现“少存多指路”
+| 2026-08-14 | Phase E2 上下文压缩 | 新增 `_compress_history`：轮次≥3 时用 LLM 把早期轮压缩成 `<history-summary>` 节点，`_build_all_rounds_log` 用摘要+最近一轮替换全量，方向状态作为压缩输入保留不丢
+| 2026-08-14 | Phase F 记录不实施 | F1 代码运行时 SDK 生成仅记录思路（无需新依赖/规模可控，等实践能力再上台阶再评估）
+| 2026-08-14 | 复验 | `pytest` 182 passed（162 原有 + 20 新增），`compileall` 通过，全部相关模块 import 正常
+
+### A2 取舍备注（避免后人只见代码不知为何）
+
+- 对**含换行**的多行工具输出，回填摘要用纯占位 `（N 字符，见日志/产物）`，而非保留头尾样例。
+- 理由：A1 纪律“只有程序主动输出的才进上下文”才是主线；保留头尾样例仍是“抄一部分输出”，仍可能诱导模型下轮把样例抄进规划致 JSON 超长——正是原始痛点。占位把“证据出现过”变成显式“去取”，逼模型走结构化取数（data_query/file_read），而非复制粘贴。
+- A2 验收仍守住：**单行无换行**内容 `head_tail_truncate` 完整生效（保头尾不丢尾部）；多行输出交由 A1 纪律接管，两 phase 层次不同（A2 管物理截断不丢尾部，A1 管上下文该放什么）。
+- 补偿口子：`ensure_summary` 优先取工具显式 `summary`（data_query/python_exec 已给）；若某类工具确需“占位+简短头部样例”，可在 `ensure_summary` 按工具类型加可配置头部长度，不动全局。
+
+## 2026-08-14 泛化验证 + 计划偏差 + 档2声明式（1423）
+
+- 方向：按 1→4→2→3 完成——泛化验证与产物落盘检验、计划偏差反馈、档 2 声明式装配。
+- 涉及文件：`praxic/core/practice.py`、`praxic/tools/assembler.py`、`praxic/core/cognitive_loop.py`、`tests/test_practice_upgrade.py`。
+
+| 2026-08-14 | 里程碑：完整实践闭环零错误 | 真实任务“清洗→按城市/产品统计→写 report.md”：4 轮执行 verdict=partially_confirmed，报告落盘且经独立核算逐项准确（无效27行/有效284/总销量21818；城市深圳8315第一、产品A100 8963第一）；报告明确反驳“上海可能领先”假设，认识论有实质 |
+| 2026-08-14 | 计划偏差反馈 | `_execution_status_text` 对比 plan.tool_calls 与实际执行记录，暴露“规划了但未执行”的工具（可能被跳过/权限拦截/计划变更）；新增 `_last_round_plan`；3 个新测试 |
+| 2026-08-14 | 档2 声明式装配 | assembler 改为 TOOL_SPECS 声明式注册表（新增核心工具加一行即可）；register_plugins() 统一插件入口，cognitive_loop/practice 都用；核心27+插件demo 验证通过 |
+| 2026-08-14 | 复验 | `pytest` 150 passed |
+
+## 2026-08-13 真实试跑第二轮：断点 5-10 修复，链路首次跑通
+
+- 方向：继续用真实 LLM + 销售数据跑完整实践链路，录到 6 个新断点并修复，最终 verdict=partially_confirmed——完整链路第一次真正端到端跑通。
+- 涉及文件：`praxic/tools/python_exec.py`、`praxic/tools/data_query.py`、`praxic/core/practice.py`、`praxic/core/practice_harness.py`、`tests/test_tools_and_cache.py`、`tests/test_data_query.py`。
+
+| 2026-08-13 | 断点5 路径语义矛盾 | 模型把前序事实的 `examples/sales_data.csv` 当相对路径；`_build_tools_text` 在工具清单前注入工作区根 + “路径为相对工作区”提示 |
+| 2026-08-13 | 断点6 python_exec 沙箱 vs 数据分析 | pandas/os/open 全禁致数据分析做不了；修复 A：open() 允许只读（mode 检查，写模式/别名赋值拦截）；修复 B：data_query 补 group（分组聚合）+ missing（缺失统计）；python_exec 描述引导用标准库 csv |
+| 2026-08-13 | 断点7/8 输出截断根因查明 | DeepSeek max_tokens 含 reasoning，且 enable_reasoning=False 无效（参数被忽略，单轮 reasoning 高达 9245 token）；正确解法：max_tokens 提到 16384 + 提示词加输出精简约束（round_rationale≤80字、claim 字段≤40字） |
+| 2026-08-13 | 断点9/10 分析 JSON 解析失败/截断 | `_analyze_all_rounds`/`_boundary_analysis` 改用健壮的 `_parse_json_safe`；分析 max_tokens 4096→8192 |
+| 2026-08-13 | 关键认知修正 | 断点4 原判断方向对但机制错：DeepSeek max_tokens 包含 reasoning 且无法关闭；正确解法是提高预算 + 强制精简输出，而非关 reasoning |
+| 2026-08-13 | 复验 | `pytest` 147 passed；真实任务 verdict=partially_confirmed（模型真实发现 units 缺失 27 条、清洗后 284 行、城市分布不均） |
+
+## 2026-08-13 真实任务试跑断点修复记录
+
+- 方向：用真实 LLM + 真实数据（examples/sales_data.csv，311 行含缺失/异常值）跑多步任务，暴露并修复 4 个真实断点。这是“真实数据验证后再定架构”原则的兑现。
+- 涉及文件：`praxic/tools/python_exec.py`、`praxic/core/practice.py`、17 个 file/data 工具描述、`tests/test_practice_upgrade.py`。
+
+| 2026-08-13 | 断点1 csv 白名单缺失 | `python_exec` 禁止 import csv（处理数据最基础标准库被漏）；`_SAFE_IMPORTS` 补 csv/io/hashlib/glob/base64（os/urllib 仍留 blocked） |
+| 2026-08-13 | 断点2 路径约定漂移 | 模型传 `examples/xxx` 工具期望相对路径；17 个 file/data 工具描述统一加“路径为相对工作区路径” |
+| 2026-08-13 | 断点3 分析输出截断 | `_analyze_all_rounds` max_tokens 1024→2048 |
+| 2026-08-13 | 断点4 规划 JSON 被 reasoning 吃光 | practice 阶段 max_tokens=4096，DeepSeek 思维链单轮消耗高达 3373 token，正文 JSON 被截断致三轮规划全失败降级 V2；修复：规划/代码生成调用 `enable_reasoning=False`，max_tokens 兜底提至 8192 |
+| 2026-08-13 | 关键洞察 | “模型想得越细，输出越残缺”：DeepSeek reasoning 在规划阶段是负资产（思维链吃光正文预算），规划要“想得短写得清”，思维链留给分析阶段；只有真实跑才能暴露，mock 测不出 |
+| 2026-08-13 | 复验 | `pytest` 135 passed；规划调用验证 plan_failed=None、JSON 完整不截断；enable_reasoning=False+response_format 组合正常 |
+
 ## 2026-08-03 数据类工具补充记录
 
 - 方向：继续补工具——数据库查询与 PDF 文本提取，复用现有基础设施（sqlite3 标准库、现成 PdfConverter）。

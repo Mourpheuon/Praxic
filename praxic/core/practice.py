@@ -17,7 +17,13 @@ from ..api.schemas.models import (
 from ..config import PhaseConfig, load_phase_prompt, settings
 from ..llm.base import BaseLLM
 from ..tools.filesystem import WorkspaceToolkit
-from ..tools.base import ActionKind, ToolCallRecord, ToolStatus
+from ..tools.base import (
+    ActionKind,
+    ToolCallRecord,
+    ToolStatus,
+    ensure_summary,
+    head_tail_truncate,
+)
 from ..tools.registry import ToolRegistry
 from ..tools.permissions import PermissionPolicy
 from ..tools.shell import ShellTool
@@ -109,6 +115,7 @@ class PracticeModule:
         self.workspace = workspace
         self._current_question: str = ""
         self._current_hypotheses: str = ""
+        self._current_budget: dict = {}  # 实践阶段执行预算（经 practice() 入口从 wm 读取）
         self.max_retries = max_retries
         self.practice_rounds = practice_rounds
         self._background_procs: dict[str, dict] = {}
@@ -117,6 +124,11 @@ class PracticeModule:
         self._direction_state_update = ""
         self._artifacts: list[dict] = []
         self._last_round_detail = None
+        self._last_round_plan = None
+        # E2: 上下文压缩状态 —— 历史轮日志超阈值时用 LLM 摘要节点替换，
+        # 保留方向状态与产物台账，避免上下文无限膨胀。
+        self._compressed_history: str = ""
+        self._compressed_rounds: int = 0
 
     @property
     def can_execute(self) -> bool:
@@ -137,10 +149,16 @@ class PracticeModule:
 
         self._current_question = question
         self._current_wm = wm
+        # 实践阶段执行预算（由反思写入 working_mem；无则空 → 与现状等价）
+        _ph_budgets = (wm.get("phase_budgets", {}) if wm is not None else {}) or {}
+        self._current_budget = _ph_budgets.get("practice", {}) or {}
         self._direction_state = DirectionStateUpdate()
         self._direction_state_update = ""
         self._artifacts = []
         self._last_round_detail = None
+        self._last_round_plan = None
+        self._compressed_history = ""
+        self._compressed_rounds = 0
         hyps = []
         if trace.rational_synthesis:
             hyps = trace.rational_synthesis.hypotheses[:8]
@@ -228,10 +246,15 @@ class PracticeModule:
         r1_detail.direction_state = r1_direction_state
         direction_state_history.append(r1_direction_state)
         self._last_round_detail = r1_detail
+        self._last_round_plan = r1_plan
         # 产物台账：收集本轮生成/修改的文件，供下一轮直接引用。
         self._merge_artifacts(self._collect_artifacts(r1_detail, 1))
 
-        for r in range(2, self.practice_rounds + 1):
+        from .phase_budget import validate_positive_int
+        budget_rounds = validate_positive_int(self._current_budget.get("max_rounds"))
+        _effective_rounds = budget_rounds if budget_rounds is not None else self.practice_rounds
+
+        for r in range(2, _effective_rounds + 1):
             bg_results = await self._collect_background_results()
             if bg_results:
                 for bg in bg_results:
@@ -241,6 +264,15 @@ class PracticeModule:
             # 标记上一轮引用过的产物为活跃（供智能注入分层）。
             if round_records:
                 self._mark_artifacts_used(round_records[-1].tool_calls)
+            # E2: 轮次足够后对早期历史做一次 LLM 压缩，生成摘要节点替代全量日志。
+            if (r >= 3 and self._compressed_rounds == 0 and full_execution_log):
+                compressed = await self._compress_history(
+                    round_summaries, self._direction_state_update or "",
+                )
+                if compressed:
+                    self._compressed_history = compressed
+                    self._compressed_rounds = r - 1
+                    log.info("practice.history_compressed", at_round=r)
             ctx = self._build_next_round_context(r, question, trace, round_contexts, full_execution_log)
             rn_plan = await self._plan_next_round(ctx, registry=registry)
             # done 是结束信号：本轮 tool_calls 照常执行（收尾动作不丢），执行完再结束。
@@ -299,6 +331,7 @@ class PracticeModule:
             rn_detail.direction_state = rn_direction_state
             direction_state_history.append(rn_direction_state)
             self._last_round_detail = rn_detail
+            self._last_round_plan = rn_plan
             # 产物台账：本轮产物并入累积清单。
             self._merge_artifacts(self._collect_artifacts(rn_detail, r))
             if finish_after_round:
@@ -371,6 +404,17 @@ class PracticeModule:
             from ..core.reviewer import build_reviewer
             policy.reviewer = build_reviewer(self.llm, max_tokens=256)
         registry.register(ReadUserContextTool())
+        # E1: 技能按需加载工具（少存多指路）；技能管理器从 settings.skills_dir 读取。
+        try:
+            from ..core.skill_manager import SkillManager
+            from ..tools.skill import SkillLoadTool
+            skill_manager = SkillManager(settings.skills_dir)
+            registry.register(SkillLoadTool(manager=skill_manager))
+        except Exception:
+            log.warning("practice.skill_tool_register_error", exc_info=True)
+        # 插件（档 3）：与 CognitiveLoop 一致，从 data_dir/plugins 加载。
+        from ..tools.assembler import register_plugins
+        register_plugins(registry)
         self._fallback_registry = registry
         return registry
 
@@ -399,12 +443,25 @@ class PracticeModule:
         return "\n\n".join(anchor_parts) or "（无额外锚点，以原始问题为准）"
 
     def _build_tools_text(self, registry) -> str:
+        """工具清单 + 工作区路径语义提示（模型要知道路径是相对工作区的）。"""
+        hint_lines = ["## 工作区根目录", f"当前工作区：{self._workspace_root_text()}", ""
+                      "所有文件工具（file_*/data_query/sqlite_query/pdf_extract/archive_*）的路径参数",
+                      "都是相对工作区根目录的路径。例如工作区内文件 sales_data.csv，路径应写 sales_data.csv，",
+                      "不要加工作区目录前缀。", ""]
         if registry is not None:
             try:
-                return registry.format_for_prompt()
+                return "\n".join(hint_lines) + registry.format_for_prompt()
             except Exception as e:
                 log.warning("practice.tools_text_error", error=str(e))
-        return harness.DEFAULT_TOOLS
+        return "\n".join(hint_lines) + harness.DEFAULT_TOOLS
+
+    def _workspace_root_text(self) -> str:
+        if self.workspace is not None:
+            try:
+                return str(self.workspace.workspace.resolve())
+            except Exception:
+                pass
+        return "（无工作区）"
 
     # ── Round 1 planning ──
 
@@ -435,7 +492,9 @@ class PracticeModule:
         prompt = harness.R1_PLAN
         if wm:
             try:
-                skill_ctx = wm.get("_skill_context_practice", "")
+                # E1: 技能注入只含目录摘要（阶段内可用技能的 name+描述），
+                # 完整指令由 skill 工具按名加载，避免全量正文挤占上下文。
+                skill_ctx = wm.get("_skill_catalog_summary", "")
                 if skill_ctx:
                     prompt = "## 可用技能\\n" + skill_ctx + "\\n\\n---\\n\\n" + prompt
             except Exception:
@@ -467,6 +526,40 @@ class PracticeModule:
             registry=registry,
         )
 
+    def _practice_budget_kwargs(self, depth=None) -> tuple[dict, int]:
+        """返回实践阶段 LLM 调用的推理控制 kwargs 与默认 max_tokens。
+
+        practice 默认关闭思维链（enable_reasoning=False 是现行为，深度体系保留）。
+        max_tokens：预算显式 max_tokens 优先；否则按 depth 查 DEPTH_CONFIG。
+        depth 默认读 self._current_budget.depth，否则 STANDARD。
+        """
+        from .depth import parse_depth, DEPTH_CONFIG, Depth as _Depth
+        from .phase_budget import validate_positive_int
+        budget = self._current_budget or {}
+        reasoning_kwargs = {"enable_reasoning": False}
+        if depth is None:
+            depth = parse_depth(budget.get("depth"), default=_Depth.STANDARD)
+        else:
+            depth = parse_depth(depth)
+        _cfg = DEPTH_CONFIG.get(depth) or {}
+        _dflt_tok = int(_cfg.get("max_tokens", 4096))
+        max_tokens = validate_positive_int(budget.get("max_tokens"))
+        if max_tokens is None:
+            max_tokens = max(_dflt_tok, getattr(self.config, "max_tokens", 4096))
+        return reasoning_kwargs, max_tokens
+
+    def _analyze_max_tokens(self, fallback: int = 8192) -> int:
+        """实践分析类调用的 max_tokens：分析类固定 STANDARD 档（_analyze_all_rounds /_boundary_analysis）。
+        有预算显式 max_tokens 则取预算，否则取 STANDARD 档 DEEP/STANDARD 混合中的更大值兜底。"""
+        from .phase_budget import validate_positive_int
+        from .depth import DEPTH_CONFIG
+        budget = self._current_budget or {}
+        v = validate_positive_int(budget.get("max_tokens"))
+        if v is not None:
+            return v
+        _std = DEPTH_CONFIG.get("standard", {}).get("max_tokens", 4096)
+        return max(fallback, int(_std))
+
     async def _call_planner(self, system_prompt: str, user_msg: str, registry=None) -> dict:
         """
         规划调用。使用 self.max_retries 循环重试：每次失败把解析/校验错误与
@@ -474,6 +567,28 @@ class PracticeModule:
         重试耗尽返回带 plan_failed 标记的空计划，由上层决定降级。
         """
         system_prompt += get_autonomy_instruction(settings.autonomy_level, "practice")
+        # 按当前深度注入规划输出 schema 分层：
+        #   SHALLOW → tool_calls + directional_claim；STANDARD → 加 testable_claims + rationale；
+        #   DEEP → 再加策略推演（strategy_deliberation）。
+        from .depth import parse_depth, Depth as _Depth
+        _depth = parse_depth((self._current_budget or {}).get("depth"), default=_Depth.STANDARD)
+        if _depth == _Depth.SHALLOW:
+            system_prompt += (
+                "\n\n## 规划输出范围（本档）\n"
+                "本轮规划仅需输出 tool_calls 与 directional_claim，其余可省略默认值。"
+            )
+        elif _depth == _Depth.STANDARD:
+            system_prompt += (
+                "\n\n## 规划输出范围（本档）\n"
+                "输出 tool_calls、directional_claim、testable_claims、round_rationale，"
+                "给出每轮检验可测试的论断与依据。"
+            )
+        else:  # DEEP
+            system_prompt += (
+                "\n\n## 规划输出范围（本档）\n"
+                "在 STANDARD 基础上增加策略推演（strategy_deliberation）：说明为何选此检验路径、"
+                "预期的认识变化与备选方向。"
+            )
         retries = max(1, int(self.max_retries or 3))
         last_error = ""
         last_snippet = ""
@@ -491,7 +606,8 @@ class PracticeModule:
             resp = None
             try:
                 # B2: JSON mode，仅首轮尝试并带安全网；provider 不支持则降级文本模式。
-                call_kwargs: dict = {}
+                _reasoning_kwargs, _plan_max_tokens = self._practice_budget_kwargs()
+                call_kwargs: dict = dict(_reasoning_kwargs)
                 if attempt == 1:
                     call_kwargs["response_format"] = {"type": "json_object"}
                 try:
@@ -499,7 +615,7 @@ class PracticeModule:
                         messages=[{"role": "user", "content": msg}],
                         system=system_prompt,
                         temperature=getattr(self.config, "temperature", 0.4),
-                        max_tokens=getattr(self.config, "max_tokens", 8192),
+                        max_tokens=_plan_max_tokens,
                         **call_kwargs,
                     )
                 except Exception as e:
@@ -513,7 +629,8 @@ class PracticeModule:
                             messages=[{"role": "user", "content": msg}],
                             system=system_prompt,
                             temperature=getattr(self.config, "temperature", 0.4),
-                            max_tokens=getattr(self.config, "max_tokens", 8192),
+                            max_tokens=_plan_max_tokens,
+                            **dict(_reasoning_kwargs),
                         )
                     else:
                         raise
@@ -635,18 +752,15 @@ class PracticeModule:
             steps.append(PracticeStep(description=f"第{round_num}轮: {rationale}", action_taken=rationale, observed_result="开始", matched_expectation=True))
 
         tool_calls = await self._normalise_tool_calls(plan)
-        for tc in tool_calls:
-            tool_name = tc.get("tool", "")
-            params = tc.get("params", {})
+        # B2: 先并发调度与执行，把每个调用的结果按声明顺序收齐，再统一处理。
+        # 并发安全的工具进有界并行池；非安全工具构成独占屏障（等并行池排空
+        # 后才执行）。结果顺序与模型声明一致（单车道：策略串行，执行体并发）。
+        call_records = await self._schedule_tool_calls(
+            tool_calls, registry, wm=wm,
+        )
+        for tool_name, params, result in call_records:
             if not tool_name:
                 continue
-            call_params = dict(params)
-            if tool_name == "read_user_context" and wm is not None:
-                # Keep the actual background out of authorization parameters
-                # and audit records. ToolRegistry carries this private value
-                # only to the already-authorized execution.
-                call_params["_user_context"] = str(wm.get("context", "") or "")
-            result = await registry.call(tool_name, **call_params) if registry else None
             record = None
             if result is not None:
                 record = next((r for r in reversed(registry.records) if r.call_id == result.call_id), None)
@@ -685,7 +799,8 @@ class PracticeModule:
                         log.warning("practice.steering_checkpoint_error", tool=tool_name, exc_info=True)
             if result and result.ok:
                 classification = result.state_classification
-                log_parts.append(f"[{tool_name}] {classification}: {(result.content or '')[:200]}")
+                # A1: 回填下一轮上下文用一句话摘要而非 content 全量，避免模型抄证据导致 JSON 超长。
+                log_parts.append(f"[{tool_name}] {classification}: {ensure_summary(result)}")
                 outcomes.append(f"{classification} {tool_name}")
                 success.append(f"{tool_name} {classification}")
                 steps.append(PracticeStep(
@@ -711,12 +826,14 @@ class PracticeModule:
                     unexpected.append(f"工具 {tool_name} 已执行，但缺少世界状态回读证据")
             else:
                 err = result.error if result else "registry= None"
+                # A2: 失败原因通常在输出尾部，用保头尾截断避免错误信息丢失
+                err_trunc = head_tail_truncate(err, head_chars=200, tail_chars=300)
                 log_parts.append(f"[{tool_name}] FAIL: {err}")
                 outcomes.append(f"FAIL {tool_name}")
                 failure.append(f"{tool_name}: {err}")
                 steps.append(PracticeStep(
                     description=f"失败 {tool_name}", action_taken=str(params)[:200],
-                    observed_result=err[:300], matched_expectation=False, tool=tool_name,
+                    observed_result=err_trunc, matched_expectation=False, tool=tool_name,
                     action_kind=result.action_kind.value if result else "",
                     permission=result.permission.to_dict() if result and result.permission else {},
                     tool_result=result.to_dict() if result else {},
@@ -738,6 +855,78 @@ class PracticeModule:
             world_changed=world_changed,
         )
         return (steps, outcomes, unexpected, success, failure, "\\n".join(log_parts) or "（空）", all_ok, detail)
+
+    async def _schedule_tool_calls(
+        self,
+        tool_calls: list[dict],
+        registry=None,
+        wm=None,
+        max_parallel: int = 4,
+    ) -> list[tuple[str, dict, ToolResult | None]]:
+        """B2: 同轮工具并发调度，按模型声明顺序返回 [(tool, params, result)]。
+
+        规则（参考 DSH 单车道模型：策略串行、执行体并发、提交保序）：
+        - 并发安全工具（is_concurrency_safe=True）进有界并行池（max_parallel）。
+        - 非安全工具构成独占屏障：前一个完成后才执行下一个，且必须等
+          并行池排空，避免读写竞态（fail-closed，默认串行）。
+        - read_user_context 的 _user_context 只在已授权执行时注入。
+        """
+        if registry is None:
+            return [
+                (tc.get("tool", ""), tc.get("params", {}) or {}, None)
+                for tc in tool_calls
+            ]
+
+        semaphore = asyncio.Semaphore(max(max_parallel, 1))
+        pending: list[asyncio.Task] = []
+        results: list[tuple[str, dict, ToolResult | None]] = []
+
+        async def _dispatch(tc: dict):
+            tool_name = tc.get("tool", "")
+            params = tc.get("params", {}) or {}
+            if not tool_name:
+                return (tool_name, params, None)
+            call_params = dict(params)
+            if tool_name == "read_user_context" and wm is not None:
+                call_params["_user_context"] = str(wm.get("context", "") or "")
+            try:
+                async with semaphore:
+                    result = await registry.call(tool_name, **call_params)
+            except Exception as exc:
+                log.warning("practice.schedule_tool_error", tool=tool_name, error=str(exc))
+                result = ToolResult(
+                    status=ToolStatus.ERROR,
+                    content="",
+                    error=f"调度执行异常: {exc}",
+                    failure_class="tool_error",
+                )
+            return (tool_name, params, result)
+
+        async def _drain():
+            if not pending:
+                return
+            for fut in pending:
+                results.append(await fut)
+            pending.clear()
+
+        for tc in tool_calls:
+            tool_name = tc.get("tool", "")
+            is_safe = False
+            reg_get = getattr(registry, "get", None)
+            if tool_name and callable(reg_get):
+                reg_tool = reg_get(tool_name)
+                is_safe = bool(
+                    reg_tool is not None
+                    and getattr(reg_tool, "is_concurrency_safe", False)
+                )
+            if is_safe:
+                pending.append(asyncio.create_task(_dispatch(tc)))
+            else:
+                # 非安全工具：独占屏幕，先排空并行池，再串行执行
+                await _drain()
+                results.append(await _dispatch(tc))
+        await _drain()
+        return results
 
     async def _normalise_tool_calls(self, plan: dict) -> list[dict]:
         """Accept the current tool_calls schema and the earlier file/command schema.
@@ -832,11 +1021,13 @@ class PracticeModule:
         }
         for key, value in replacements.items():
             prompt = prompt.replace(key, str(value))
+        _rkw, _mtok = self._practice_budget_kwargs(depth="shallow")  # 代码生成固定 SHALLOW，无需推理链
         response = await self.llm.call(
             messages=[{"role": "user", "content": f"为文件 {path} 生成可运行内容。用途：{purpose}"}],
             system=prompt,
             temperature=getattr(self.config, "temperature", 0.3),
-            max_tokens=getattr(self.config, "max_tokens", 8192),
+            max_tokens=_mtok,
+            **_rkw,
         )
         content = response.content.strip()
         if content.startswith("```"):
@@ -887,16 +1078,34 @@ class PracticeModule:
             "artifacts_text": self._artifacts_text(),
             "execution_status_text": self._execution_status_text(),
             "prev_round_num": str(prev.get("round_num", round_num - 1)),
-            "prev_round_plan": prev.get("plan_json", "（无）")[:3000],
-            "prev_round_results": prev.get("results", "（无）")[:3000],
+            "prev_round_plan": head_tail_truncate(prev.get("plan_json", "（无）"), max_len=3000),
+            "prev_round_results": head_tail_truncate(prev.get("results", "（无）"), max_len=3000),
             "prev_round_duration": prev.get("duration", "未知"),
-            "all_rounds_log": "\\n\\n".join(full_execution_log)[:4000] if full_execution_log else "（无）",
+            "all_rounds_log": self._build_all_rounds_log(full_execution_log, round_num),
         }
+
+    def _build_all_rounds_log(self, full_execution_log: list[str], round_num: int) -> str:
+        # E2: 已被摘要压缩的早期轮次不再全量注入，改为摘要节点；
+        # 只保留最近一轮原始日志 + 压缩前的摘要节点，方向状态不丢。
+        recent = (
+            full_execution_log[-1][:1200] if full_execution_log else ""
+        )
+        parts: list[str] = []
+        if getattr(self, "_compressed_history", ""):
+            parts.append(self._compressed_history)
+        if recent:
+            parts.append(recent)
+        if not parts:
+            return "（无）" if not full_execution_log else head_tail_truncate(
+                "\n\n".join(full_execution_log), max_len=4000,
+            )
+        return head_tail_truncate("\n\n".join(parts), max_len=4000)
 
     def _execution_status_text(self) -> str:
         """把前一轮工具执行结果结构化：成功 / 技术中断 / 权限拒绝，含失败原因。
 
-        供下一轮规划直接看到执行状态，不用从日志文本里翻。
+        同时对比规划 vs 实际执行，暴露“计划了但未执行”的偏差，
+        供下一轮规划避免重复规划失败的或未落地的动作。
         """
         last = getattr(self, "_last_round_detail", None)
         if last is None or not (last.tool_calls or []):
@@ -907,18 +1116,87 @@ class PracticeModule:
             result = record.get("result") or {}
             status = result.get("status", "?")
             classification = result.get("state_classification", "")
-            error = str(result.get("error") or "")[:120]
+            failure_class = result.get("failure_class") or ""
+            error = head_tail_truncate(str(result.get("error") or ""), head_chars=80, tail_chars=160)
             if status == "error" or classification in ("tool_error", "verification_failed", "permission_denied", "authorization_expired"):
-                tag = "[技术中断]"
+                # C1: 区分失败类型，让模型能给出正确修复动作（超时可加大超时重试，
+                # 输出超限该裁剪，权限拒绝该升级）。
                 if "permission" in classification or "authorization" in classification:
                     tag = "[权限拒绝]"
-                lines.append(f"  {tag} {tool}: {error or classification}")
+                elif failure_class == "timeout":
+                    tag = "[超时]"
+                elif failure_class == "output_limit":
+                    tag = "[输出超限]"
+                elif failure_class in ("abort", "worker_exit"):
+                    tag = f"[执行中断:{failure_class}]"
+                else:
+                    tag = "[技术中断]"
+                detail = error or classification
+                if failure_class and failure_class not in (
+                    "permission_denied", "authorization_expired", "authorization_pending"
+                ):
+                    detail = f"{failure_class} | {detail}"
+                lines.append(f"  {tag} {tool}: {detail}")
             else:
                 lines.append(f"  [成功] {tool}: {classification or status}")
+
+        # 计划偏差：规划了但执行记录里没有的（未执行/被跳过）
+        plan = getattr(self, "_last_round_plan", None) or {}
+        planned = [str(tc.get("tool", "")) for tc in (plan.get("tool_calls") or []) if tc.get("tool")]
+        executed = [str(rec.get("tool", "")) for rec in (last.tool_calls or []) if rec.get("tool")]
+        if planned:
+            missed = [t for t in planned if t not in executed]
+            if missed:
+                lines.append(f"  计划偏差：规划了但未执行 [{', '.join(missed)}]（可能被跳过、权限拦截或计划变更）")
         return "\n".join(lines)
 
     def _summarise_round(self, r: int, plan: dict, outcomes, unexpected, failures, all_ok):
         return f"第{r}轮: {plan.get('round_rationale','')[:100]} ok={all_ok}"
+
+    async def _compress_history(self, round_summaries: list[str], direction_update: str = "") -> str:
+        """E2: 用 LLM 把早期轮次历史压缩成一个摘要节点，替代全量日志。
+
+        保留方向状态（direction_update）与结论，丢弃过程性全文，控制上下文不膨胀。
+        返回的摘要节点以 <history-summary> 标记包围，便于后续识别。
+        """
+        if not round_summaries:
+            return ""
+        try:
+            source = "\n".join(round_summaries[-8:])
+            task = (
+                "把以下多轮实践的历史压缩成一段可复核的摘要节点"
+                "（≤250字中文），保留每轮验证了哪个论断、得到什么有效观测、"
+                "出现了哪些技术失败或意外发现；不要复述工具原始输出。"
+                "只输出摘要正文。"
+            )
+            content = (
+                f"## 方向状态（保留）\n{direction_update or '（无）'}\n\n"
+                f"## 已有轮次摘要\n{source}\n"
+            )
+            _rkw, _mtok = self._practice_budget_kwargs(depth="shallow")
+            resp = await self.llm.call(
+                messages=[{"role": "user", "content": task + "\n\n" + content}],
+                system=(
+                    "你是 Praxic 实践阶段的上下文压缩器。请把早期轮次的过程性日志"
+                    "总结成一个方向状态不丢的摘要节点，供后续轮次参考，避免上下文膨胀。"
+                ),
+                temperature=0.2,
+                max_tokens=_mtok,
+                **_rkw,
+            )
+            summary = (resp.content or "").strip()
+            if not summary:
+                return ""
+            return "\n".join(
+                [
+                    "<history-summary>",
+                    summary[:1200],
+                    "</history-summary>",
+                ]
+            )
+        except Exception as exc:
+            log.warning("practice.compress_error", error=str(exc))
+            return ""
 
     async def _analyze_all_rounds(self, question: str, trace: CognitiveTrace, rationale: str, all_rounds_log: str) -> Optional[dict]:
         try:
@@ -926,24 +1204,8 @@ class PracticeModule:
             if trace.rational_synthesis:
                 ht = "\\n".join(f"- {h}" for h in trace.rational_synthesis.hypotheses[:5])
             prompt = _FINAL_ANALYSIS_PROMPT.replace("{question}", question).replace("{hypotheses}", ht or "（无）").replace("{practice_rationale}", rationale or "（无）").replace("{all_rounds_log}", all_rounds_log[:6000])
-            resp = await self.llm.call(messages=[{"role": "user", "content": "综合分析全部轮次实验结果。"}], system=prompt, temperature=0.3, max_tokens=1024)
-            raw = resp.content.strip()
-            while raw.startswith("```"):
-                idx = raw.find("\n")
-                raw = raw[idx+1:] if idx >= 0 else raw[3:]
-            if raw.endswith("```"): raw = raw[:-3]
-            raw = raw.strip().rstrip("`")
-            try:
-                return json.loads(raw)
-            except json.JSONDecodeError:
-                fallback = self._extract_json_object(raw)
-                if fallback is not None:
-                    try:
-                        return json.loads(fallback)
-                    except json.JSONDecodeError:
-                        pass
-                log.warning("practice.analysis_json_parse_error", raw=raw[:500])
-                return None
+            resp = await self.llm.call(messages=[{"role": "user", "content": "综合分析全部轮次实验结果。"}], system=prompt, temperature=0.3, max_tokens=self._analyze_max_tokens(), enable_reasoning=False)
+            return self._parse_json_safe(resp.content, None)
         except Exception as e:
             log.warning("practice.analysis_error", error=str(e))
             return None
@@ -971,26 +1233,10 @@ class PracticeModule:
                 messages=[{"role": "user", "content": "基于调查事实与矛盾分析，对核心主张做知性评估（V2）。"}],
                 system=prompt,
                 temperature=0.3,
-                max_tokens=1024,
+                max_tokens=self._analyze_max_tokens(4096),
+                enable_reasoning=False,
             )
-            raw = resp.content.strip()
-            while raw.startswith("```"):
-                idx = raw.find("\n")
-                raw = raw[idx + 1:] if idx >= 0 else raw[3:]
-            if raw.endswith("```"):
-                raw = raw[:-3]
-            raw = raw.strip().rstrip("`")
-            try:
-                return json.loads(raw)
-            except json.JSONDecodeError:
-                fallback = self._extract_json_object(raw)
-                if fallback is not None:
-                    try:
-                        return json.loads(fallback)
-                    except json.JSONDecodeError:
-                        pass
-                log.warning("practice.boundary_analysis_parse_error", raw=raw[:500])
-                return None
+            return self._parse_json_safe(resp.content, None)
         except Exception as e:
             log.warning("practice.boundary_analysis_error", error=str(e))
             return None

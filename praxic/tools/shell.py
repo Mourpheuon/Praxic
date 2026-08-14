@@ -281,7 +281,7 @@ class ShellTool(BaseTool):
                     metadata={
                         "expected_change": action_kind in (ActionKind.CHANGE, ActionKind.EXTERNAL)
                     },
-                    failure_class="tool_error",
+                    failure_class="timeout",
                 )
             out = (stdout or b"").decode("utf-8", "replace")
             err = (stderr or b"").decode("utf-8", "replace")

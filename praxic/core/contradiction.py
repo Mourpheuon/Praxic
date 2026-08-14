@@ -290,6 +290,7 @@ class ContradictionAnalyzer:
         question: str,
         rational_context: str = "",
         additional_context: str = "",
+        budget: dict = None,
     ) -> ContradictionGraph:
         log.info("contradiction.start", n_facts=len(fact_report.facts))
 
@@ -330,6 +331,31 @@ class ContradictionAnalyzer:
             pass
         temperature = getattr(self.config, "temperature", 0.3)
         max_tokens = getattr(self.config, "max_tokens", 16384)
+        budget = budget or {}
+        from .phase_budget import budget_max_tokens, budget_depth
+        from .depth import Depth
+        depth = budget_depth(budget) or Depth.STANDARD
+        max_tokens = budget_max_tokens(budget, max_tokens)
+        # 按深度注入输出 schema 分层说明：
+        #   SHALLOW → 仅 principal_contradiction；STANDARD → principal+secondary+简短推导；
+        #   DEEP → 完整 system_model + 全流程推导链
+        _schema_scope = {
+            Depth.SHALLOW: (
+                "\n\n## 输出范围（本档）\n"
+                "仅需输出 principal_contradiction，secondary_contradictions 与 system_model 可空。"
+            ),
+            Depth.STANDARD: (
+                "\n\n## 输出范围（本档）\n"
+                "输出 principal_contradiction 与 secondary_contradictions，推导链可简短；"
+                "system_model 可输出必要要素即可。"
+            ),
+            Depth.DEEP: (
+                "\n\n## 输出范围（本档）\n"
+                "必须输出完整 system_model（elements/relationships/feedback_loops/emergent_properties）"
+                "与完整的推导链（derivation_chain 每步给出具体推理）。"
+            ),
+        }.get(depth, "")
+        system = system + _schema_scope
 
         response = await self.llm.call(
             messages=[{"role": "user", "content": user_content}],
@@ -339,6 +365,9 @@ class ContradictionAnalyzer:
         )
 
         graph = self._parse_response(response.content)
+        # C3：DEEP 要求完整 system_model，缺失时 log warning（不崩溃，走既有 fallback）
+        if depth == Depth.DEEP and graph.system_model is None:
+            log.warning("contradiction.schema_level_missing_system_model", depth="deep")
         log.info(
             "contradiction.done",
             has_principal=graph.principal_contradiction is not None,

@@ -21,7 +21,14 @@ from .base import (
     ToolResult,
     ToolStatus,
 )
-from .permissions import AuthorizationRequest, PermissionPolicy
+from .permissions import (
+    AuthorizationRequest,
+    PermissionPolicy,
+    SandboxLevel,
+    build_escalation_hint,
+    escalation_allowed,
+    sandbox_from_string,
+)
 
 log = structlog.get_logger(__name__)
 
@@ -155,6 +162,9 @@ class ToolRegistry:
         authorization_timeout = float(
             params.pop("_authorization_timeout_seconds", self.authorization_timeout_seconds)
         )
+        # C2/D1: 升级控制参数，不进入工具参数或 audit（只用于授权判定与提示）。
+        requested_sandbox = params.pop("sandbox_permissions", None)
+        escalation_justification = params.pop("justification", None)
         # Runtime-only values are never included in authorization requests or
         # tool records. The practice phase uses this channel to pass the
         # already-held background text after approval without exposing it while
@@ -185,12 +195,18 @@ class ToolRegistry:
             # AUTO_REVIEW 硬规则未通过：先给语义审核器一次机会，通过则跳过授权。
             if permission.review_requested and self.policy.reviewer is not None:
                 try:
-                    approved = await self.policy.reviewer(
+                    review = await self.policy.reviewer(
                         name, action_kind, params, permission.reason
                     )
                 except Exception as exc:
                     log.warning("tool_registry.reviewer_error", tool=name, error=str(exc))
-                    approved = False
+                    review = {"approved": False, "reason": "", "next_step": ""}
+                approved = bool((review or {}).get("approved", False))
+                # D2: 审核拒绝不只是一句"不通过"，附上可操作路径供模型/用户下一步。
+                if not approved and isinstance(review, dict):
+                    permission._review_next_step = str(
+                        (review.get("next_step") or review.get("reason") or "")
+                    )[:300]
                 if approved:
                     self._emit(
                         {
@@ -229,6 +245,28 @@ class ToolRegistry:
                 if aborted is not None:
                     return aborted
         if permission.decision != PermissionDecision.ALLOW:
+            # C2/D1/D2: 权限拒绝时附带回填升级提示；若调用方已带 sandbox_permissions
+            # + justification，则先尝试升级授权（最窄档位 + 理由，fail-closed）。
+            escalated = await self._try_escalation(
+                name=name,
+                action_kind=action_kind,
+                safe_params=safe_params,
+                params=params,
+                tool_params=tool_params,
+                permission=permission,
+                call_id=call_id,
+                started_at=started_at,
+                started=started,
+                authorization_timeout=authorization_timeout,
+                requested_sandbox=requested_sandbox,
+                justification=escalation_justification,
+            )
+            if escalated is not None:
+                return escalated
+            hint = build_escalation_hint(
+                tool_name=name,
+                current_mode=self.policy.permission_mode,
+            )
             result = ToolResult(
                 status=ToolStatus.ERROR,
                 content="",
@@ -239,6 +277,10 @@ class ToolRegistry:
                 started_at=started_at,
                 failure_class="permission_denied",
             )
+            result.metadata = dict(result.metadata or {})
+            result.metadata["escalation_hint"] = hint
+            # C2: 把失败原因与升级指引合并进可回填的 error，供模型下一轮自纠
+            result.error = f"{permission.reason}\n{hint}".strip()
             self._finish_record(name, safe_params, action_kind, result, started)
             return result
         try:
@@ -284,6 +326,188 @@ class ToolRegistry:
             )
             self._finish_record(name, safe_params, action_kind, result, started)
             return result
+
+    async def _try_escalation(
+        self,
+        *,
+        name: str,
+        action_kind: ActionKind,
+        safe_params: dict,
+        params: dict,
+        tool_params: dict,
+        permission,
+        call_id: str,
+        started_at: str,
+        started: float,
+        authorization_timeout: float,
+        requested_sandbox,
+        justification,
+    ) -> Optional[ToolResult]:
+        """C2/D1: 处理带 sandbox_permissions+justification 的升级重试。
+
+        返回：
+        - None：未请求升级或升级失败/被拒，调用方回落到普通拒绝返回。
+        - ToolResult：升级已批准并完成执行，或升级等待被拒/超时的错误结果。
+
+        fail-closed：无理由、无升级目标、升级图非法、只读模式下请求升级、
+        用户拒绝或取消，一律拒绝并返回 None / 拒绝结果。
+        """
+        if requested_sandbox is None:
+            return None
+        try:
+            requested = sandbox_from_string(requested_sandbox)
+        except ValueError:
+            return None
+
+        current_mode = self.policy.permission_mode
+        from ..core.autonomy import PermissionMode as _PM
+
+        # 只读权限模式是权限系统的地板：模型不可越过它自行请求升级。
+        if current_mode == _PM.READ_ONLY:
+            return None
+        # 升级图合法性与最窄原则：只允许前进，且目标不得重过当前门槛实际允许的最大值。
+        if not escalation_allowed(
+            sandbox_from_string(None), requested
+        ):
+            return None
+        reason = str(justification or "").strip()
+        if not reason:
+            # fail-closed：带升级请求但无理由，视为非法尝试，回落普通拒绝
+            return None
+
+        scope = str(params.get("path") or params.get("target") or params.get("cwd") or "")
+        request = self.policy.create_authorization_request(
+            tool_name=name,
+            action_kind=action_kind,
+            params=safe_params,
+            scope=scope,
+            reason=f"[沙箱升级到 {requested.label}] {reason}",
+        )
+        permission.request_id = request.request_id
+        request_id = request.request_id
+        event = asyncio.Event()
+        self._authorization_events[request_id] = event
+        self._emit(
+            {
+                "event_type": "authorization_requested",
+                "request_id": request_id,
+                "tool": name,
+                "summary": "权限升级请求：" + name,
+                "authorization": request.to_dict(),
+                "escalation": {"sandbox_permissions": requested.label, "justification": reason},
+            }
+        )
+        approved = False
+        try:
+            try:
+                if authorization_timeout > 0:
+                    await asyncio.wait_for(event.wait(), timeout=authorization_timeout)
+                else:
+                    await event.wait()
+                resolved = self.policy.get_request(request_id)
+                approved = resolved is not None and resolved.status == "approved"
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                self.policy.expire_request(request_id)
+                approved = False
+        finally:
+            self._authorization_events.pop(request_id, None)
+
+        if not approved:
+            # 升级未获批准：记一次拒绝，让模型循环回到普通拒绝处理（不执行）。
+            denied = self.policy.record_decision(
+                PermissionDecision.DENY,
+                "权限升级未获批准，行动不会执行",
+                scope,
+                request_id=request_id,
+            )
+            result = ToolResult(
+                status=ToolStatus.ERROR,
+                content="",
+                error=denied.reason,
+                action_kind=action_kind,
+                permission=denied,
+                call_id=call_id,
+                started_at=started_at,
+                failure_class="permission_denied",
+            )
+            result.metadata = dict(result.metadata or {})
+            result.metadata["escalation_hint"] = build_escalation_hint(
+                tool_name=name, current_mode=current_mode,
+            )
+            self._finish_record(name, safe_params, action_kind, result, started)
+            return result
+
+        # 升级批准：以当前（尚未执行的）权限重新放行，直接执行工具。
+        grant = self.policy.issue_grant(
+            scope=scope,
+            ttl_seconds=900.0,
+            tool_name=name,
+            action_kind=action_kind.value,
+            request_id=request_id,
+        )
+        final = self.policy.check(
+            tool_name=name,
+            action_kind=action_kind,
+            params=params,
+            sandbox_safe=getattr(self._tools.get(name), "sandbox_safe", False),
+            requires_authorization=getattr(self._tools.get(name), "requires_authorization", False),
+            authorization_reason=getattr(self._tools.get(name), "authorization_reason", ""),
+            requires_network=getattr(self._tools.get(name), "requires_network", False),
+            authorization_id=grant.grant_id,
+        )
+        if final.decision != PermissionDecision.ALLOW:
+            denied = self.policy.record_decision(
+                PermissionDecision.DENY, "升级后仍不允许该操作", scope, request_id=request_id,
+            )
+            result = ToolResult(
+                status=ToolStatus.ERROR,
+                content="",
+                error=denied.reason,
+                action_kind=action_kind,
+                permission=denied,
+                call_id=call_id,
+                started_at=started_at,
+                failure_class="permission_denied",
+            )
+            self._finish_record(name, safe_params, action_kind, result, started)
+            return result
+        try:
+            result = await (self._tools.get(name).run(**tool_params))
+        except Exception as exc:
+            log.warning("tool_registry.escalation_run_error", tool=name, error=str(exc))
+            result = ToolResult(
+                status=ToolStatus.ERROR,
+                content="",
+                error=f"工具 {name} 调用失败: {exc}",
+                action_kind=action_kind,
+                permission=final,
+                call_id=call_id,
+                started_at=started_at,
+                failure_class="tool_error",
+            )
+            self._finish_record(name, safe_params, action_kind, result, started)
+            return result
+        if not isinstance(result, ToolResult):
+            result = ToolResult(status=ToolStatus.SUCCESS, content=str(result), data=result)
+        result.action_kind = action_kind
+        result.permission = final
+        result.call_id = call_id
+        result.started_at = started_at
+        result.duration_ms = round((perf_counter() - started) * 1000, 3)
+        try:
+            result.verification = await (self._tools.get(name).verify(params, result))
+        except Exception as exc:
+            log.warning("tool_registry.verification_error", tool=name, error=str(exc))
+            from .base import VerificationResult, VerificationStatus
+
+            result.verification = VerificationResult(
+                status=VerificationStatus.FAILED, summary=f"回读验证异常：{exc}",
+            )
+            result.failure_class = "verification_failed"
+        if result.status == ToolStatus.ERROR and not result.failure_class:
+            result.failure_class = "tool_error"
+        self._finish_record(name, safe_params, action_kind, result, started)
+        return result
 
     async def _await_authorization(
         self,
@@ -366,7 +590,8 @@ class ToolRegistry:
                     result = ToolResult(
                         status=ToolStatus.ERROR,
                         content="",
-                        error=denied.reason,
+                        error=self._with_review_hint(denied, permission,
+                                                       denied.reason),
                         action_kind=action_kind,
                         permission=denied,
                         call_id=call_id,
@@ -386,7 +611,7 @@ class ToolRegistry:
                 result = ToolResult(
                     status=ToolStatus.ERROR,
                     content="",
-                    error=denied.reason,
+                    error=self._with_review_hint(denied, permission, denied.reason),
                     action_kind=action_kind,
                     permission=denied,
                     call_id=call_id,
@@ -424,6 +649,13 @@ class ToolRegistry:
             return None
         finally:
             self._authorization_events.pop(request_id, None)
+
+    def _with_review_hint(self, denied, original_permission, base_reason: str) -> str:
+        """D2: 把语义审核器给的 next_step 追加到拒绝原因，让模型拿到可操作路径。"""
+        hint = getattr(original_permission, "_review_next_step", "") or ""
+        if hint:
+            return f"{base_reason}\n[审核建议] {hint}".strip()
+        return base_reason
 
     def _finish_record(
         self,

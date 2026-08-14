@@ -55,12 +55,15 @@ class RecordingLLM(BaseLLM):
             kind = "codegen"
         elif "综合" in user or "分析" in user:
             kind = "analysis"
+        elif "phase_budgets" in sys_text:
+            kind = "reflection"
         self.calls.append({
             "kind": kind,
             "duration_s": round(elapsed, 1),
             "resp_len": len(resp.content or ""),
             "retry_feedback": "上一次规划被拒绝" in user,
             "resp_head": (resp.content or "")[:120].replace("\n", " "),
+            "resp_full": resp.content or "",
         })
         return resp
 
@@ -104,6 +107,7 @@ def summarize_question(idx: int, q: str, loop: CognitiveLoop, rec: RecordingLLM,
     row["llm_calls"] = len(rec.calls)
 
     # 工具调用成功/失败统计
+    tool_oks = 0
     tool_fails = 0
     if pr:
         for r in pr.rounds:
@@ -135,6 +139,42 @@ async def run_one(q: str, practice_rounds: int) -> tuple:
     return loop, rec, elapsed
 
 
+def check_phase_budgets(rec: RecordingLLM) -> dict:
+    """从反思阶段原始输出中提取 phase_budgets，供人工检查。"""
+    reflections = [c for c in rec.calls if c["kind"] == "reflection"]
+    if not reflections:
+        return {"found": False, "reason": "未捕获反思阶段调用"}
+    raw = reflections[-1]["resp_full"]
+    # 剥 code fence
+    s = raw.strip()
+    while s.startswith("```"):
+        idx = s.find("\n")
+        s = s[idx + 1:] if idx >= 0 else ""
+    if s.endswith("```"):
+        s = s[:-3]
+    s = s.strip().rstrip("`")
+    try:
+        data = json.loads(s)
+    except json.JSONDecodeError:
+        # 截取第一个 { 到最后一个 }
+        start, end = s.find("{"), s.rfind("}")
+        if start != -1 and end > start:
+            try:
+                data = json.loads(s[start:end + 1])
+            except json.JSONDecodeError:
+                return {"found": False, "reason": "反思输出非 JSON", "raw": raw[:800]}
+        else:
+            return {"found": False, "reason": "反思输出非 JSON", "raw": raw[:800]}
+    budgets = data.get("phase_budgets", {}) if isinstance(data, dict) else {}
+    return {
+        "found": True,
+        "budgets": budgets,
+        "should_reinvestigate": data.get("should_reinvestigate") if isinstance(data, dict) else None,
+        "convergence": data.get("convergence_score") if isinstance(data, dict) else None,
+        "raw": raw[:1500],
+    }
+
+
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rounds", type=int, default=2, help="实践阶段最大轮数（默认 2）")
@@ -162,6 +202,16 @@ async def main():
                         flag = " [retry]" if c["retry_feedback"] else ""
                         print(f"      {c['kind']}{flag} dur={c['duration_s']}s len={c['resp_len']} "
                               f"head={c['resp_head'][:60]!r}")
+            # ── phase_budgets 人工检查（验收标准 5）──
+            pb = check_phase_budgets(rec)
+            print(f"\n    [反思 phase_budgets] found={pb.get('found')} "
+                  f"reinvestigate={pb.get('should_reinvestigate')} "
+                  f"convergence={pb.get('convergence')}")
+            if pb.get("found") and pb.get("budgets"):
+                for phase, b in pb["budgets"].items():
+                    print(f"      {phase}: {json.dumps(b, ensure_ascii=False)}")
+            elif pb.get("reason"):
+                print(f"      ({pb['reason']})")
         except Exception as e:
             print(f"    问题 {i + 1} 执行异常: {type(e).__name__}: {str(e)[:200]}")
             rows.append({"q": i + 1, "error": str(e)[:100]})

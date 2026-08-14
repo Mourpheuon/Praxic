@@ -199,6 +199,7 @@ class InvestigationModule:
         tools_results: str = "",
         on_progress: callable = None,
         steering_checkpoint: callable = None,
+        budget: dict = None,
     ) -> FactReport:
         def _notify(tool: str, summary: str, result: dict | None = None) -> None:
             if not on_progress:
@@ -229,6 +230,11 @@ class InvestigationModule:
                  has_search=self.can_search_web,
                  has_context=bool(additional_context))
 
+        budget = budget or {}
+        from .phase_budget import budget_max_tokens, budget_depth, validate_positive_int
+        from .depth import Depth
+        depth = budget_depth(budget) or Depth.STANDARD
+
         all_external_info = ""
 
         if tools_results:
@@ -248,7 +254,7 @@ class InvestigationModule:
         # 网络搜索 + 网页全文抓取
         if self.can_search_web:
             _notify("web_search", "WEB_SEARCH · 进行中")
-            search_results_text, search_results = await self._do_web_search(question, additional_context, "")
+            search_results_text, search_results = await self._do_web_search(question, additional_context, "", budget)
             _notify(
                 "web_search",
                 "WEB_SEARCH · 已完成",
@@ -305,6 +311,23 @@ class InvestigationModule:
             pass
         temperature = getattr(self.config, "temperature", 0.7)
         max_tokens = getattr(self.config, "max_tokens", 8192)
+        max_tokens = budget_max_tokens(budget, max_tokens)
+        # 按深度档位注入输出 schema 分层说明：
+        #   SHALLOW → 仅 facts；STANDARD → facts+gaps+summary；DEEP → 加 illustrative_case
+        _schema_scope = {
+            Depth.SHALLOW: (
+                "\n\n## 输出范围（本档）\n"
+                "仅需输出 facts 字段，gaps / summary 可输出默认空值，不输出 illustrative_case。"
+            ),
+            Depth.STANDARD: (
+                "\n\n## 输出范围（本档）\n"
+                "输出 facts、gaps、summary；illustrative_case 选填可见时给。"
+            ),
+            Depth.DEEP: (
+                "\n\n## 输出范围（本档）\n"
+                "输出 facts、gaps、summary，并必须包含 illustrative_case（解剖麻雀）充实分析。"
+            ),
+        }.get(depth, "")
 
         user_content = f"## 用户问题\n{question}"
         if additional_context:
@@ -317,6 +340,9 @@ class InvestigationModule:
                 "并在 gaps 中标注需要搜索的方向。）"
             )
 
+        # 追加深度档位的输出范围说明（investigate 主调用与补充搜索共用）
+        system = system + _schema_scope
+
         response = await self.llm.call(
             messages=[{"role": "user", "content": user_content}],
             system=system,
@@ -325,6 +351,17 @@ class InvestigationModule:
         )
 
         report = self._parse_response(response.content, question)
+
+        # C3：按当前深度校验 schema 层字段。
+        # DEEP 要求 illustrative_case（解剖麻雀）；缺失时 log warning，不崩溃（走既有 fallback）。
+        if depth == Depth.DEEP and not report.illustrative_case:
+            log.warning("investigation.schema_level_missing_illustrative_case", depth="deep")
+
+        # 预算明确限制 max_calls=1 时，不触发补充搜索（调查二轮）
+        max_calls = validate_positive_int(budget.get("max_calls"))
+        if max_calls == 1:
+            log.info("investigation.second_pass_disabled", reason="budget_max_calls=1")
+            return report
 
         high_gaps = [g for g in report.gaps if g.importance == "high"]
         if high_gaps and self.can_search_web and not tools_results:
@@ -363,8 +400,9 @@ class InvestigationModule:
                  has_illustrative=report.illustrative_case is not None)
         return report
 
-    async def _do_web_search(self, question: str, context: str, gaps_text: str) -> tuple[str, list]:
+    async def _do_web_search(self, question: str, context: str, gaps_text: str, budget: dict | None = None) -> tuple[str, list]:
         try:
+            # 查询生成固定 SHALLOW（max_tokens=1024，直接出 query 列表，无需推理链）
             query_resp = await self.llm.call(
                 messages=[{
                     "role": "user",

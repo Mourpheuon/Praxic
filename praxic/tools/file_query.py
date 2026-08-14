@@ -35,9 +35,10 @@ class FileGrepTool(BaseTool):
     name = "file_grep"
     category = "file"
     group = "search"
-    description = "在工作区内搜索包含指定文本或正则的文件，返回匹配的文件与行号"
+    description = "在工作区内搜索包含指定文本或正则的文件，返回匹配的文件与行号（path 为相对工作区目录）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {
         "pattern": {"type": "string", "description": "搜索文本或正则表达式"},
         "path": {"type": "string", "default": ".", "description": "起始目录（默认工作区根）"},
@@ -126,9 +127,10 @@ class FileBatchReadTool(BaseTool):
     name = "file_batch_read"
     category = "file"
     group = "read"
-    description = "一次读取工作区内多个文件的内容，每文件按行数截断"
+    description = "一次读取工作区内多个文件的内容，每文件按行数截断（paths 为相对工作区路径列表）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {
         "paths": {"type": "array", "description": "要读取的文件路径列表"},
         "max_lines_per_file": {"type": "number", "default": 200},
@@ -182,9 +184,10 @@ class FileStatTool(BaseTool):
     name = "file_stat"
     category = "file"
     group = "read"
-    description = "查看工作区内文件或目录的元数据：大小、修改时间、类型、SHA256 摘要"
+    description = "查看工作区内文件或目录的元数据：大小、修改时间、类型、SHA256 摘要（path 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {"path": {"type": "string"}}
 
     def __init__(self, workspace: Optional[Path] = None):

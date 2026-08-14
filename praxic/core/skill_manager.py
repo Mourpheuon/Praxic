@@ -201,6 +201,29 @@ class SkillManager:
             lines.append(f"- **{meta.name}** [{phases}]: {meta.description}")
         return "\n".join(lines)
 
+    def get_phase_skill_catalog(self, phase: str) -> str:
+        """E1: 返回指定阶段可用技能的目录摘要（名称+一句话描述），不含正文。
+
+        完整指令由 skill 工具按名加载。相位过滤：只列出在该阶段激活的技能，
+        避免无关技能挤占上下文。
+        """
+        names = self._phase_index.get(phase, [])
+        if not names:
+            return ""
+        lines = [f"## 本阶段可用技能（按需加载，需要时调用 skill(name) 取回完整指令）"]
+        for name in names:
+            meta = self._catalog.get(name)
+            if meta:
+                lines.append(f"- **{name}**: {meta.description}")
+        return "\n".join(lines)
+
+    def load_skill_body_for_tool(self, name: str) -> Optional[str]:
+        """供 skill 工具按名加载完整指令（不含 YAML frontmatter）。"""
+        body = self._load_skill_body(name)
+        if body is None:
+            return None
+        return body.body if hasattr(body, "body") and body.body else str(getattr(body, "body", ""))
+
     def inject_to_working_memory(self, wm) -> None:
         summary = self.get_catalog_summary()
         if summary:

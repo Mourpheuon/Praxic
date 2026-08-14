@@ -34,9 +34,10 @@ class SqliteQueryTool(BaseTool):
 
     name = "sqlite_query"
     category = "data"
-    description = "对工作区内 SQLite 数据库（.db/.sqlite）执行只读 SELECT/PRAGMA 查询"
+    description = "对工作区内 SQLite 数据库（.db/.sqlite）执行只读 SELECT/PRAGMA 查询（path 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {
         "path": {"type": "string", "description": "数据库文件路径（相对工作区）"},
         "query": {"type": "string", "description": "只读 SQL（SELECT/PRAGMA/EXPLAIN/WITH）"},

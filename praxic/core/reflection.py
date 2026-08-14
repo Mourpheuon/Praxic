@@ -63,6 +63,14 @@ _REFLECTION_PROMPT = '''
 - understanding_level：本轮认识层次（"感性"/"知性"/"理性"）
 - qualitative_leap：是否发生了认识层次的跃升
 
+11. **阶段预算调控**：基于本轮各阶段的产出质量和耗时表现，为下一轮设置 phase_budgets。
+    - 可调项：调用次数（max_calls/max_rounds）、输出上限（max_tokens）、推理深度（depth，值域 shallow/standard/deep）
+    - 原则：兼顾速度与深度。矛盾分析和理性认识是认识深度的核心，深度建议保持 standard 及以上；
+      调查、反思等事实收集/收敛类阶段可设 shallow。削减 max_tokens 和调用次数必须有依据——
+      该阶段产出已充分、或某阶段显著拖慢主链路且深度收益低。
+    - 未列出的阶段保持默认；每一项都要给出简短理由（reason 字段）。
+    - 不确定时保守：宁可少调，不要为了省时而牺牲认识深度。
+
 流程控制权限（保守原则）：
 - skip_phases：仅当某阶段结论已充分稳固时才建议跳过
   重要：如果 should_reinvestigate=true（需要重新调查），则禁止在 skip_phases 中加入 "practice"。
@@ -108,9 +116,14 @@ _REFLECTION_PROMPT = '''
       "core_operations": "核心步骤（中文，3-5步）",
       "confidence": 0.7
     }
-  ]
+  ],
+  "phase_budgets": {
+    "investigation": {"max_calls":1,"max_tokens":4096,"depth":"shallow","reason":"充分"},
+    "practice": {"max_rounds":2,"depth":"shallow","reason":"首轮已收敛"}
+  }
 }
 只输出JSON。
+注：phase_budgets 仅当需调控下一轮时才设置；不设置时输出 "phase_budgets": {}。
 '''
 
 
@@ -124,7 +137,7 @@ class ReflectionEngine:
         self.llm = llm
         self.config = phase_config or {}
 
-    async def reflect(self, question: str, trace: CognitiveTrace, user_feedback: str = "", termination_evidence: dict = None) -> ReflectionReport:
+    async def reflect(self, question: str, trace: CognitiveTrace, user_feedback: str = "", termination_evidence: dict = None, depth=None) -> ReflectionReport:
         log.info("reflection.start")
         trace_summary = self._summarize_trace(trace)
         user_content = f"## 原始问题\n{question}\n\n## 认知轨迹摘要\n{trace_summary}"
@@ -136,6 +149,31 @@ class ReflectionEngine:
             user_content += f"\n## 用户反馈\n{user_feedback}"
 
         system = load_phase_prompt("reflection", _REFLECTION_PROMPT)
+        from .depth import parse_depth, Depth as _Depth
+        _depth = parse_depth(depth if depth is not None else getattr(self.config, "depth", None))
+        # 按当前深度注入输出 schema 分层：
+        #   SHALLOW → convergence + should_reinvestigate + final_answer；
+        #   STANDARD → 加复盘 + focus_hints + phase_budgets；
+        #   DEEP → 加认知偏差 + 技能蒸馏 + phase_budgets 详因
+        _schema_scope = {
+            _Depth.SHALLOW: (
+                "\n\n## 输出范围（本档）\n"
+                "重点输出 convergence_score、should_reinvestigate、final_answer，"
+                "复盘类字段可精简，skill_draft_candidates 输出空数组。"
+            ),
+            _Depth.STANDARD: (
+                "\n\n## 输出范围（本档）\n"
+                "输出完整复盘（quality_assessment / 各 retrospective）、focus_hints、phase_budgets；"
+                "cognitive_biases_found 与 skill_draft_candidates 可精简。"
+            ),
+            _Depth.DEEP: (
+                "\n\n## 输出范围（本档）\n"
+                "输出全部字段：完整复盘、cognitive_biases_found、skill_draft_candidates（技能蒸馏）、"
+                "phase_budgets 每项给出详因。"
+            ),
+        }.get(_depth, "")
+        system = system + _schema_scope
+
         temperature = getattr(self.config, "temperature", 0.4)
         max_tokens = getattr(self.config, "max_tokens", 2048)
 
@@ -377,4 +415,5 @@ class ReflectionEngine:
             final_answer=data.get("final_answer", ""),
             recommend_detailed_report=bool(data.get("recommend_detailed_report", False)),
             skill_draft_candidates=data.get("skill_draft_candidates", []),
+            phase_budgets=data.get("phase_budgets", {}) or {},
         )

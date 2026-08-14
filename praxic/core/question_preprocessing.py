@@ -14,8 +14,16 @@ import structlog
 from ..api.schemas.models import PreprocessedQuestion
 from ..config import PhaseConfig
 from ..llm import get_llm as _get_default_llm
+from .depth import Depth
 
 log = structlog.get_logger(__name__)
+
+
+def _depth_for_complexity(complexity: str) -> Depth:
+    """预处理 step345 按任务复杂度映射初始深度档位。
+    simple→SHALLOW，standard→STANDARD，complex→DEEP。"""
+    c = (complexity or "standard").strip().lower()
+    return {"simple": Depth.SHALLOW, "complex": Depth.DEEP}.get(c, Depth.STANDARD)
 
 # ═══════════════════════════════════════════════════════════════════
 # Step prompt 常量——每步一个短 prompt，聚焦单一任务
@@ -412,6 +420,7 @@ class QuestionPreprocessing:
             "task_nature",
             _fallback,
             temperature=0.3, max_tokens=256,
+            depth=Depth.SHALLOW,
         )
         log.debug("question_preprocessing.step1_result",
                   question=question[:60],
@@ -430,6 +439,7 @@ class QuestionPreprocessing:
             "contradiction",
             {"contradiction_in_question": ""},
             temperature=0.4, max_tokens=256,
+            depth=Depth.SHALLOW,
         )
 
     async def _step_premise_audit(self, question: str, task_nature: str, conversation_history: str = "") -> dict:
@@ -442,6 +452,7 @@ class QuestionPreprocessing:
             "premise_audit",
             {"questionable_premises": [], "overlooked_factors": []},
             temperature=0.4, max_tokens=512,
+            depth=Depth.SHALLOW,
         )
 
     async def _step_structure(
@@ -479,6 +490,7 @@ class QuestionPreprocessing:
                 "wants_detailed_report": False,
             },
             temperature=0.5, max_tokens=1024,
+            depth=_depth_for_complexity(complexity),  # type: ignore[arg-type]
         )
 
     async def _step_analysis_and_structure(
@@ -516,6 +528,31 @@ class QuestionPreprocessing:
             "clarifying_questions": [],
             "wants_detailed_report": False,
         }
+        # 按复杂度注入输出字段分层说明（schema_level）
+        depth = _depth_for_complexity(complexity)
+        _scope = {
+            Depth.SHALLOW: (
+                "## 输出字段范围\n"
+                "本次仅需输出 question_intent 与 expanded_question 两个字段，"
+                "其余字段（contradiction_in_question / questionable_premises / "
+                "overlooked_factors / core_anxiety / question_domains / "
+                "structured_sub_questions / clarifying_questions / wants_detailed_report）"
+                "输出默认空值即可。"
+            ),
+            Depth.STANDARD: (
+                "## 输出字段范围\n"
+                "输出全部字段，字段需完整。"
+            ),
+            Depth.DEEP: (
+                "## 输出字段范围\n"
+                "输出全部字段且每个字段都要充实：contradiction_in_question、"
+                "questionable_premises、overlooked_factors 需详因，"
+                "expanded_question 需尽可能详尽以支撑后续详实分析。"
+            ),
+        }.get(depth, "")
+        if _scope:
+            content = content + "\n\n" + _scope
+
         result = await self._call_step(
             _STEP345_COMBINED_PROMPT,
             content,
@@ -523,8 +560,17 @@ class QuestionPreprocessing:
             default_result,
             temperature=0.4,
             max_tokens=1536,
+            depth=depth,
         )
-        required_fields = set(default_result) - {"_combined_failed"}
+        # C3：按当前深度校验必填字段层。
+        # SHALLOW 只强制 question_intent/expanded_question（其余字段缺省合法，下游 .get 有默认）；
+        # STANDARD/DEEP 要求全部字段。
+        _shallow = depth == Depth.SHALLOW
+        _required_fields = (
+            {"question_intent", "expanded_question"}
+            if _shallow
+            else (set(default_result) - {"_combined_failed"})
+        )
         list_fields = {
             "questionable_premises",
             "overlooked_factors",
@@ -540,25 +586,25 @@ class QuestionPreprocessing:
         }
         invalid_fields: list[str] = []
         if isinstance(result, dict):
-            invalid_fields.extend(
-                name
-                for name in list_fields
-                if not isinstance(result.get(name), list)
-                or not all(isinstance(item, str) for item in result[name])
-            )
-            invalid_fields.extend(
-                name for name in string_fields if not isinstance(result.get(name), str)
-            )
-            if not isinstance(result.get("wants_detailed_report"), bool):
+            for name in list_fields:
+                if name not in result:
+                    continue
+                val = result.get(name)
+                if not isinstance(val, list) or not all(isinstance(item, str) for item in val):
+                    invalid_fields.append(name)
+            for name in string_fields:
+                if name in result and not isinstance(result.get(name), str):
+                    invalid_fields.append(name)
+            if "wants_detailed_report" in result and not isinstance(result.get("wants_detailed_report"), bool):
                 invalid_fields.append("wants_detailed_report")
 
         if (
             not isinstance(result, dict)
             or result.get("_combined_failed")
-            or not required_fields.issubset(result)
+            or not _required_fields.issubset(result)
             or invalid_fields
         ):
-            missing = sorted(required_fields - set(result)) if isinstance(result, dict) else []
+            missing = sorted(_required_fields - set(result)) if isinstance(result, dict) else []
             log.warning(
                 "question_preprocessing.analysis_structure.invalid_schema",
                 missing=missing,
@@ -574,20 +620,31 @@ class QuestionPreprocessing:
     async def _call_step(
         self, system_prompt: str, user_content: str, step_name: str,
         default_result: dict, temperature: float = 0.3, max_tokens: int = 512,
+        depth=None,
     ) -> dict:
-        """通用的单步 LLM 调用 + JSON 解析。失败时返回 default_result。"""
+        """通用的单步 LLM 调用 + JSON 解析。失败时返回 default_result。
+
+        depth 指定时：max_tokens 取 DEPTH_CONFIG[depth] 的三要素预算（若不显式更高），
+        并在 system_prompt 后追加对应推理指令。不再透传 provider 私有 reasoning_effort。
+        """
         try:
-            reasoning_kwargs = {"reasoning_effort": "low"}
-            # Anthropic's similarly named option enables extended thinking;
-            # omitting it is the low-latency equivalent for these short steps.
-            if getattr(self.llm, "provider_name", "") == "anthropic":
-                reasoning_kwargs = {}
+            from .depth import DEPTH_CONFIG, parse_depth
+            _mt = max_tokens
+            _sys = system_prompt
+            if depth is not None:
+                _d = parse_depth(depth)
+                _cfg = DEPTH_CONFIG.get(_d, {})
+                # 显式传入的 max_tokens 优先；否则按深度档位预算
+                if max_tokens is None:
+                    _mt = int(_cfg.get("max_tokens", 512))
+                _instr = _cfg.get("instruction")
+                if _instr:
+                    _sys = system_prompt + "\n\n## 推理深度\n" + _instr
             response = await self.llm.call(
                 messages=[{"role": "user", "content": user_content}],
-                system=system_prompt,
+                system=_sys,
                 temperature=temperature,
-                max_tokens=max_tokens,
-                **reasoning_kwargs,
+                max_tokens=_mt,
             )
             return self._parse_json_safe(response.content, step_name, default_result)
         except Exception as e:

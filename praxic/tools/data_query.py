@@ -34,13 +34,14 @@ class DataQueryTool(BaseTool):
 
     name = "data_query"
     category = "data"
-    description = "查询 CSV/JSON/JSONL 数据文件：概述、筛选、统计、取行（只读）"
+    description = "查询 CSV/JSON/JSONL 数据文件：概述、筛选、统计、取行（只读，path 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {
         "path": {"type": "string", "description": "数据文件路径（相对工作区）"},
-        "action": {"type": "string", "default": "overview", "description": "overview | filter | stats | head"},
-        "fields": {"type": "array", "default": [], "description": "要返回/操作的字段名列表（空=全部）"},
+        "action": {"type": "string", "default": "overview", "description": "overview | filter | stats | head | group | missing"},
+        "fields": {"type": "array", "default": [], "description": "字段名列表（group 时 fields[0]=分组字段, fields[1]=聚合数值字段）"},
         "condition": {"type": "string", "default": "", "description": "筛选条件，如 'age > 30' 或 'city == 北京'"},
         "limit": {"type": "number", "default": 20},
         "offset": {"type": "number", "default": 0},
@@ -87,6 +88,11 @@ class DataQueryTool(BaseTool):
                 return self._head(filtered, fields, limit, offset, total=len(filtered))
             if action == "stats":
                 return self._stats(rows, fields)
+            if action == "missing":
+                return self._missing(rows, headers)
+            if action == "group":
+                # 分组聚合：group_by 字段 + 可选 value_field 聚合数值
+                return self._group(rows, fields, limit)
             return ToolResult(status=ToolStatus.ERROR, content="", error=f"未知 action：{action}（支持 overview|filter|stats|head）")
         except PermissionError as e:
             return ToolResult(status=ToolStatus.ERROR, content="", error=str(e))
@@ -141,9 +147,11 @@ class DataQueryTool(BaseTool):
             lines.append(f"  {h}: {types_s}")
         return ToolResult(
             status=ToolStatus.SUCCESS,
+            # A1: content 只给统计摘要，不给全量 rows（避免把整表搬进上下文）
             content="\n".join(lines),
             data={"count": len(rows), "headers": headers},
             metadata={"count": len(rows)},
+            summary=f"overview：{len(rows)} 行 {len(headers)} 字段：{', '.join(headers[:6]) if headers else '无'}",
         )
 
     def _head(self, rows: list[dict], fields: list[str], limit: int, offset: int, total: int | None = None) -> ToolResult:
@@ -163,6 +171,7 @@ class DataQueryTool(BaseTool):
             content="\n".join(lines),
             data={"rows": out, "count": count, "returned": len(out)},
             metadata={"count": count, "returned": len(out)},
+            summary=f"head：返回 {len(out)}/{count} 行，至多{limit}行样例（具体 rows 见 data）",
         )
 
     def _filter(self, rows: list[dict], condition: str) -> list[dict]:
@@ -243,6 +252,7 @@ class DataQueryTool(BaseTool):
             content="\n".join(lines),
             data={"stats": data},
             metadata={"fields": list(data.keys())},
+            summary=f"stats：{len(data)} 个数值字段：" + "; ".join(f"{k}(n={data[k]['count']},mean={data[k]['mean']})" for k in list(data.keys())[:5]),
         )
 
     def _numeric_fields(self, rows: list[dict]) -> list[str]:
@@ -261,3 +271,63 @@ class DataQueryTool(BaseTool):
                     except ValueError:
                         pass
         return numeric
+
+    def _missing(self, rows: list[dict], headers: list[str]) -> ToolResult:
+        """统计每列的缺失（空/None）数量与占比。"""
+        total = len(rows)
+        lines = []
+        data: dict = {}
+        for h in headers:
+            missing = sum(1 for r in rows if r.get(h) in (None, ""))
+            pct = round(missing / total * 100, 1) if total else 0
+            lines.append(f"{h}: 缺失 {missing}/{total} ({pct}%)")
+            data[h] = {"missing": missing, "total": total, "pct": pct}
+        return ToolResult(
+            status=ToolStatus.SUCCESS,
+            content="\n".join(lines) if lines else "（无字段）",
+            data={"missing": data, "total": total},
+            summary=f"missing：{total} 行，各字段缺失数见 data.missing",
+        )
+
+    def _group(self, rows: list[dict], fields: list[str], limit: int) -> ToolResult:
+        """分组聚合：fields[0]=分组字段，fields[1]=聚合数值字段（可选）。
+
+        无数值字段时按分组统计行数；有数值字段时加 sum/mean。
+        """
+        if not fields:
+            return ToolResult(status=ToolStatus.ERROR, content="", error="group 需要 fields[0]=分组字段")
+        group_field = fields[0]
+        value_field = fields[1] if len(fields) > 1 else ""
+        groups: dict[str, dict] = {}
+        for r in rows:
+            key = r.get(group_field)
+            if key in (None, ""):
+                key = "（缺失）"
+            key = str(key)
+            g = groups.setdefault(key, {"count": 0, "values": []})
+            g["count"] += 1
+            if value_field:
+                v = r.get(value_field)
+                try:
+                    g["values"].append(float(v))
+                except (ValueError, TypeError):
+                    pass
+        lines = []
+        data: dict = {}
+        for key, g in sorted(groups.items(), key=lambda x: -x[1]["count"])[:max(1, min(int(limit), 100))]:
+            entry = {"count": g["count"]}
+            if value_field and g["values"]:
+                entry["sum"] = round(sum(g["values"]), 4)
+                entry["mean"] = round(statistics.mean(g["values"]), 4)
+                lines.append(f"{key}: 行数={g['count']} sum={entry['sum']} mean={entry['mean']}")
+            else:
+                lines.append(f"{key}: 行数={g['count']}")
+            data[key] = entry
+        if not lines:
+            return ToolResult(status=ToolStatus.SUCCESS, content="（无分组数据）", data={})
+        return ToolResult(
+            status=ToolStatus.SUCCESS,
+            content="\n".join(lines),
+            data={"groups": data, "group_field": group_field, "value_field": value_field},
+            summary=f"group[{group_field}{'/'+value_field if value_field else ''}]：{len(data)} 组，均值前几组见 data.groups",
+        )

@@ -156,6 +156,33 @@ class OpenAICompatibleLLM(BaseLLM):
         reasoning = getattr(choice.message, "reasoning_content", None)
         if reasoning:
             log.debug("openai_compatible.reasoning_tokens", len=len(reasoning))
+
+        # E1：empty_content + finish=length 时，用 max_tokens*2 重置一次（模型无关兜底）。
+        # 不进递归，重试后仍空则返回空交上层 fallback；content 非空绝不触发。
+        if (
+            not content
+            and choice.finish_reason == "length"
+            and (max_tokens or 0) > 0
+        ):
+            log.warning(
+                "openai_compatible.retried_for_empty",
+                model=model,
+                max_tokens=max_tokens,
+                doubled=max_tokens * 2,
+                finish_reason=choice.finish_reason,
+                reasoning_len=len(reasoning) if reasoning else 0,
+            )
+            retry_params = dict(params)
+            retry_params["max_tokens"] = max_tokens * 2
+            try:
+                response = await self._create_with_reasoning_fallback(
+                    retry_params, reasoning_controls
+                )
+                choice = response.choices[0]
+                content = choice.message.content or ""
+            except Exception:
+                log.warning("openai_compatible.empty_retry_failed", exc_info=True)
+
         if not content:
             log.warning(
                 "openai_compatible.empty_content",

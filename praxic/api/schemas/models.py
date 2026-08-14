@@ -355,6 +355,10 @@ class ReflectionReport(BaseModel):
     skill_draft_candidates: list[dict] = Field(default_factory=list)  # 反思蒸馏候选技能
     practice_report_integrated: bool = False           # 本轮是否处理了 practice_report 类型的 steering
     contradiction_feedback_from_steering: list[dict] = Field(default_factory=list)  # 从 practice_report 提取的矛盾反馈
+    # 反思阶段作为内置执行预算调控器：调控下一轮各阶段的调用次数/输出上限/推理强度。
+    # {"阶段名": {"max_calls": int, "max_rounds": int, "max_tokens": int, "reasoning_effort": str, "reason": str}}
+    # 默认空 dict → 不设预算时与现状完全等价。
+    phase_budgets: dict[str, dict] = Field(default_factory=dict)
 
 # --- Trace ---
 class TraceMetadata(BaseModel):

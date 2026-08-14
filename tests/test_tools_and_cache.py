@@ -391,12 +391,13 @@ async def test_python_exec_blocks_world_side_effects(tmp_path):
     assert tool.classify_action({"requirements": ["example-package"]}) == ActionKind.EXTERNAL
     result = await tool.run("open('escaped.txt', 'w').write('secret')")
     assert result.status == ToolStatus.ERROR
-    assert "禁止调用" in result.error
+    # .write() 属性本身被禁，或 open 写模式被拦，两者都算“写被禁止”
+    assert ("写模式被禁止" in result.error) or ("禁止调用 write" in result.error)
     assert not (tmp_path / "escaped.txt").exists()
 
     aliased = await tool.run("writer = open\nwriter('escaped.txt', 'w')")
     assert aliased.status == ToolStatus.ERROR
-    assert "禁止引用 open" in aliased.error
+    assert "禁止将 open 赋值" in aliased.error
 
     dynamic_import = await tool.run("import importlib\nprint(importlib.import_module('os'))")
     assert dynamic_import.status == ToolStatus.ERROR
@@ -407,6 +408,18 @@ async def test_python_exec_blocks_world_side_effects(tmp_path):
     )
     assert safe_compute.status == ToolStatus.SUCCESS
     assert safe_compute.content.strip() == "3.0"
+
+    # 只读 open 应允许（数据分析读文件基础）——即使文件不存在运行失败，也不该被安全检查拦截
+    read_open = await tool.run(
+        "with open('readme.txt', 'r') as f: print('ok')"
+    )
+    assert "安全检查" not in (read_open.error or "")
+    assert "写模式" not in (read_open.error or "")
+
+    # 纯写模式 open（不链 write）也应被 mode 检查拦截
+    write_mode = await tool.run("open('data.txt', 'w')")
+    assert write_mode.status == ToolStatus.ERROR
+    assert "写模式被禁止" in write_mode.error
 
     dependency = await tool.run("print('unused')", requirements=["requests"])
     assert dependency.status == ToolStatus.ERROR

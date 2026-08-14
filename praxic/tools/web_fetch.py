@@ -79,6 +79,7 @@ class WebFetchTool(BaseTool):
     description = "获取指定网页的正文内容，用于读取在线文档和核验事实"
     requires_network = True
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {
         "url": {
             "type": "string",

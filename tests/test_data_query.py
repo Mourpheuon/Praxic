@@ -121,6 +121,34 @@ async def test_bad_condition(ws):
 
 
 @pytest.mark.asyncio
+async def test_group_by_city(ws):
+    tool = DataQueryTool(ws)
+    result = await tool.run("people.csv", action="group", fields=["city"])
+    assert result.status == ToolStatus.SUCCESS
+    assert result.data["groups"]["北京"]["count"] == 2
+    assert result.data["groups"]["上海"]["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_group_with_value_field(ws):
+    tool = DataQueryTool(ws)
+    result = await tool.run("people.csv", action="group", fields=["city", "age"])
+    assert result.status == ToolStatus.SUCCESS
+    # 北京两行 age 25+28=53
+    assert result.data["groups"]["北京"]["sum"] == 53
+
+
+@pytest.mark.asyncio
+async def test_missing_stats(ws):
+    tool = DataQueryTool(ws)
+    (ws / "dirty.csv").write_text("name,age\n张三,25\n李四,\n王五,30\n", encoding="utf-8")
+    result = await tool.run("dirty.csv", action="missing")
+    assert result.status == ToolStatus.SUCCESS
+    assert result.data["missing"]["age"]["missing"] == 1
+    assert result.data["total"] == 3
+
+
+@pytest.mark.asyncio
 async def test_registered_and_describable(ws):
     registry = ToolRegistry()
     registry.register(DataQueryTool(ws))

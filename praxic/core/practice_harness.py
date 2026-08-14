@@ -109,6 +109,9 @@ R1_PLAN = """
 {practice_direction_text}
 
 ## 输出格式（严格 JSON——只输出 JSON 对象，不要代码围栏，不要多余文字）
+
+**精简要求（务必遵守，输出太长会导致截断失败）**：round_rationale ≤ 80 字；每条 testable_claims 的 claim/if_true/if_false ≤ 40 字；directional_claim ≤ 60 字；不要复述前序材料，只写本轮决策。
+
 {
   "round_rationale": "第一轮先验证哪个论断？为什么从这个开始？",
   "epistemic_role": "exploration | verification | revision",
@@ -196,6 +199,9 @@ RN_PLAN = """
 {tools_text}
 
 ## 输出格式（严格 JSON——只输出 JSON 对象，不要代码围栏，不要多余文字）
+
+**精简要求（务必遵守，输出太长会导致截断失败）**：round_rationale ≤ 80 字；每条 testable_claims 的 claim/if_true/if_false ≤ 40 字；directional_claim ≤ 60 字；不要复述前序材料（上一轮记录已提供），只写本轮决策与变化。
+
 {
   "round_rationale": "基于上一轮结果，本轮做什么、为什么",
   "epistemic_role": "exploration | verification | revision",

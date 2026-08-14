@@ -28,9 +28,10 @@ class PdfExtractTool(BaseTool):
     name = "pdf_extract"
     category = "data"
     group = "document"
-    description = "提取工作区内 PDF 文件的文本内容（支持扫描件 OCR）"
+    description = "提取工作区内 PDF 文件的文本内容（支持扫描件 OCR，path 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {
         "path": {"type": "string", "description": "PDF 路径（相对工作区）"},
         "max_chars": {"type": "number", "default": 20000, "description": "返回文本上限"},

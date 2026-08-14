@@ -32,7 +32,7 @@ class ArchiveExtractTool(BaseTool):
     name = "archive_extract"
     category = "file"
     group = "archive"
-    description = "解压 zip/tar/tar.gz 归档到工作区指定目录（防路径穿越）"
+    description = "解压 zip/tar/tar.gz 归档到工作区指定目录（防路径穿越；path/target_dir 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.CHANGE
     requires_authorization = True
@@ -159,7 +159,7 @@ class ArchiveCreateTool(BaseTool):
     name = "archive_create"
     category = "file"
     group = "archive"
-    description = "把工作区内文件/目录压缩为 zip 归档"
+    description = "把工作区内文件/目录压缩为 zip 归档（paths/archive_path 为相对工作区路径）"
     requires_network = False
     action_kind = ActionKind.CHANGE
     requires_authorization = True

@@ -99,6 +99,7 @@ class RationalCognitionModule:
         fact_report: FactReport,
         contradiction_graph: ContradictionGraph,
         system_model: Optional[SystemModel] = None,
+        budget: dict = None,
     ) -> RationalSynthesis:
         log.info("rational.start")
 
@@ -168,11 +169,36 @@ class RationalCognitionModule:
             system = system + "\n" + get_autonomy_instruction(settings.autonomy_level, "rational")
         except ImportError:
             pass
+        budget = budget or {}
+        from .phase_budget import budget_max_tokens, budget_depth
+        from .depth import Depth
+        depth = budget_depth(budget) or Depth.STANDARD
+        max_tokens = budget_max_tokens(budget, getattr(self.config, "max_tokens", 8192))
+        # 按深度注入输出 schema 分层说明：
+        #   SHALLOW → 仅 essence；STANDARD → essence+patterns+hypotheses；
+        #   DEEP → 完整 essence+hypotheses+contradiction_motion+negation_of_negation 等全字段
+        _schema_scope = {
+            Depth.SHALLOW: (
+                "\n\n## 输出范围（本档）\n"
+                "仅需输出 essence 字段，其余字段可输出空值。"
+            ),
+            Depth.STANDARD: (
+                "\n\n## 输出范围（本档）\n"
+                "输出 essence、patterns、hypotheses、synthesis_text、contradiction_motion。"
+            ),
+            Depth.DEEP: (
+                "\n\n## 输出范围（本档）\n"
+                "输出全部字段：essence、patterns、hypotheses、return_to_concrete、"
+                "unexplained_phenomena、synthesis_text、contradiction_motion、"
+                "quantitative_changes、qualitative_threshold、negation_of_negation、fact_foundation。"
+            ),
+        }.get(depth, "")
+        system = system + _schema_scope
         response = await self.llm.call(
             messages=[{"role": "user", "content": user_content}],
             system=system,
             temperature=getattr(self.config, "temperature", 0.5),
-            max_tokens=getattr(self.config, "max_tokens", 8192),
+            max_tokens=max_tokens,
         )
 
         result = self._parse(response.content)

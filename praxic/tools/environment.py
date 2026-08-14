@@ -64,6 +64,7 @@ class EnvTool(BaseTool):
     description = "查看当前环境：平台、Python 版本、工作区路径、环境变量（白名单）"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
     parameter_schema = {"key": {"type": "string", "default": "", "description": "环境变量名（空=返回摘要）"}}
 
     def __init__(self, workspace: Optional[Path] = None):
@@ -118,6 +119,7 @@ class TimeTool(BaseTool):
     description = "查看当前 UTC 时间、本地时间和时区偏移"
     requires_network = False
     action_kind = ActionKind.OBSERVE
+    is_concurrency_safe = True
 
     async def run(self) -> ToolResult:
         now = datetime.now()
@@ -314,7 +316,7 @@ class FileDownloadTool(BaseTool):
 
     name = "file_download"
     category = "network"
-    description = "从 URL 下载文件到工作区指定路径（外部网络动作）"
+    description = "从 URL 下载文件到工作区指定路径（外部网络动作，dest 为相对工作区路径）"
     requires_network = True
     action_kind = ActionKind.EXTERNAL
     requires_authorization = True
