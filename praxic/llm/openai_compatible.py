@@ -83,6 +83,13 @@ class OpenAICompatibleLLM(BaseLLM):
                 retry_params["extra_body"] = extra_body
             else:
                 retry_params.pop("extra_body", None)
+        if "thinking" in controls:
+            extra_body = dict(retry_params.get("extra_body") or {})
+            extra_body.pop("thinking", None)
+            if extra_body:
+                retry_params["extra_body"] = extra_body
+            else:
+                retry_params.pop("extra_body", None)
         return retry_params
 
     async def _create_with_reasoning_fallback(
@@ -136,6 +143,13 @@ class OpenAICompatibleLLM(BaseLLM):
             extra_body["enable_reasoning"] = kwargs.pop("enable_reasoning")
             params["extra_body"] = extra_body
             reasoning_controls.add("enable_reasoning")
+        # DeepSeek V4 官方思考模式开关：extra_body {"thinking": {"type": "disabled"}}
+        # 优先于 enable_reasoning（后者非官方参数，DeepSeek 会忽略）。
+        if "thinking" in kwargs:
+            extra_body = dict(params.get("extra_body") or {})
+            extra_body["thinking"] = kwargs.pop("thinking")
+            params["extra_body"] = extra_body
+            reasoning_controls.add("thinking")
         if kwargs.pop("use_provider_prompt_cache", False):
             cache_key = kwargs.pop("cache_key", None)
             if cache_key:
@@ -180,6 +194,10 @@ class OpenAICompatibleLLM(BaseLLM):
                 )
                 choice = response.choices[0]
                 content = choice.message.content or ""
+                # 重试响应的思维链也一并捕获
+                reasoning = getattr(choice.message, "reasoning_content", None)
+                if reasoning:
+                    log.debug("openai_compatible.reasoning_tokens", len=len(reasoning))
             except Exception:
                 log.warning("openai_compatible.empty_retry_failed", exc_info=True)
 
@@ -201,7 +219,11 @@ class OpenAICompatibleLLM(BaseLLM):
             stop_reason=choice.finish_reason or "stop",
             cache_read_tokens=cache_read,
             cache_hit=cache_read > 0,
-            metadata={"provider": self.provider_name},
+            metadata={
+                "provider": self.provider_name,
+                # 思维链（thinking 模式产物）：仅供展示/检视，不进后续输入；正文仍是唯一消费口径
+                "reasoning": reasoning or "",
+            },
         )
         self._record_cache_response(response_result)
         return response_result
@@ -240,6 +262,12 @@ class OpenAICompatibleLLM(BaseLLM):
             extra_body["enable_reasoning"] = kwargs.pop("enable_reasoning")
             params["extra_body"] = extra_body
             reasoning_controls.add("enable_reasoning")
+        # DeepSeek V4 官方思考模式开关：extra_body {"thinking": {"type": "disabled"}}
+        if "thinking" in kwargs:
+            extra_body = dict(params.get("extra_body") or {})
+            extra_body["thinking"] = kwargs.pop("thinking")
+            params["extra_body"] = extra_body
+            reasoning_controls.add("thinking")
 
         stream = await self._create_with_reasoning_fallback(params, reasoning_controls)
         async with stream:

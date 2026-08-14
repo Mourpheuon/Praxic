@@ -12,10 +12,10 @@
 用户输入
    │
    ▼
-⓪ 问题预处理 —— 解析意图、任务性质、复杂度与阶段计划
+⓪ 问题预处理 —— 解析意图、任务性质、复杂度，查表决定各阶段初始深度
    │
    ▼
-① 调查研究   —— 没有调查就没有发言权（联网搜索 + 文件读取 + 网页抓取）
+① 调查研究   —— 没有调查就没有发言权（联网搜索 + 文件读取 + 网页抓取 + 本地检索）
    │
    ▼
 ② 矛盾分析   —— 抓主要矛盾，分析矛盾的主要方面，解剖麻雀
@@ -28,10 +28,11 @@
                 自主编排行动、调用工具、分析结果，验证证据交给反思
    │
    ▼
-⑤ 反思复盘   —— 实践是检验真理的唯一标准（收敛判定 + 证据管线）
+⑤ 反思复盘   —— 实践是检验真理的唯一标准（收敛判定 + 证据管线 +
+                为下一轮各阶段下发执行预算）
    │
    ▼
-判断是否收敛 → 未收敛则重新调查（带上反思提示，受 max_iterations 约束）
+判断是否收敛 → 未收敛则重新调查（带上反思提示与预算调控，受 max_iterations 约束）
 ```
 
 ## 快速开始
@@ -111,6 +112,26 @@ asyncio.run(main())
 
 ---
 
+## 推理深度体系
+
+Praxic 用**模型无关的深度档位**（而非模型厂商的私有推理参数）控制各阶段的思考与输出规模：
+
+| 档位 | max_tokens | 推理指令 | 输出范围 |
+|------|-----------|----------|----------|
+| `shallow` | 1024 | 直接给出结论，不展示推理过程 | 仅必填字段 |
+| `standard` | 4096 | 简要推理后给出结论 | 必填 + 依据/摘要 |
+| `deep` | 16384 | 完整推理，展示关键推理链与每步原因 | 全部字段（如矛盾分析的完整 system_model、反思的技能蒸馏） |
+
+**深度分配链**：
+
+1. **第一轮**：预处理按任务性质 × 复杂度查初始深度表（如 code_generation → 浅调查，exploration → 矛盾/理性深挖）
+2. **后续轮次**：反思阶段基于本轮产出质量与耗时，通过 `phase_budgets` 为下一轮各阶段下发深度、调用次数与输出预算（未收敛时该深的深、该省的省；收敛时不干预）
+3. **兜底**：模型空输出（content 为空且被截断）时自动以翻倍预算重试一次
+
+模型选择与深度解耦：全部阶段统一使用配置的默认模型（默认 `deepseek-v4-flash`），不再按阶段路由模型。
+
+---
+
 ## 运行模式
 
 | 模式 | 说明 | 适用场景 |
@@ -127,15 +148,18 @@ asyncio.run(main())
 | 特性 | 说明 |
 |------|------|
 | **认知循环** | 预处理 → 调查研究 → 矛盾分析 → 理性认识 → 实践检验 → 反思复盘 |
+| **推理深度体系** | 模型无关的三档深度（shallow/standard/deep），控制 max_tokens、推理指令与输出 schema 层级 |
+| **反思预算调控** | 反思阶段为下一轮各阶段下发 phase_budgets（深度/调用次数/输出预算），兼顾速度与深度 |
 | **联网搜索** | Tavily + 网页抓取，支持多结果并行 |
-| **文件读取** | TXT、代码、PDF（多级回退 + OCR）、DOCX、XLSX、PPTX、IPYNB |
-| **多 LLM 后端** | DeepSeek、OpenAI、Anthropic、Ollama、自定义兼容端点 |
+| **文件与数据工具** | 文件读写/编辑/检索/批量读取，PDF 提取（多级回退 + OCR），SQLite 查询，数据查询，归档压缩 |
+| **环境工具** | shell 执行（结构化 argv + 安全过滤）、Python 执行（沙箱限制导入）、环境/时间/磁盘/进程查询、HTTP 请求、文件下载 |
+| **多 LLM 后端** | DeepSeek、OpenAI、Anthropic、Ollama、自定义兼容端点（统一模型，深度控制与模型解耦） |
 | **实践引擎** | 从前序阶段提炼可证伪论断，自主编排行动、调用工具、分析结果，多轮递进自动修复 |
 | **权限与授权** | 读取默认自动执行；写入、删除、外部副作用经权限门与异步授权，变更记录 + 回读验证 |
-| **工具注册表** | 统一工具契约，结构化序列化结果，区分工具失败与世界状态未改变 |
+| **工具注册表** | 统一工具契约，结构化序列化结果，区分工具失败与世界状态未改变；插件可自动加载 |
 | **可信度溯源** | 按证据强度限制结论可信度上限（V3/V2），避免超出证据范围的断言 |
 | **上下文缓存** | 应用层 KV 缓存 + 供应商 prompt cache，按会话/项目/模型/版本隔离，报告命中与 token 统计 |
-| **技能系统** | 可扩展 skill 注册表，按认知阶段注入，支持批量导入 |
+| **技能系统** | 可扩展 skill 注册表，按认知阶段注入，反思可蒸馏新技能，支持批量导入 |
 | **项目系统** | 对话按项目组织，会话置顶，记忆跨会话共享，历史阶段日志回放 |
 | **对话管理** | 历史记录、SSE 流式响应、用户引导/打断/终止/恢复 |
 | **实时活动流** | 前端实时显示阶段、工具活动、等待授权、验证与失败状态 |
@@ -151,35 +175,44 @@ Praxic/
 ├── praxic/                          # 核心包
 │   ├── core/                      # 认知引擎
 │   │   ├── cognitive_loop.py      # 认知循环控制器（主入口）
-│   │   ├── question_preprocessing.py  # 问题预处理（意图/任务性质/阶段计划）
+│   │   ├── question_preprocessing.py  # 问题预处理（意图/任务性质/初始深度分配）
 │   │   ├── investigation.py       # 调查研究
 │   │   ├── contradiction.py       # 矛盾分析
 │   │   ├── rational.py            # 理性认识
 │   │   ├── practice.py            # 实践检验（多轮实验 + 自动修复）
 │   │   ├── practice_harness.py    # 实践执行提示词（迭代高频，独立存放）
-│   │   ├── reflection.py          # 反思引擎（收敛判定 + 证据管线）
+│   │   ├── reflection.py          # 反思引擎（收敛判定 + 预算调控 + 技能蒸馏）
+│   │   ├── depth.py               # 推理深度档位（模型无关的三要素定义 + 初始深度表）
+│   │   ├── phase_budget.py        # 阶段预算解析与校验（反思下发的执行预算）
 │   │   ├── loop_controller.py     # 终止/引导/打断控制
 │   │   ├── skill_manager.py       # 技能加载与管理
 │   │   ├── skill_importer.py      # 技能批量导入
 │   │   ├── autonomy.py            # 自主度控制
 │   │   ├── credibility_chain.py   # 可信度溯源
+│   │   ├── reviewer.py            # 操作语义审核（自动审阅模式）
 │   │   └── dev_tracer.py          # 开发追踪
 │   ├── llm/                       # LLM 后端
 │   │   ├── base.py                # 抽象基类
 │   │   ├── claude.py              # Anthropic Claude
-│   │   └── openai_compatible.py   # OpenAI / DeepSeek / Ollama
+│   │   └── openai_compatible.py   # OpenAI / DeepSeek / Ollama（含空输出兜底重试）
 │   ├── tools/                     # 工具系统
-│   │   ├── base.py                # 工具抽象
 │   │   ├── registry.py            # 工具注册表
+│   │   ├── assembler.py           # 工具装配（内置 + 插件加载）
 │   │   ├── permissions.py         # 权限/授权门控
-│   │   ├── filesystem.py          # 文件读写
+│   │   ├── filesystem.py          # 文件读写/编辑/列表/删除/检索/批量/状态
+│   │   ├── file_ops.py            # 文件操作（复制/移动/尾部）
 │   │   ├── file_loader.py         # 多格式文件读取
+│   │   ├── pdf_extract.py         # PDF 提取
 │   │   ├── pdf_converter.py       # PDF 多级回退转换 + OCR
+│   │   ├── data_query.py          # 数据查询
+│   │   ├── sqlite_query.py        # SQLite 查询
 │   │   ├── web_search.py          # Tavily 联网搜索
 │   │   ├── web_fetch.py           # 网页内容抓取
-│   │   ├── shell.py / python_exec.py  # 命令执行
-│   │   ├── user_context.py        # 用户上下文
-│   │   └── local_retriever.py     # 本地知识检索
+│   │   ├── shell.py / python_exec.py  # 命令执行（沙箱限制）
+│   │   ├── environment.py         # 环境/时间/磁盘/进程查询
+│   │   ├── archive.py             # 归档压缩
+│   │   ├── plugin.py              # 插件机制
+│   │   └── user_context.py        # 用户上下文
 │   ├── memory/                    # 记忆系统
 │   │   ├── working_memory.py      # 跨轮次上下文传递
 │   │   ├── episodic_memory.py     # 情景记忆（SQLite）
@@ -204,6 +237,8 @@ Praxic/
 │   ├── push.sh                    # GitHub token 推送
 │   ├── release.sh                 # 版本发布
 │   ├── import_skills.py           # 技能批量导入
+│   ├── verify_practice_real.py    # 真实验收（真实 LLM 跑实践阶段，统计规划成功率）
+│   ├── probe_reasoning_control.py # 推理控制探针（验证 provider 参数行为）
 │   ├── build-electron.ps1         # Windows Electron 构建
 │   └── build-electron.sh          # Linux Electron 构建
 ├── tests/                         # 测试
@@ -213,7 +248,10 @@ Praxic/
 │   ├── test_steering.py           # 引导/打断/终止控制
 │   ├── test_clarification.py      # 主动澄清
 │   ├── test_practice_integration.py
-│   ├── test_skill_manager.py
+│   ├── test_practice_upgrade.py   # 实践阶段改造（重试/工具注入/方向锚点）
+│   ├── test_phase_budget.py       # 反思预算调控
+│   ├── test_depth.py              # 推理深度体系
+│   ├── test_empty_retry.py        # 空输出兜底重试
 │   └── ...
 ├── config.toml.example            # 配置模板
 ├── pyproject.toml
@@ -235,11 +273,11 @@ Praxic/
 [llm]
 provider = "openai_compatible"   # openai_compatible | anthropic
 base_url = "https://api.deepseek.com"
-model = "deepseek-v4-pro"
+model = "deepseek-v4-flash"
 
 [runtime]
-autonomy_level = "standard"      # 行为自主：read_only | sandboxed | standard | elevated
-permission_mode = "ask"           # 权限模式：read_only | ask | auto_review | full
+autonomy_level = "standard"      # read_only | sandboxed | standard | elevated
+permission_mode = "ask"          # read_only | ask | auto_review | full
 max_iterations = 5
 web_search_enabled = true
 ```

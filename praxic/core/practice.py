@@ -529,14 +529,15 @@ class PracticeModule:
     def _practice_budget_kwargs(self, depth=None) -> tuple[dict, int]:
         """返回实践阶段 LLM 调用的推理控制 kwargs 与默认 max_tokens。
 
-        practice 默认关闭思维链（enable_reasoning=False 是现行为，深度体系保留）。
-        max_tokens：预算显式 max_tokens 优先；否则按 depth 查 DEPTH_CONFIG。
+        B方案统一：不传 enable_reasoning（该参数在 DeepSeek 上无效被忽略），
+        thinking 保持模型默认开启；max_tokens 保底给足，容纳思维链 + 正文。
+        预算显式 max_tokens 优先；否则按 depth 查 DEPTH_CONFIG 并保底。
         depth 默认读 self._current_budget.depth，否则 STANDARD。
         """
         from .depth import parse_depth, DEPTH_CONFIG, Depth as _Depth
         from .phase_budget import validate_positive_int
         budget = self._current_budget or {}
-        reasoning_kwargs = {"enable_reasoning": False}
+        reasoning_kwargs = {}
         if depth is None:
             depth = parse_depth(budget.get("depth"), default=_Depth.STANDARD)
         else:
@@ -546,11 +547,15 @@ class PracticeModule:
         max_tokens = validate_positive_int(budget.get("max_tokens"))
         if max_tokens is None:
             max_tokens = max(_dflt_tok, getattr(self.config, "max_tokens", 4096))
+        # thinking 默认开启时，思维链与正文共用预算，保底 16384（实测思维链可达 8k~15k）
+        if max_tokens < 16384:
+            max_tokens = 16384
         return reasoning_kwargs, max_tokens
 
-    def _analyze_max_tokens(self, fallback: int = 8192) -> int:
+    def _analyze_max_tokens(self, fallback: int = 16384) -> int:
         """实践分析类调用的 max_tokens：分析类固定 STANDARD 档（_analyze_all_rounds /_boundary_analysis）。
-        有预算显式 max_tokens 则取预算，否则取 STANDARD 档 DEEP/STANDARD 混合中的更大值兜底。"""
+        thinking 默认开启时思维链与正文共用预算，fallback 保底 16384。
+        有预算显式 max_tokens 则取预算，否则取更大的兜底值。"""
         from .phase_budget import validate_positive_int
         from .depth import DEPTH_CONFIG
         budget = self._current_budget or {}
@@ -1204,7 +1209,7 @@ class PracticeModule:
             if trace.rational_synthesis:
                 ht = "\\n".join(f"- {h}" for h in trace.rational_synthesis.hypotheses[:5])
             prompt = _FINAL_ANALYSIS_PROMPT.replace("{question}", question).replace("{hypotheses}", ht or "（无）").replace("{practice_rationale}", rationale or "（无）").replace("{all_rounds_log}", all_rounds_log[:6000])
-            resp = await self.llm.call(messages=[{"role": "user", "content": "综合分析全部轮次实验结果。"}], system=prompt, temperature=0.3, max_tokens=self._analyze_max_tokens(), enable_reasoning=False)
+            resp = await self.llm.call(messages=[{"role": "user", "content": "综合分析全部轮次实验结果。"}], system=prompt, temperature=0.3, max_tokens=self._analyze_max_tokens())
             return self._parse_json_safe(resp.content, None)
         except Exception as e:
             log.warning("practice.analysis_error", error=str(e))
@@ -1233,8 +1238,7 @@ class PracticeModule:
                 messages=[{"role": "user", "content": "基于调查事实与矛盾分析，对核心主张做知性评估（V2）。"}],
                 system=prompt,
                 temperature=0.3,
-                max_tokens=self._analyze_max_tokens(4096),
-                enable_reasoning=False,
+                max_tokens=self._analyze_max_tokens(16384),
             )
             return self._parse_json_safe(resp.content, None)
         except Exception as e:

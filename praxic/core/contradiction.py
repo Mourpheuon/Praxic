@@ -140,6 +140,14 @@ _SYSTEM_CONTRADICTION_PROMPT = """
 
 CRITICAL: 只输出 JSON，不要任何其他文字。
 
+### 字段分层（重要）
+
+本阶段输出分为两层，职责不同：
+- **结论层**（对外结论，必出）：`principal_contradiction`、`secondary_contradictions`、`dynamic_note`、`synthesis`。这些是要交给下游阶段和最终回答使用的结论。
+- **推理层**（内部推理支撑，按档位输出）：每条矛盾内的 `derivation_chain`、`system_model`、`contradiction_derivation`。它们说明“为什么这样判断”，用于检验与增量维护，不直接对外。
+
+当前档位要求哪种输出范围，以输出范围指令为准（见 system 提示末尾“## 输出范围（本档）”）。若本档为 STANDARD/SHALLOW，推理层字段必须置为 null/空，不要生成；若为 DEEP，则完整输出。
+
 {
   "system_model": {
     "system_boundary": "系统边界描述，100-200字",
@@ -329,33 +337,8 @@ class ContradictionAnalyzer:
             system = system + "\n" + get_autonomy_instruction(settings.autonomy_level, "contradiction")
         except ImportError:
             pass
-        temperature = getattr(self.config, "temperature", 0.3)
-        max_tokens = getattr(self.config, "max_tokens", 16384)
-        budget = budget or {}
-        from .phase_budget import budget_max_tokens, budget_depth
-        from .depth import Depth
-        depth = budget_depth(budget) or Depth.STANDARD
-        max_tokens = budget_max_tokens(budget, max_tokens)
-        # 按深度注入输出 schema 分层说明：
-        #   SHALLOW → 仅 principal_contradiction；STANDARD → principal+secondary+简短推导；
-        #   DEEP → 完整 system_model + 全流程推导链
-        _schema_scope = {
-            Depth.SHALLOW: (
-                "\n\n## 输出范围（本档）\n"
-                "仅需输出 principal_contradiction，secondary_contradictions 与 system_model 可空。"
-            ),
-            Depth.STANDARD: (
-                "\n\n## 输出范围（本档）\n"
-                "输出 principal_contradiction 与 secondary_contradictions，推导链可简短；"
-                "system_model 可输出必要要素即可。"
-            ),
-            Depth.DEEP: (
-                "\n\n## 输出范围（本档）\n"
-                "必须输出完整 system_model（elements/relationships/feedback_loops/emergent_properties）"
-                "与完整的推导链（derivation_chain 每步给出具体推理）。"
-            ),
-        }.get(depth, "")
-        system = system + _schema_scope
+        temperature, max_tokens, depth, scope_note = self._resolve_budget(budget)
+        system = system + scope_note
 
         response = await self.llm.call(
             messages=[{"role": "user", "content": user_content}],
@@ -365,7 +348,10 @@ class ContradictionAnalyzer:
         )
 
         graph = self._parse_response(response.content)
+        # B方案：思维链仅供展示，随图存储，不进后续输入
+        graph.thinking_trace = (response.metadata or {}).get("reasoning", "")
         # C3：DEEP 要求完整 system_model，缺失时 log warning（不崩溃，走既有 fallback）
+        from .depth import Depth
         if depth == Depth.DEEP and graph.system_model is None:
             log.warning("contradiction.schema_level_missing_system_model", depth="deep")
         log.info(
@@ -378,6 +364,47 @@ class ContradictionAnalyzer:
                 if graph.principal_contradiction else False,
         )
         return graph
+
+    def _resolve_budget(self, budget: dict) -> tuple:
+        """
+        解析阶段预算 budget，返回 (temperature, max_tokens, depth, schema_scope_note)。
+        供 analyze 与 maintain_contradictions 共用，保证两路径的 depth/schema 分层一致。
+        """
+        from .phase_budget import budget_max_tokens, budget_depth
+        from .depth import Depth
+        temperature = getattr(self.config, "temperature", 0.3)
+        max_tokens = getattr(self.config, "max_tokens", 16384)
+        budget = budget or {}
+        depth = budget_depth(budget) or Depth.STANDARD
+        max_tokens = budget_max_tokens(budget, max_tokens)
+        # B方案：STANDARD 档正文只出结论层，但 thinking 模式默认开启，
+        # DeepSeek 的 max_tokens 同时承载思维链 + 正文，必须给足（实测思维链 8k~14k）。
+        if depth == Depth.STANDARD and max_tokens < 16384:
+            max_tokens = 16384
+        # 按深度注入输出 schema 分层说明（B方案：结论层与推理层分离）：
+        #   SHALLOW → 仅 principal_contradiction；
+        #   STANDARD → 结论层全量（principal+secondary+dynamic_note+synthesis），推理层留空；
+        #   DEEP → 结论层 + 推理层全量（system_model + derivation_chain + contradiction_derivation）
+        _schema_scope = {
+            Depth.SHALLOW: (
+                "\n\n## 输出范围（本档）\n"
+                "仅需输出 principal_contradiction（不含 derivation_chain），"
+                "secondary_contradictions、system_model、contradiction_derivation 全部留空。"
+            ),
+            Depth.STANDARD: (
+                "\n\n## 输出范围（本档）\n"
+                "只输出结论层：principal_contradiction、secondary_contradictions、dynamic_note、synthesis。"
+                "不要输出推理层——derivation_chain（每条矛盾内）、system_model、contradiction_derivation "
+                "均为内部推理支撑，本档一律置为 null/空，不生成。"
+            ),
+            Depth.DEEP: (
+                "\n\n## 输出范围（本档）\n"
+                "输出结论层（principal_contradiction、secondary_contradictions、dynamic_note、synthesis）"
+                "与完整推理层：system_model（elements/relationships/feedback_loops/emergent_properties）"
+                "、每条矛盾的 derivation_chain（每步给出具体推理）与整体 contradiction_derivation。"
+            ),
+        }.get(depth, "")
+        return temperature, max_tokens, depth, _schema_scope
 
     def _parse_response(self, raw: str) -> ContradictionGraph:
         original = raw
@@ -634,6 +661,7 @@ class ContradictionAnalyzer:
         updated_fact_report: FactReport,
         question: str,
         challenged_indices: list[int] = None,
+        budget: dict = None,
     ) -> ContradictionGraph:
         """
         I线：增量维护矛盾图：
@@ -677,6 +705,12 @@ class ContradictionAnalyzer:
 ## 被挑战的矛盾（需要深化分析）
 {challenged_text}
 
+## 输出范围说明
+
+本档输出范围由 system 提示末尾的“## 输出范围（本档）”指令决定。
+- 若为 STANDARD/SHALLOW：只输出结论层，推理层（derivation_chain / system_model / contradiction_derivation）一律 null/空。Refine 的推导深化体现到结论层字段（description、particularity_description、basis_summary、transformation_condition 的更新）上。
+- 若为 DEEP：输出结论层与完整推理层，被挑战矛盾的推导链按 fork 规则处理。
+
 ## 你的任务
 
 1. **Retain（保留）**：未被挑战且新事实不影响的矛盾——保持描述不变，仅补充新的basis_fact_ids
@@ -701,13 +735,17 @@ class ContradictionAnalyzer:
 }}
 """
         system = load_phase_prompt("contradiction", _SYSTEM_CONTRADICTION_PROMPT)
+        # 本档输出范围说明：与 analyze 共用 depth/schema 分层规则。
+        temperature, max_tokens, _depth, _scope_note = self._resolve_budget(budget)
         response = await self.llm.call(
             messages=[{"role": "user", "content": maintain_prompt + f"\n\n问题：{question}"}],
-            system=system,
-            temperature=getattr(self.config, "temperature", 0.4),
-            max_tokens=16384,
+            system=system + _scope_note,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         new_graph = self._parse_response(response.content)
+        # B方案：思维链仅供展示，随图存储，不进后续输入
+        new_graph.thinking_trace = (response.metadata or {}).get("reasoning", "")
 
         # 处理推导链 fork（被挑战矛盾）
         for i, c in enumerate(new_graph.all_contradictions):

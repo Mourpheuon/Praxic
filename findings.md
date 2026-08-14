@@ -155,3 +155,28 @@
 - GitHub 远端核验显示本地 `main` 与 `origin/main` 一致；PR #1 已合并，其源分支 `codex/migrated-main-20260729-v2` 已不存在。
 - planning-with-files Stop Hook 只统计英文 `### Phase` 标题与 `**Status:** complete` 状态；中文勾选列表会被误报为 `0/0`，计划现已转换为兼容格式。
 - 最终 GitHub API 核验显示 `main` 指向 `640a835`；本地 token 推送使用项目内 `scripts/push.sh`，未将 token 写入 Git 配置或提交。
+
+## 2026-08-14 矛盾双层产出（B方案）调研发现
+
+### 现状事实（代码级核实）
+
+1. **adapter 已支持 reasoning 控制透传**：`praxic/llm/openai_compatible.py` 支持 `enable_reasoning`（进 extra_body）与 `reasoning_effort`（顶层参数），且 `_create_with_reasoning_fallback` 在 provider 报 unsupported 时自动降级移除这些控制。**reasoning_content 已从正文剥离**：`choice.message.reasoning_content` 只进日志（`openai_compatible.reasoning_tokens`），不作为正文返回。
+2. **empty_content + finish=length 兜底**：E1 逻辑——content 为空且 finish=length 时用 max_tokens*2 重置一次；重试后仍空返回空交上层 fallback；content 非空绝不触发。真实验收观测：`reasoning_len=8487, max_tokens=4096 → doubled=8192`，重试仍空 → prose_fallback。
+3. **矛盾阶段 max_tokens 来源**：`contradiction.py:_resolve_budget` → `getattr(self.config,"max_tokens",16384)`，但 `self.config` 是 `PhaseConfig()` 默认 `max_tokens=4096`，16384 兜底不生效；config.toml 未给 contradiction 配 max_tokens。随后 `budget_max_tokens(budget, 4096)`：预算显式 max_tokens 优先，否则 `DEPTH_CONFIG[depth]`（SHALLOW 1024 / STANDARD 4096 / DEEP 16384）。真实验收默认 depth=STANDARD → 4096。
+4. **DeepSeek max_tokens 同时承载 reasoning + 正文**：一次 reasoning 可达 8487 token，挤爆 4096，正文 JSON 一个字节不出 → fallback。这是矛盾阶段 JSON 被吞的根因。
+5. **矛盾图字段分三类**：
+   - 结论层（下游消费、给人看）：`principal_contradiction`（description/tension_poles/primary_aspect/transformation_condition/basis_summary）、`secondary_contradictions`、`dynamic_note`、`synthesis`、`position_shifts`
+   - 推理层（内部支撑、maintain fork 用）：`derivation_chain`（每矛盾）、`system_model`（elements/relationships/feedback_loops/emergent_properties/uncertainty_areas）、`contradiction_derivation`（整体推导链）
+   - 元数据：`iteration`、`autonomous_contradiction_view`
+6. **下游实际消费**：rational 读 `principal.description`/`derivation_chain.summary`/`system_model`/`dynamic_note`/`synthesis`；reflection 读 description/secondary/system_model 统计/position_shifts；practice 只读 `principal.description`。**推理层真正被消费的只有 rational 的 derivation_chain.summary 与 system_model**。
+7. **项目内先例**：practice 阶段已用 `enable_reasoning=False` 解决同类问题（0813），depth.py 注释明确"provider 私有 reasoning 参数语义分裂不一定生效，Praxic 已不主动透传 reasoning_effort（保留 adapter fallback）"。
+8. **schema 分层已存在**：`_resolve_budget` 中 SHALLOW 仅 principal / STANDARD principal+secondary+简短推导 / DEEP 完整 system_model+全推导链。方向对但预算结构错（reasoning 与正文共享）。
+
+### B 方案设计要点（推论）
+
+- **两条实现路径**：(a) 轻：矛盾阶段直接 `enable_reasoning=False` + 提高正文 max_tokens（治标，复用 practice 先例）；(b) 重：内部推理与输出物理分离——正文只出结论层 JSON，推理层（derivation_chain/system_model）改为独立、可裁剪的中间产物，只在该轮需要时生成，不再与结论共用同一份 max_tokens。
+- 用户明确要走 (b)。核心改动方向：
+  1. 矛盾阶段调用时把 reasoning 与正文预算分离（正文走结构化 JSON，推理走独立通道或独立调用）
+  2. 结论层与推理层字段责任分离：下游默认只见结论层；推理层仅 maintain fork / DEEP 档需要时全量
+  3. 结论层"输入给别人"时自然干净（精简后的 principal/secondary/synthesis/dynamic_note）
+- 风险：depth.py 注释提示 provider reasoning 参数"不一定生效"；DeepSeek 关闭 reasoning 是否真的省预算需真实验证（practice 已验证过 enable_reasoning=False 是现行为）。

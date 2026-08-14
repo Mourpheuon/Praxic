@@ -51,7 +51,7 @@ _RATIONAL_PROMPT = """
 ## 你的任务
 
 1. **接收抽象**（abstract_from）：概括矛盾分析已经抽象出了什么（矛盾的本质关系、系统的主要结构）
-2. **识别问题的本质**（essence）：用一两句话说清楚这个问题最根本的是什么
+2. **识别问题的本质**（essence）：用一两句话说清楚这个问题最根本的是什么。本质是主要矛盾两极的内部联系与运动规律——若主要矛盾已识别，essence 须以其为内核，说明这两极为何相互依存又相互排斥、谁居于主导；不要产出脱离主要矛盾的泛泛"本质"
 3. **提炼规律**（patterns）：从事实和矛盾中发现的普遍性规律。每条规律必须说明"在什么具体条件下成立"
 4. **生成假设**（hypotheses）：基于理性认识，对问题走向的预判。每条假设应说明"如果本质判断正确，那么实践应该观察到什么"
 5. **回归具体**（return_to_concrete）：把本质规律放回到具体的现象世界中，解释它如何表现：
@@ -100,6 +100,7 @@ class RationalCognitionModule:
         contradiction_graph: ContradictionGraph,
         system_model: Optional[SystemModel] = None,
         budget: dict = None,
+        contradiction: Optional[ContradictionGraph] = None,
     ) -> RationalSynthesis:
         log.info("rational.start")
 

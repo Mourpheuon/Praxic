@@ -80,6 +80,7 @@ praxic/skills/*
 
 # Project handoff (internal, not for distribution)
 PROJECT_HANDOFF.md
+progress.md
 
 # Misc dev scraps
 tail_fix.py

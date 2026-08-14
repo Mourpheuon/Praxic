@@ -12,10 +12,10 @@
 User Input
    │
    ▼
-⓪ Question Preprocessing — parse intent, task nature, complexity, and phase plan
+⓪ Question Preprocessing — parse intent, task nature, complexity; assign initial depths per phase
    │
    ▼
-① Investigation — No investigation, no right to speak (web search + file reading + web fetching)
+① Investigation — No investigation, no right to speak (web search + file reading + web fetching + local retrieval)
    │
    ▼
 ② Contradiction Analysis — Identify the principal contradiction, dissect its dominant aspect
@@ -29,10 +29,11 @@ User Input
                 call tools, analyze results, and hand verification evidence to reflection
    │
    ▼
-⑤ Reflection — Practice is the sole criterion of truth (convergence judgment + evidence pipeline)
+⑤ Reflection — Practice is the sole criterion of truth (convergence judgment + evidence pipeline +
+                phase budgets for the next round)
    │
    ▼
-Converged? → If not, re-investigate (with reflection hints carried forward, bounded by max_iterations)
+Converged? → If not, re-investigate (with reflection hints and budget control, bounded by max_iterations)
 ```
 
 ---
@@ -114,6 +115,26 @@ asyncio.run(main())
 
 ---
 
+## Reasoning Depth System
+
+Praxic controls per-phase thinking and output scale with **model-agnostic depth tiers** (instead of provider-private reasoning parameters):
+
+| Tier | max_tokens | Instruction | Output Scope |
+|------|-----------|-------------|--------------|
+| `shallow` | 1024 | Answer directly, no reasoning process | Required fields only |
+| `standard` | 4096 | Brief reasoning, then conclusion | Required + rationale/summary |
+| `deep` | 16384 | Full reasoning with key chain and per-step causes | All fields (e.g. full system_model in contradiction analysis, skill distillation in reflection) |
+
+**Depth assignment chain:**
+
+1. **First round**: preprocessing looks up the initial depth table by task nature × complexity (e.g. code_generation → shallow investigation; exploration → deep contradiction/rational)
+2. **Later rounds**: reflection issues `phase_budgets` (depth, call counts, output budgets) per phase based on this round's output quality and elapsed time — deepen where needed, trim where sufficient; stay silent when converged
+3. **Fallback**: on empty model output (content empty with `finish_reason=length`), retry once with doubled token budget
+
+Model choice is decoupled from depth: all phases share the configured default model (`deepseek-v4-flash` by default); no more per-phase model routing.
+
+---
+
 ## Run Modes
 
 | Mode | Description | Use Case |
@@ -130,15 +151,18 @@ asyncio.run(main())
 | Feature | Description |
 |---------|-------------|
 | **Cognitive Loop** | Preprocessing → Investigation → Contradiction → Rational Synthesis → Practice → Reflection |
+| **Reasoning Depth System** | Model-agnostic tiers (shallow/standard/deep) controlling max_tokens, reasoning instruction, and output schema scope |
+| **Reflection Budget Control** | Reflection issues per-phase `phase_budgets` (depth / call counts / output budgets) for the next round — balancing speed and depth |
 | **Web Search** | Tavily + web fetching, multi-result parallel |
-| **File Reading** | TXT, code, PDF (multi-fallback + OCR), DOCX, XLSX, PPTX, IPYNB |
-| **Multi-LLM Backend** | DeepSeek, OpenAI, Anthropic, Ollama, custom compatible endpoint |
+| **File & Data Tools** | Read/edit/grep/batch-read, PDF extraction (multi-fallback + OCR), SQLite queries, data queries, archives |
+| **Environment Tools** | Shell execution (structured argv + safety filter), Python execution (sandboxed imports), env/time/disk/process queries, HTTP requests, file download |
+| **Multi-LLM Backend** | DeepSeek, OpenAI, Anthropic, Ollama, custom compatible endpoint (single model; depth control decoupled) |
 | **Practice Engine** | Distills falsifiable claims from prior phases, plans actions, calls tools, analyzes results — multi-round progressive with auto-repair |
 | **Permissions & Authorization** | Reads auto-approved; writes, deletes, and external side effects gated by permission checks and async authorization, with change logs and read-back verification |
-| **Tool Registry** | Unified tool contract, structured serialization of results, distinguishes tool failure from unchanged world state |
+| **Tool Registry** | Unified tool contract, structured serialization of results, distinguishes tool failure from unchanged world state; plugin auto-loading |
 | **Credibility Tracing** | Evidence-based caps on claim credibility (V3/V2), preventing assertions beyond the evidence |
 | **Context Caching** | App-level KV cache + provider prompt cache, isolated by session/project/model/version, with hit and token metrics |
-| **Skill System** | Extensible skill registry, injected per cognitive phase, batch import supported |
+| **Skill System** | Extensible skill registry, injected per cognitive phase, skills distilled from reflection, batch import supported |
 | **Project System** | Conversations organized by project, session pinning, memory shared across sessions, historical phase-log replay |
 | **Conversation Management** | History, SSE streaming, user steering / interrupt / terminate / resume |
 | **Live Activity Stream** | Frontend shows phases, tool activity, pending authorization, verification and failure states in real time |
@@ -154,35 +178,44 @@ Praxic/
 ├── praxic/                          # Core package
 │   ├── core/                      # Cognitive engine
 │   │   ├── cognitive_loop.py      # Cognitive loop controller (main entry)
-│   │   ├── question_preprocessing.py  # Question preprocessing (intent/task/phase plan)
+│   │   ├── question_preprocessing.py  # Question preprocessing (intent/task/initial depth assignment)
 │   │   ├── investigation.py       # Investigation
 │   │   ├── contradiction.py       # Contradiction analysis
 │   │   ├── rational.py            # Rational synthesis
 │   │   ├── practice.py            # Practice (multi-round experiments + auto-repair)
 │   │   ├── practice_harness.py    # Practice execution prompts (high-churn, isolated)
-│   │   ├── reflection.py          # Reflection engine (convergence + evidence pipeline)
+│   │   ├── reflection.py          # Reflection engine (convergence + budget control + skill distillation)
+│   │   ├── depth.py               # Reasoning depth tiers (model-agnostic definition + initial depth table)
+│   │   ├── phase_budget.py        # Phase budget parsing & validation (budgets issued by reflection)
 │   │   ├── loop_controller.py     # Steering / interrupt / termination control
 │   │   ├── skill_manager.py       # Skill loading & management
 │   │   ├── skill_importer.py      # Batch skill import
 │   │   ├── autonomy.py            # Autonomy level control
 │   │   ├── credibility_chain.py   # Credibility tracing
+│   │   ├── reviewer.py            # Operation semantics reviewer (auto-review mode)
 │   │   └── dev_tracer.py          # Development tracer
 │   ├── llm/                       # LLM backends
 │   │   ├── base.py                # Abstract base
 │   │   ├── claude.py              # Anthropic Claude
-│   │   └── openai_compatible.py   # OpenAI / DeepSeek / Ollama
+│   │   └── openai_compatible.py   # OpenAI / DeepSeek / Ollama (with empty-output retry fallback)
 │   ├── tools/                     # Tool system
-│   │   ├── base.py                # Tool abstraction
 │   │   ├── registry.py            # Tool registry
+│   │   ├── assembler.py           # Tool assembly (built-in + plugin loading)
 │   │   ├── permissions.py         # Permission / authorization gate
-│   │   ├── filesystem.py          # File I/O
+│   │   ├── filesystem.py          # Read/edit/list/delete/grep/batch/stat
+│   │   ├── file_ops.py            # File operations (copy/move/tail)
 │   │   ├── file_loader.py         # Multi-format file reader
+│   │   ├── pdf_extract.py         # PDF extraction
 │   │   ├── pdf_converter.py       # PDF multi-fallback conversion + OCR
+│   │   ├── data_query.py          # Data query
+│   │   ├── sqlite_query.py        # SQLite queries
 │   │   ├── web_search.py          # Tavily web search
 │   │   ├── web_fetch.py           # Web content fetching
-│   │   ├── shell.py / python_exec.py  # Command execution
-│   │   ├── user_context.py        # User context
-│   │   └── local_retriever.py     # Local knowledge retrieval
+│   │   ├── shell.py / python_exec.py  # Command execution (sandboxed)
+│   │   ├── environment.py         # Env/time/disk/process queries
+│   │   ├── archive.py             # Archive create/extract
+│   │   ├── plugin.py              # Plugin mechanism
+│   │   └── user_context.py        # User context
 │   ├── memory/                    # Memory system
 │   │   ├── working_memory.py      # Cross-round context passing
 │   │   ├── episodic_memory.py     # Episodic memory (SQLite)
@@ -207,6 +240,8 @@ Praxic/
 │   ├── push.sh                    # GitHub token push
 │   ├── release.sh                 # Version release
 │   ├── import_skills.py           # Batch skill import
+│   ├── verify_practice_real.py    # Real-LLM verification (practice phase stats)
+│   ├── probe_reasoning_control.py # Reasoning-control probe (provider parameter behavior)
 │   ├── build-electron.ps1         # Windows Electron build
 │   └── build-electron.sh          # Linux Electron build
 ├── tests/                         # Tests
@@ -216,7 +251,10 @@ Praxic/
 │   ├── test_steering.py           # Steering / interrupt / termination
 │   ├── test_clarification.py      # Active clarification
 │   ├── test_practice_integration.py
-│   ├── test_skill_manager.py
+│   ├── test_practice_upgrade.py   # Practice refactor (retry/tool injection/direction anchor)
+│   ├── test_phase_budget.py       # Reflection budget control
+│   ├── test_depth.py              # Reasoning depth system
+│   ├── test_empty_retry.py        # Empty-output retry fallback
 │   └── ...
 ├── config.toml.example            # Config template
 ├── pyproject.toml
@@ -238,11 +276,11 @@ Edit `config.toml` (see `config.toml.example`):
 [llm]
 provider = "openai_compatible"   # openai_compatible | anthropic
 base_url = "https://api.deepseek.com"
-model = "deepseek-v4-pro"
+model = "deepseek-v4-flash"
 
 [runtime]
-autonomy_level = "standard"      # behavior autonomy: read_only | sandboxed | standard | elevated
-permission_mode = "ask"           # permission mode: read_only | ask | auto_review | full
+autonomy_level = "standard"      # read_only | sandboxed | standard | elevated
+permission_mode = "ask"          # read_only | ask | auto_review | full
 max_iterations = 5
 web_search_enabled = true
 ```

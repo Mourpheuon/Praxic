@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-Phase 7（实践阶段结构化改造）已完成；C5 方向状态更新已正式结构化，旧兼容路径已增加方向字段软校验。
+**Phase 8（矛盾双层产出 B 方案）进行中**：调研已完成（见 findings.md），计划待确认。此前 Phase 0-7 全部完成。
 
 ## Phases
 
@@ -130,3 +130,46 @@ Phase 7（实践阶段结构化改造）已完成；C5 方向状态更新已正�
 ## 恢复提示
 
 Phase 6 已完成。迁移前完整前端功能已恢复，视觉层按用户反馈收敛；后端、缓存和工具改动保持不变。
+
+---
+
+### Phase 8: 矛盾分析双层产出（内部推理与输出分离，B 方案）
+
+**背景**：矛盾分析产出的内容要输入给别人（下游阶段、最终回答），需要精简；同时它的输出混着三种职责：结论层（principal/secondary/synthesis/dynamic_note）、推理层（derivation_chain/system_model/contradiction_derivation）、元数据（iteration/position_shifts）。现状是三层共用一个 max_tokens，而 DeepSeek 的 max_tokens 又同时承载 reasoning + 正文，导致正文 JSON 被 reasoning 挤爆、经常 fallback。用户明确选择 B 方案：**内部推理与输出物理分离**。
+
+**目标**：
+1. 矛盾阶段正文只输出结论层 JSON（精简、稳定、可直接给人/下游）
+2. 推理层（derivation_chain/system_model）与结论层解耦，不再与结论争抢同一份 max_tokens；需要时（maintain fork / DEEP 档）单独产出、可裁剪
+3. 不再出现 reasoning 挤爆正文导致 fallback 的现状
+
+**设计决策**（已与用户确认）：
+- 结论层 = principal_contradiction（description/tension_poles/primary_aspect/transformation_condition/basis_summary）+ secondary_contradictions + dynamic_note + synthesis + position_shifts + iteration；不加额外 summary 字段，直接用现有 description
+- 推理层 = derivation_chain（每矛盾）+ system_model + contradiction_derivation
+- **推理层产出时机：只在 DEEP 档或 maintain fork 需要时生成；STANDARD 档正文只出结论层，推理层字段为空**（用户选择“后者”）
+- 正文 max_tokens：STANDARD 4096→8192，DEEP 保持 16384（用户认可）
+- 矛盾阶段调用加 `enable_reasoning=False`（复用 practice 先例）
+
+**实施阶段**：
+- [x] P8-1 设计确认：结论层/推理层边界、DEEP 档语义、maintain fork 依赖已对齐（决策：推理层只在 DEEP/maintain fork 时产出；正文用现有 description 不加 summary；STANDARD max_tokens 保底 8192）
+- [x] P8-2 schema 与 prompt 重构：`_SYSTEM_CONTRADICTION_PROMPT` 增加“字段分层”说明（结论层 vs 推理层）；`_schema_scope` 三档重写——SHALLOW 仅 principal、STANDARD 只出结论层（推理层明确置空）、DEEP 结论+推理全量
+- [x] P8-3 调用与预算：**发现 `enable_reasoning=False` 在 DeepSeek 上无效（非官方参数被忽略）**；查证 DeepSeek V4 官方参数为 `thinking: {type: disabled}`（extra_body），adapter 增加 thinking 透传与降级；矛盾阶段改用 `thinking={"type":"disabled"}`；STANDARD max_tokens 保底 8192
+- [x] P8-4 maintain 适配：maintain_prompt 增加输出范围说明（STANDARD 档 fork 在结论层体现，DEEP 档走 fork 规则）；existing_summary 对无推导链已容错
+- [x] P8-5 下游适配：确认 rational/reflection 对推理层字段均已判空，STANDARD 缺省时自然降级，无需改动
+- [x] P8-6 测试：新增 TestDualLayerOutput 5 用例（thinking 透传、STANDARD/DEEP schema 范围、max_tokens 保底、显式预算不覆盖）；更新 test_phase_budget 默认行为断言；mock_llm 记录 kwargs；全量 196 passed
+- [x] P8-7 真实验收：**质变**——thinking 关闭后 reasoning 日志消失，正文 JSON 稳定解析（第一轮 principal+2 secondary，第二轮 maintain 3 contradictions），耗时每调用 100s+→30s，fallback 不再触发；iteration 1→2 递增
+- [x] P8-8 思维链保留与捕获（用户方向修正）：thinking **保持开启**（不传 disabled，DeepSeek 默认思考模式）；adapter 把 reasoning_content 捕获进 `LLMResponse.metadata["reasoning"]`（含重试路径）；`ContradictionGraph` 新增 `thinking_trace` 字段存储思维链（仅前端展开/检视用，**不进后续输入**）；正文仍是唯一消费口径；STANDARD max_tokens 保底提到 16384（容纳思维链+正文）。真实验收：思维链完整捕获（9149/15226 字符），正文 JSON 稳定，maintain 推理质量提升（对稀疏观测做辩证处理而非机械重认定）。全量 **197 passed**。
+
+**验收条件**：
+- [x] 矛盾正文 JSON 稳定输出结论层，不再因 reasoning 挤爆而 fallback（真实验收证实）
+- [x] 推理层仅在 DEEP / maintain fork 时产出，不挤占结论层预算
+- [x] 思维链保留（thinking 开启）并完整捕获，仅供前端展示，不进后续输入
+- [x] 下游（rational/reflection/practice）行为不变，既有测试全绿
+- [x] `python -m pytest -q` 197 passed，`python -m compileall -q praxic` 通过
+- [x] 真实验收：正文 JSON 完整、fallback 消失、思维链捕获成功
+
+**风险（已实勘）**：
+- enable_reasoning 非 DeepSeek 官方参数，被忽略；正确做法是**不传 thinking 参数**（保持默认思考模式开启）或显式 `{"type":"enabled"}`
+- max_tokens 是请求参数（非模型固有）；DeepSeek 的思维链计入 max_tokens 预算，16384 可容纳实测 9k~15k 思维链 + 结论层正文；若思维链超长可能触发 retried_for_empty 翻倍兜底
+- 思维链仅作展示，前端可截断存储，不影响任何逻辑
+
+**Status:** complete

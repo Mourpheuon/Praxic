@@ -201,6 +201,9 @@ class ContradictionGraph(BaseModel):
     # I线：跨迭代矛盾地位转换记录
     position_shifts: list[ContradictionPositionShift] = Field(default_factory=list)
     iteration: int = 1  # 本图是第几轮迭代的产物
+    # B方案：思维链原始文本（thinking 模式产物）。仅供前端展开/开发者检视，
+    # 不进入后续阶段输入；正文 content 仍是唯一消费口径。
+    thinking_trace: str = ""
 
     @property
     def all_contradictions(self) -> list[Contradiction]:

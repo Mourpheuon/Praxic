@@ -53,6 +53,7 @@ class KwargsFake(BaseLLM):
             "max_tokens": max_tokens,
             "reasoning_effort": kwargs.get("reasoning_effort"),
             "enable_reasoning": kwargs.get("enable_reasoning"),
+            "thinking": kwargs.get("thinking"),
         })
         content = self._next.pop(0) if self._next else "{}"
         return LLMResponse(content=content, model="fake")
@@ -213,13 +214,15 @@ def test_practice_max_rounds_applied():
     pm = PracticeModule(llm=fake, phase_config={}, practice_rounds=3)
     pm._current_budget = {"max_rounds": 2, "reasoning_effort": "off", "max_tokens": 7000}
     rkw, mtok = pm._practice_budget_kwargs()
-    assert rkw == {"enable_reasoning": False}
-    assert mtok == 7000
+    # B方案：不再传 enable_reasoning（DeepSeek 无效参数），thinking 保持默认开启
+    assert rkw == {}
+    # 显式预算 7000 低于保底 16384 时抬到保底（思维链+正文需要足够空间）
+    assert mtok == 16384
     assert pm._current_budget["max_rounds"] == 2
 
 
 def test_default_no_budget_unchanged():
-    """不设置预算时，各阶段调用参数与改动前一致（max_tokens 用 config，无法推理则现状）。"""
+    """不设置预算时，max_tokens 用 config 默认；矛盾阶段默认关闭 reasoning（B方案）。"""
     from praxic.api.schemas.models import FactReport
     from praxic.core.contradiction import ContradictionAnalyzer
     fake = KwargsFake()
@@ -228,7 +231,9 @@ def test_default_no_budget_unchanged():
     fake.queue(['{"secondary_contradictions": [], "synthesis": ""}'])
     _ = asyncio.run(ca.analyze(fr, "q"))  # 不传预算
     call = fake.calls[-1]
-    # 无预算 → max_tokens 用 config 默认 16384，无 reasoning 控制
+    # 无预算 → max_tokens 用 config 默认 16384，不透传 provider 私有 reasoning_effort
     assert call["max_tokens"] == 16384
     assert call["reasoning_effort"] is None
+    # B方案：thinking 保持开启（不传 thinking → DeepSeek 默认思考模式），思维链仅作展示
     assert call["enable_reasoning"] is None
+    assert call["thinking"] is None

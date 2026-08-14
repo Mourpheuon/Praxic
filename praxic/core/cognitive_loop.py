@@ -471,6 +471,8 @@ class CognitiveLoop:
             def _on_phase(phase, summary, data=None):
                 if conv_id:
                     event_type = data.get("event_type", "phase") if isinstance(data, dict) else "phase"
+                    # 发言人标记：工具调用 → tool，其余阶段事件 → agent
+                    _speaker = "tool" if event_type == "tool_call" else "agent"
                     try:
                         self.episodic.append_conversation_event(
                             conversation_id=conv_id,
@@ -479,6 +481,7 @@ class CognitiveLoop:
                             summary=summary,
                             event_type=event_type,
                             data=data,
+                            speaker=_speaker,
                         )
                     except Exception:
                         log.warning("cognitive_loop.phase_event_save_failed", exc_info=True)
@@ -550,6 +553,11 @@ class CognitiveLoop:
         # 否则标题生成条件 `not conv_context` 对新对话永远不成立。
         if conv_id:
             self._save_initial_episode(session_id, question, conv_id, _project_id, context=context)
+            # 用户问题入事件流（speaker=user），供结构化上下文提取区分发言方
+            try:
+                self.episodic.record_user_message(conv_id, session_id, question, context=context)
+            except Exception:
+                log.warning("cognitive_loop.user_message_record_failed", exc_info=True)
             # 确保 conversation_meta 行存在并标记项目归属（项目分组的权威来源）
             self.episodic.set_conversation_project(conv_id, _project_id)
         if conv_context:
@@ -790,6 +798,7 @@ class CognitiveLoop:
                     question=effective_question,
                     additional_context=extra_ctx,
                     budget=phase_budgets.get("investigation", {}),
+                    contradiction=working_mem.get_contradiction_graph(),
                     on_progress=(
                         (lambda _tool, summary, data=None: _emit_phase(
                             on_phase, CognitivePhaseName.INVESTIGATION, summary, data=data
@@ -829,7 +838,23 @@ class CognitiveLoop:
                 self.skill_manager.inject_phase_skills("contradiction", working_mem)
                 _emit_phase(on_phase, CognitivePhaseName.CONTRADICTION, "正在进行矛盾分析")
                 t1 = datetime.now()
-                contradiction_graph = await self.contradiction.analyze(fact_report=fact_report, question=effective_question + _hint("contradiction") + _steer("contradiction"), additional_context=working_mem.get_context_for_phase("contradiction"), budget=phase_budgets.get("contradiction", {}))
+                # A1：第二轮起矛盾分析走 maintain（增量维护），第一轮仍从零 analyze。
+                _prev_graph = working_mem.get_contradiction_graph()
+                _q_c = effective_question + _hint("contradiction") + _steer("contradiction")
+                if _prev_graph is not None and trace.metadata.iterations > 1:
+                    contradiction_graph = await self.contradiction.maintain_contradictions(
+                        previous_graph=_prev_graph,
+                        updated_fact_report=fact_report,
+                        question=_q_c,
+                        budget=phase_budgets.get("contradiction", {}),
+                    )
+                else:
+                    contradiction_graph = await self.contradiction.analyze(
+                        fact_report=fact_report,
+                        question=_q_c,
+                        additional_context=working_mem.get_context_for_phase("contradiction"),
+                        budget=phase_budgets.get("contradiction", {}),
+                    )
                 trace.contradictions = contradiction_graph
                 working_mem.set_contradiction(contradiction_graph)
                 # 存储系统模型供下游阶段使用
@@ -861,7 +886,7 @@ class CognitiveLoop:
                 self.skill_manager.inject_phase_skills("rational", working_mem)
                 _emit_phase(on_phase, CognitivePhaseName.RATIONAL, "正在形成理性认识")
                 t2 = datetime.now()
-                rational_synthesis = await self.rational.synthesize(question=effective_question + _hint("rational") + _steer("rational"), fact_report=fact_report, contradiction_graph=contradiction_graph, system_model=contradiction_graph.system_model, budget=phase_budgets.get("rational", {}))
+                rational_synthesis = await self.rational.synthesize(question=effective_question + _hint("rational") + _steer("rational"), fact_report=fact_report, contradiction_graph=contradiction_graph, system_model=contradiction_graph.system_model, budget=phase_budgets.get("rational", {}), contradiction=working_mem.get_contradiction_graph())
                 trace.rational_synthesis = rational_synthesis
                 _record_duration(trace, "rational", t2)
                 _emit_phase(
@@ -1153,6 +1178,7 @@ class CognitiveLoop:
                         summary="运行异常：" + str(exc),
                         event_type="error",
                         data={"event_type": "error", "error": str(exc)},
+                        speaker="system",
                     )
                 except Exception:
                     pass
@@ -1180,6 +1206,7 @@ class CognitiveLoop:
                         summary="认知循环已终止，已保留此前过程",
                         event_type="error",
                         data={"event_type": "error", "error": "已终止"},
+                        speaker="system",
                     )
                 except Exception:
                     pass

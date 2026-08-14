@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "praxic-agent"
-version = "0.1.7"
+version = "0.1.8"
 description = "即物穷理 Praxic —— 以辩证唯物主义方法论为认知内核的 AI 智能体"
 readme = "README.md"
 license = {text = "MIT"}

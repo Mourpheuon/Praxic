@@ -90,10 +90,13 @@ class WorkingMemory:
         li = self._store.get("last_investigation", "")
         if li and phase != "investigation":
             parts.append("[上轮调查摘要] %s" % li)
-        if phase not in ("investigation", "contradiction"):
+        if phase != "contradiction":
             cc = self.get_contradiction_context()
             if cc:
-                parts.append("## 当前矛盾结构（贯穿本轮所有阶段）\n%s" % cc)
+                if phase == "investigation":
+                    parts.append("## 上一轮识别的矛盾结构（作为本轮调查的检验对象：可验证、深化或推翻，勿默认其为正确）\n%s" % cc)
+                else:
+                    parts.append("## 当前矛盾结构（贯穿本轮所有阶段）\n%s" % cc)
         if phase in ("rational", "practice", "reflection"):
             sm = self._store.get("_system_model")
             if sm:

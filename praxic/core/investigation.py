@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 import structlog
 
-from ..api.schemas.models import Fact, FactReport, InformationGap, IllustrativeCase
+from ..api.schemas.models import Fact, FactReport, InformationGap, IllustrativeCase, ContradictionGraph
 from ..config import PhaseConfig, load_phase_prompt, settings
 from ..llm.base import BaseLLM
 from ..llm import get_llm as _get_default_llm
@@ -124,6 +124,14 @@ _INVESTIGATION_PROMPT = """
   }
 }
 
+## 矛盾检验（若有）
+
+若上下文提供"上一轮识别的矛盾结构"：本轮调查须围绕它展开——
+- 收集与该矛盾两极直接相关的事实
+- 标注哪些事实支持、哪些削弱、哪些与矛盾无关
+- 若发现矛盾被证据推翻的迹象，在 gaps 中注明"该矛盾需重新认定"
+若无矛盾结构：按问题本身调查即可。
+
 请只输出 JSON 对象，不要任何其他文字。
 """
 
@@ -200,6 +208,7 @@ class InvestigationModule:
         on_progress: callable = None,
         steering_checkpoint: callable = None,
         budget: dict = None,
+        contradiction: ContradictionGraph = None,
     ) -> FactReport:
         def _notify(tool: str, summary: str, result: dict | None = None) -> None:
             if not on_progress:

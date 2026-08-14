@@ -120,9 +120,17 @@ class EpisodicMemory:
                     summary         TEXT NOT NULL DEFAULT '',
                     event_type      TEXT NOT NULL DEFAULT 'phase',
                     data            TEXT NOT NULL DEFAULT '{}',
+                    speaker         TEXT NOT NULL DEFAULT 'agent',
                     created_at      TEXT NOT NULL
                 )
             """)
+            # speaker 迁移（v0.2.x）：发言人标记——user / agent / tool / system，
+            # 供结构化上下文提取按发言人过滤（区分用户输入与智能体/工具产物）。
+            try:
+                conn.execute("ALTER TABLE conversation_events ADD COLUMN speaker TEXT NOT NULL DEFAULT 'agent'")
+                log.info("episodic_memory.migration", added="conversation_events.speaker")
+            except sqlite3.OperationalError:
+                pass
             conn.execute("CREATE INDEX IF NOT EXISTS idx_ce_conversation ON conversation_events(conversation_id, id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_ce_session ON conversation_events(session_id, id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_ep_project ON episodes(project_id)")
@@ -265,6 +273,89 @@ class EpisodicMemory:
             results.append(d)
         return results
 
+    def _events_conversation_context(self, conversation_id, max_turns=5, exclude_session="") -> str:
+        """从 conversation_events 按发言人/阶段结构化提取历史上下文。
+
+        规则：
+        - 按时间顺序取最近 max_turns 个会话（session_id 分组）
+        - 用户发言（speaker=user）作为【用户】
+        - 阶段事件（speaker=agent）取阶段结论摘要
+        - 工具事件（speaker=tool）取工具名与执行摘要
+        - 思维链等长文本不进入上下文（仅供前端展示），只取结论层
+        总预算受 history_budget 约束，超出时丢弃最早会话。
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """SELECT id, session_id, phase, summary, event_type, data, speaker, created_at
+                   FROM conversation_events WHERE conversation_id = ? AND conversation_id != ''
+                   ORDER BY id ASC""",
+                (conversation_id,),
+            ).fetchall()
+        if not rows:
+            return ""
+
+        # 按 session_id 分组，保留会话内顺序
+        sessions: dict = {}
+        order = []
+        for ev in rows:
+            sid = ev["session_id"] or ""
+            if sid and sid != exclude_session:
+                if sid not in sessions:
+                    sessions[sid] = []
+                    order.append(sid)
+                sessions[sid].append(ev)
+        if not order:
+            return ""
+        # 只取最近 max_turns 个会话
+        recent_sids = order[-max_turns:]
+
+        def _line(ev) -> str:
+            speaker = (ev["speaker"] or "agent")
+            phase = ev["phase"] or ""
+            summary = (ev["summary"] or "").strip()[:600]
+            etype = ev["event_type"] or "phase"
+            # data 列是 JSON 字符串，解析为 dict
+            try:
+                ev_data = json.loads(ev["data"] or "{}") if isinstance(ev["data"], str) else (ev["data"] or {})
+            except (json.JSONDecodeError, TypeError):
+                ev_data = {}
+            if not isinstance(ev_data, dict):
+                ev_data = {}
+            if speaker == "user":
+                return f"【用户】{summary}"
+            if speaker == "tool":
+                tool = str(ev_data.get("tool") or (ev_data.get("record") or {}).get("tool") or "")
+                if not tool:
+                    tool = summary.split("：")[0][:40] if summary else phase
+                return f"【工具·{tool[:40]}】{summary[:200]}"
+            if etype in ("result", "error"):
+                return f"【智能体】{summary[:400]}"
+            label = {
+                "preprocessing": "问题解析", "investigation": "调查研究",
+                "contradiction": "矛盾分析", "rational": "理性认识",
+                "practice": "实践检验", "reflection": "反思",
+            }.get(phase, phase or "阶段")
+            return f"【智能体·{label}】{summary[:300]}"
+
+        entries = []
+        for sid in recent_sids:
+            events = sessions[sid]
+            lines = []
+            for ev in events:
+                ln = _line(ev)
+                if ln:
+                    lines.append(ln)
+            if lines:
+                entries.append("\n".join(lines))
+
+        history_budget = 18000
+        while entries and len("\n".join(entries)) > history_budget:
+            entries.pop(0)
+        if not entries:
+            return ""
+        return "[此前对话记录（按发言人/阶段）]\n" + "\n\n".join(entries)
+
     def build_conversation_context(self, conversation_id="", current_question="",
                                    max_turns=5, exclude_session="", project_id=None):
         parts = []
@@ -274,16 +365,21 @@ class EpisodicMemory:
                 conversation_id, limit=max_turns, exclude_session=exclude_session,
                 project_id=project_id,
             )
-            if recent:
+            # 结构化事件提取：从 conversation_events 按发言人/阶段组装历史，
+            # 保留时间顺序与发言人标记，供上下文整合按结构取用。
+            event_ctx = self._events_conversation_context(
+                conversation_id, max_turns=max_turns, exclude_session=exclude_session
+            )
+            if event_ctx:
+                parts.append(event_ctx)
+            elif recent:
+                # 回退：无事件记录时退化为 episodes 拼装（兼容旧数据）
                 entries = []
                 for i, ep in enumerate(reversed(recent), 1):
                     entries.append(
                         f"第{i}轮 - 用户问题：{ep['question'][:4000]}\n"
                         f"      结论：{ep['summary'][:4000]}"
                     )
-                # Keep enough of a prior answer for code and other concrete
-                # artifacts to survive a follow-up, while bounding total prompt
-                # growth for long-running conversations.
                 history_budget = 18000
                 while entries and len("\n".join(entries)) > history_budget:
                     entries.pop(0)
@@ -382,8 +478,13 @@ class EpisodicMemory:
             conn.commit()
 
     def append_conversation_event(self, conversation_id, session_id, phase,
-                                  summary, event_type="phase", data=None):
-        """持久化一次认知事件，供历史会话恢复完整过程。"""
+                                  summary, event_type="phase", data=None,
+                                  speaker="agent"):
+        """持久化一次认知事件，供历史会话恢复完整过程。
+
+        speaker：发言人标记——user（用户输入）/ agent（智能体阶段产出）/
+        tool（工具调用）/ system（系统事件）。供结构化上下文提取按发言人过滤。
+        """
         if not conversation_id:
             return None
         payload = data
@@ -412,8 +513,8 @@ class EpisodicMemory:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 """INSERT INTO conversation_events
-                   (conversation_id, session_id, phase, summary, event_type, data, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (conversation_id, session_id, phase, summary, event_type, data, speaker, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     conversation_id,
                     session_id or "",
@@ -421,11 +522,30 @@ class EpisodicMemory:
                     str(summary or ""),
                     event_type or "phase",
                     data_json,
+                    speaker or "agent",
                     datetime.now().isoformat(),
                 ),
             )
             conn.commit()
             return cursor.lastrowid
+
+    def record_user_message(self, conversation_id, session_id, question, context=""):
+        """把用户问题记录为事件流中的 user 发言（speaker=user）。
+
+        供结构化上下文提取时区分"用户说了什么"与"智能体/工具产出了什么"。
+        返回事件 id；conversation_id 为空时返回 None（不落库）。
+        """
+        if not conversation_id:
+            return None
+        return self.append_conversation_event(
+            conversation_id=conversation_id,
+            session_id=session_id or "",
+            phase="user",
+            summary=question[:2000],
+            event_type="user_question",
+            data={"event_type": "user_question", "content": question, "context": context or ""},
+            speaker="user",
+        )
 
     def list_projects(self):
         """列出所有项目（以 conversation_meta.project_id 分组）及统计。"""
@@ -453,7 +573,7 @@ class EpisodicMemory:
                 (conversation_id,),
             ).fetchall()
             event_rows = conn.execute(
-                """SELECT id, session_id, phase, summary, event_type, data, created_at
+                """SELECT id, session_id, phase, summary, event_type, data, speaker, created_at
                    FROM conversation_events WHERE conversation_id = ?
                    ORDER BY id ASC""",
                 (conversation_id,),
@@ -477,6 +597,7 @@ class EpisodicMemory:
                 "phase": event["phase"] or "",
                 "summary": event["summary"] or "",
                 "data": event_data,
+                "speaker": event["speaker"] or "agent",
                 "timestamp": event["created_at"] or "",
             })
         results = []

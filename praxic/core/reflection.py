@@ -261,6 +261,22 @@ class ReflectionEngine:
                 )
                 parts.append(f"【次要矛盾（{n}个）】{secs}")
 
+            # D2：矛盾地位转换位置（position_shifts）作为反思骨架输入
+            if trace.contradictions.position_shifts:
+                shift_lines = []
+                for ps in trace.contradictions.position_shifts[:5]:
+                    shift_lines.append(
+                        f"- 矛盾[{ps.contradiction_description[:60]}] 从"
+                        f"{ps.from_role}升为{ps.to_role}"
+                        f"（第{ps.trigger_iteration}轮，触发事实：{'、'.join(ps.trigger_facts[:3])}）"
+                        f"，转化条件：{ps.transformation_condition_met[:80]}"
+                    )
+                parts.append("【矛盾地位转换】\n" + "\n".join(shift_lines))
+                parts.append(
+                    "请本轮反思侧重检查：上述矛盾地位转换是否合理，认识是否因此深化，"
+                    "是否在 final_answer 中体现了这一演变。"
+                )
+
         if trace.rational_synthesis:
             parts.append(
                 f"【理性认识】\n本质：{trace.rational_synthesis.essence[:200]}\n"
