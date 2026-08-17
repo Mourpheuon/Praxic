@@ -16,12 +16,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from praxic.llm.base import BaseLLM, LLMResponse
 from praxic.config import settings
 
-# minimal ui-settings so persona loader + phase models resolve
+# minimal ui-settings so persona loader resolves
 p = settings.data_dir / "ui-settings.json"
 p.parent.mkdir(parents=True, exist_ok=True)
 with open(p, "w") as f:
     json.dump({"agent_persona": "", "custom_knowledge": "",
-               "phase_models": {}, "max_iterations": 1}, f)
+               "max_iterations": 1}, f)
 
 # Universal superset JSON — every phase parser picks the fields it needs.
 _SUPERSET = {
@@ -127,7 +127,7 @@ async def main():
     loop = CognitiveLoop(llm=fake)
     # Force every phase LLM to the fake
     for attr in ("preprocessor", "investigation", "contradiction", "rational",
-                 "practice", "reflection", "perspectives"):
+                 "practice", "reflection"):
         obj = getattr(loop, attr, None)
         if obj is not None and hasattr(obj, "llm"):
             obj.llm = fake

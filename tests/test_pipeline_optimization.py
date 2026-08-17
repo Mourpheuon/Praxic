@@ -1,4 +1,4 @@
-"""Regression tests for preprocessing latency and phase-model routing."""
+"""Regression tests for preprocessing latency."""
 
 from __future__ import annotations
 
@@ -10,8 +10,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import praxic.llm as llm_factory
-from praxic.config import PhaseConfig
 from praxic.core.question_preprocessing import QuestionPreprocessing
 from praxic.llm.base import LLMResponse
 from praxic.llm.openai_compatible import OpenAICompatibleLLM
@@ -166,44 +164,6 @@ async def test_parallel_analysis_keeps_per_step_fallbacks():
     assert result.questionable_premises == []
     assert result.overlooked_factors == []
     assert result.expanded_question == "扩展问题"
-
-
-def test_get_phase_llm_ignores_phase_model_config(monkeypatch, tmp_path: Path):
-    """深度体系：get_phase_llm 全阶段统一默认模型，不再读 ui_phase_models / ui-settings.json。"""
-    selected_models: list[str | None] = []
-
-    def fake_get_llm(provider=None, model=None):
-        selected_models.append(model)
-        return SimpleNamespace(default_model=model or llm_factory.settings.default_model)
-
-    monkeypatch.setattr(llm_factory, "get_llm", fake_get_llm)
-    monkeypatch.setattr(llm_factory.settings, "data_dir", tmp_path)
-    monkeypatch.setattr(
-        llm_factory.settings,
-        "phases",
-        {"preprocessing": PhaseConfig(model="phase-model")},
-    )
-    monkeypatch.setattr(
-        llm_factory.settings,
-        "ui_phase_models",
-        json.dumps({"preprocessing": "config-flash"}),
-    )
-
-    # 即使配置了 phase model / ui model，get_phase_llm 也不再按阶段路由
-    assert llm_factory.get_phase_llm("preprocessing") \
-        .default_model == llm_factory.settings.default_model
-
-    (tmp_path / "ui-settings.json").write_text(
-        json.dumps({"phase_models": {"preprocessing": "ui-latest"}}),
-        encoding="utf-8",
-    )
-    assert llm_factory.get_phase_llm("preprocessing") \
-        .default_model == llm_factory.settings.default_model
-
-    # 所有阶段返回同一默认模型（get_llm() 不带 model，model 参数恒为 None）
-    for ph in ("preprocessing", "investigation", "contradiction", "rational", "practice", "reflection"):
-        llm_factory.get_phase_llm(ph)
-    assert selected_models == [None] * 8
 
 
 def _completion_response(content: str = "ok"):

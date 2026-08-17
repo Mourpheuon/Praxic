@@ -2,10 +2,12 @@
 # Copy this file to config.toml and fill in your settings.
 
 # --- LLM ---
+# 注意：API Key 不保存在本文件。请复制 .env.example 为 .env 并填入密钥：
+#   PRAXIC_LLM_API_KEY="sk-xxx"   （DeepSeek / OpenAI 兼容）
+#   ANTHROPIC_API_KEY="sk-ant-xxx"（Anthropic，同时把 provider 改为 "anthropic"）
 [llm]
 provider = "openai_compatible"
 base_url = "https://api.deepseek.com"
-api_key  = "sk-your-key-here"
 model    = "deepseek-v4-flash"
 
 # --- Runtime ---

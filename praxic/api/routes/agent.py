@@ -24,61 +24,77 @@ from pydantic import BaseModel, Field
 
 from ...core.cognitive_loop import CognitiveLoop
 from ...core.loop_controller import get_controller_by_conv
-from ...memory.episodic_memory import EpisodicMemory
-from ...memory.semantic_memory import SemanticMemory
+from ...cordis.services.session import SessionScope
 
 log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
 
-_loop: Optional[CognitiveLoop] = None
-_loops: Dict[str, CognitiveLoop] = {}
-_episodic: Optional[EpisodicMemory] = None
-_semantic: Optional[SemanticMemory] = None
+_scope: Optional[SessionScope] = None
+_episodic: Optional[Any] = None
+_semantic: Optional[Any] = None
 
 
 def init_agent_resources() -> None:
-    global _loop, _episodic, _semantic
-    _loop = CognitiveLoop()
-    _episodic = EpisodicMemory()
-    _semantic = SemanticMemory()
+    global _scope, _episodic, _semantic
+    # host 层（root context）：episodic/semantic memory、skills、settings 进程级单例
+    _scope = SessionScope()
+    _episodic = _scope.root.get("memory").episodic
+    _semantic = _scope.root.get("memory").semantic
 
 
-def get_loop(project_id: str = "") -> CognitiveLoop:
-    """返回认知循环实例。指定 project_id 时按项目缓存独立实例（各自独立 workspace）。"""
-    if not project_id:
-        if _loop is None:
-            init_agent_resources()
-        return _loop
-    inst = _loops.get(project_id)
-    if inst is None:
-        inst = CognitiveLoop(project_id=project_id)
-        _loops[project_id] = inst
-    return inst
+def _ensure_scope() -> SessionScope:
+    global _scope
+    if _scope is None:
+        init_agent_resources()
+    return _scope
 
 
-def _find_registry(request_id: str, project_id: str = ""):
+def get_loop(project_id: str = "", conversation_id: str = "") -> CognitiveLoop:
+    """返回会话 realm 内的认知循环实例。
+
+    realm label = conversation_id 非空时用它，否则 project_id，否则全局默认
+    realm；同 label 幂等复用。会话结束/替换时由 dispose 统一销毁。
+    """
+    scope = _ensure_scope()
+    realm = scope.get_or_create(conversation_id or project_id, project_id=project_id)
+    return realm.ctx.get("cognitive-loop").loop
+
+
+async def adispose_session(conversation_id: str = "", project_id: str = "") -> bool:
+    """销毁会话 realm：cancel 后台任务并 await，再逆序清理其余资源（幂等）。"""
+    if _scope is None:
+        return False
+    return await _scope.dispose(conversation_id or project_id or "")
+
+
+def _find_registry(request_id: str, project_id: str = "", conversation_id: str = ""):
     """Find a pending authorization without exposing the loop internals to UI callers."""
+    if _scope is None:
+        return None
     candidates = []
-    if project_id:
-        candidates.append(get_loop(project_id))
-    else:
-        if _loop is not None:
-            candidates.append(_loop)
-        candidates.extend(_loops.values())
+    if conversation_id or project_id:
+        for realm in _scope.live_realms():
+            if realm.label in (conversation_id, project_id):
+                candidates.append(realm)
+    if not candidates:
+        candidates = list(_scope.live_realms())
     seen = set()
-    for loop_inst in candidates:
-        marker = id(loop_inst)
+    for realm in candidates:
+        marker = id(realm.ctx)
         if marker in seen:
             continue
         seen.add(marker)
-        registry = getattr(loop_inst, "_registry", None)
+        try:
+            registry = realm.ctx.get("tool-registry").registry
+        except Exception:  # noqa: BLE001 - 会话可能未完整装配
+            continue
         if registry and registry.authorization_status(request_id) is not None:
             return registry
     return None
 
 
-def get_episodic() -> EpisodicMemory:
+def get_episodic():
     if _episodic is None:
         init_agent_resources()
     return _episodic
@@ -154,10 +170,11 @@ def _finish_stream(conv_id: str) -> None:
 
 async def _run_and_broadcast(
     conv_id: str, question: str, context: str, mode: str, review_strategy: str,
-    model: str = "", files: str = "", project_id: str = "", replace_session_id: str = ""
+    model: str = "", files: str = "", project_id: str = "", replace_session_id: str = "",
+    resume_from: str = "", resume_events=None,
 ) -> None:
     """后台任务：运行认知循环，将事件广播给所有订阅者。"""
-    loop_inst = get_loop(project_id)
+    loop_inst = get_loop(project_id, conv_id)
     if replace_session_id:
         loop_inst.episodic.truncate_conversation_from(conv_id, replace_session_id)
     file_list = [f.strip() for f in files.split(",") if f.strip()] if files else None
@@ -168,15 +185,24 @@ async def _run_and_broadcast(
             review_strategy=review_strategy,
             model_override=model,
             files=file_list, project_id=project_id,
+            resume_from=resume_from, resume_events=resume_events,
         ):
             _broadcast(conv_id, event)
             if event["type"] == "result":
                 break
+    except asyncio.CancelledError:
+        # 会话 dispose（stop/替换/超时）取消本任务：广播终态后重新抛出
+        log.info("stream_broadcast.cancelled", conv_id=conv_id)
+        _broadcast(conv_id, {"type": "result", "data": None, "error": "已终止"})
+        raise
     except Exception as exc:
         log.error("stream_broadcast.error", conv_id=conv_id, error=str(exc), exc_info=True)
         _broadcast(conv_id, {"type": "result", "data": None, "error": str(exc)})
     finally:
         _finish_stream(conv_id)
+        # 会话结束：销毁 realm（cancel 后台任务 + 逆序清理；幂等）
+        if _scope is not None:
+            await _scope.dispose(conv_id or project_id or "")
 
 
 def _serialize_event(event: dict) -> Optional[str]:
@@ -252,7 +278,7 @@ class RunResponse(BaseModel):
 @router.post("/run", response_model=RunResponse)
 async def run_agent(req: RunRequest):
     """同步运行认知循环。"""
-    loop_inst = get_loop(req.project_id)
+    loop_inst = get_loop(req.project_id, req.conversation_id)
     response = await loop_inst.run(
         question=req.question, context=req.context,
         mode=req.mode, conversation_id=req.conversation_id,
@@ -307,23 +333,30 @@ async def stream_agent(
     files: str = "",
     project_id: str = "",
     replace_session_id: str = "",
+    resume_from: str = "",
 ):
     """
-    SSE 流式端点（支持断线重连）。
+    SSE 流式端点（支持断线重连 + 断点续跑）。
 
     行为：
       - conv_id 未在运行 + 有 question → 启动新认知循环并订阅
       - conv_id 正在运行              → 回放已发出事件，续接后续实时事件
       - conv_id 已完成                → 回放全量历史事件（含最终结果）
+      - 已完成 + 带新 question        → 新一轮；若带 resume_from，复用中断前的产物从断点继续（不完整重跑）
     """
     conv_id = conversation_id
     _cleanup_old_entries()
 
     existing = _registry.get(conv_id) if conv_id else None
+    resume_events = None
 
-    # 同 conv_id 的上一轮已完成且带来新 question → 视为新一轮，重置后重跑
-    # （多轮对话共享 conversation_id 用于历史分组；重连进行中的流仍走回放分支）
+    # 同 conv_id 的上一轮已完成且带来新 question → 视为新一轮
+    # 带 resume_from 时，把上一轮 replay 交给续跑重建（内存断点优先），
+    # 然后重置缓冲开新一轮；否则完整重跑（现状）。
     if existing is not None and existing.get("done") and question:
+        if resume_from:
+            # 保留上一个已中断/终止轮次的 replay 供续跑重建
+            resume_events = list(existing.get("replay") or [])
         del _registry[conv_id]
         existing = None
 
@@ -339,10 +372,14 @@ async def stream_agent(
         # create_task 仅调度任务，不立即执行（asyncio 单线程）
         # 订阅者在下面 _create_subscriber 中注册后，任务才会在第一次 await 时运行
         if conv_id:
-            asyncio.create_task(
+            task = asyncio.create_task(
                 _run_and_broadcast(conv_id, question, context, mode, review_strategy,
-                                   model, files, project_id, replace_session_id)
+                                   model, files, project_id, replace_session_id,
+                                   resume_from, resume_events)
             )
+            # 后台任务挂进会话 realm 的 fiber：stop/超时/替换统一走 dispose → cancel + await
+            realm = _ensure_scope().get_or_create(conv_id or project_id, project_id=project_id)
+            realm.fiber.track_task(task)
         else:
             # 无 conv_id：退化为旧式单次流（向后兼容）
             async def _compat_gen():
@@ -353,6 +390,7 @@ async def stream_agent(
                     conversation_id="", review_strategy=review_strategy,
                     model_override=model,
                     files=file_list, project_id=project_id,
+                    resume_from=resume_from,
                 ):
                     line = _serialize_event(event)
                     if line:
@@ -496,6 +534,8 @@ async def control_agent(req: ControlRequest):
             event_type="stop",
             data={"event_type": "stop", "action": "stop"},
         )
+        # 终止会话：dispose → cancel 后台任务并 await，再逆序清理（幂等）
+        await adispose_session(req.conversation_id)
         log.info("control.stop", conv_id=req.conversation_id)
         return {"status": "ok", "action": "stop", "conversation_id": req.conversation_id}
     elif action == "resume":

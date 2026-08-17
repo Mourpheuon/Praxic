@@ -8,7 +8,6 @@
 - 各阶段 mock 验证：depth=SHALLOW 时 prompt 只含 required 字段说明、max_tokens=1024；
   DEEP 时含 deep_extended、max_tokens=16384
 - cognitive_loop 验证：迭代起始写入 initial_depths，反思 phase_budgets.depth 覆盖之
-- get_phase_llm 全阶段返回同一模型
 """
 import asyncio
 import os
@@ -97,16 +96,6 @@ def test_initial_depth_table():
     # 未知任务性质/复杂度 → STANDARD
     assert initial_depth_for("unknown_nature", "x", "investigation") is Depth.STANDARD
     assert initial_depth_for("fact_lookup", "simple", "practice") is Depth.STANDARD
-
-
-def test_get_phase_llm_same_model():
-    """全阶段返回同一默认模型（深度体系：模型无关分级取消）。"""
-    from praxic.llm import get_llm, get_phase_llm
-    expect = get_llm()
-    for ph in ("preprocessing", "investigation", "contradiction", "rational", "practice", "reflection"):
-        llm = get_phase_llm(ph)
-        assert llm.default_model == expect.default_model
-        assert llm is expect
 
 
 # ── 各阶段 mock：SHALLOW 只含 required、max_tokens=1024；DEEP 含深档、max_tokens=16384 ──

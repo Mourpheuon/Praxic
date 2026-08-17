@@ -48,8 +48,9 @@ def _ensure_config():
             print("[即物穷理] 请编辑此文件填入你的 API Key 后重新启动")
             return
     with open(cfg, "w", encoding="utf-8") as f:
-        f.write('[llm]\nprovider="openai_compatible"\nbase_url="https://api.deepseek.com"\napi_key=""\nmodel="deepseek-v4-pro"\n')
+        f.write('[llm]\nprovider="openai_compatible"\nbase_url="https://api.deepseek.com"\nmodel="deepseek-v4-pro"\n')
     print("[即物穷理] 已创建默认配置:", cfg)
+    print("[即物穷理] API Key 请写入 .env（PRAXIC_LLM_API_KEY），config.toml 不保存密钥")
 
 
 def _port_is_free(host: str, port: int) -> bool:

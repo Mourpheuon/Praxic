@@ -223,33 +223,6 @@ class RationalSynthesis(BaseModel):
     return_to_concrete: str = ""
     unexplained_phenomena: list[str] = Field(default_factory=list)
 
-# --- Decision ---
-class ActionItem(BaseModel):
-    description: str; priority: int = 1; timeline: str = ""; expected_outcome: str = ""
-    targets_contradiction: str = ""; contradiction_resolution: str = ""; based_on_facts: str = ""
-    practice_feasibility: str = "unknown"   # "direct" | "indirect" | "unknown" — 决策阶段预判
-    suggested_practice_form: str = ""        # 智能体建议的实践形式描述
-    why_cannot_practice: str = ""            # 如果 indirect，需要用户在现实中做什么
-
-class DecisionReport(BaseModel):
-    strategic_assessment: str = ""; tactical_plan: str = ""
-    action_items: list[ActionItem] = Field(default_factory=list)
-    risks: list[str] = Field(default_factory=list); summary: str = ""
-    autonomous_recommendation: str = ""
-    # 智能体主动提问：交付实践前需向用户确认的关键信息（仅在确有必要时非空）
-    clarifying_questions: list[str] = Field(default_factory=list)
-
-# --- Perspectives ---
-class PerspectiveView(BaseModel):
-    perspective_name: str; critique: str
-    key_points: list[str] = Field(default_factory=list)
-    consensus: list[str] = Field(default_factory=list); divergence: list[str] = Field(default_factory=list)
-
-class PerspectiveSynthesis(BaseModel):
-    views: list[PerspectiveView] = Field(default_factory=list)
-    synthesized_insight: str = ""; critical_warnings: list[str] = Field(default_factory=list)
-    consensus_points: list[str] = Field(default_factory=list); divergence_points: list[str] = Field(default_factory=list)
-
 # --- Practice ---
 class PracticeStep(BaseModel):
     description: str
@@ -341,8 +314,6 @@ class ReflectionReport(BaseModel):
     reinvestigation_focus: str = ""; convergence_score: float = 0.5
     investigation_retrospective: str = ""; contradiction_retrospective: str = ""
     practice_retrospective: str = ""
-    # 兼容旧版反思结果；当前主循环不再生成独立决策阶段。
-    decision_retrospective: str = ""
     skip_phases: list[str] = Field(default_factory=list)
     focus_hints: dict[str, str] = Field(default_factory=dict); recommended_mode: str = ""
     contradiction_stability: float = 0.5; contradiction_shift_detected: bool = False
@@ -371,14 +342,14 @@ class TraceMetadata(BaseModel):
     credibility_chain_summary: str = ""
     context_cache: dict = Field(default_factory=dict)
     llm_cache: dict = Field(default_factory=dict)
+    # 断点续跑：本次运行是否为续跑，及断点位置（resume_from 原文）
+    resumed: bool = False
+    resume_point: str = ""
 
 class CognitiveTrace(BaseModel):
     investigation: Optional[FactReport] = None
     contradictions: Optional[ContradictionGraph] = None
     rational_synthesis: Optional[RationalSynthesis] = None
-    # 兼容历史会话和外部调用；当前运行链路不再填充该字段。
-    decision: Optional[DecisionReport] = None
-    perspectives: Optional[PerspectiveSynthesis] = None
     practice: Optional[PracticeReport] = None
     reflection: Optional[ReflectionReport] = None
     metadata: TraceMetadata = Field(default_factory=TraceMetadata)

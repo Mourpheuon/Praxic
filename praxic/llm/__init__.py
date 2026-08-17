@@ -34,15 +34,4 @@ def get_llm(provider=None, model=None):
     raise ValueError(f"Unknown provider: {p!r}")
 
 
-def get_phase_llm(phase_name):
-    """返回认知循环各阶段使用的 LLM。
-
-    深度体系改造后全部阶段统一使用同一模型（settings.default_model），
-    不再按阶段路由、不再读 ui_phase_models / ui-settings.json。参数保留以兼容
-    外部调用。settings.ui_phase_models 字段仍保留在配置里但不再被消费。
-    """
-    del phase_name  # unused：全阶段同一模型
-    return get_llm()
-
-
-__all__ = ["get_llm", "get_phase_llm", "BaseLLM"]
+__all__ = ["get_llm", "BaseLLM"]

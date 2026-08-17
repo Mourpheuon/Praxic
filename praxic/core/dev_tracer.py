@@ -24,7 +24,6 @@ PHASE_LABELS = {
     "investigation":  "调查研究",
     "contradiction":  "矛盾分析",
     "rational":        "理性认识",
-    "perspectives":    "多视角审查",
     "practice":        "实践检验",
     "reflection":      "反思复盘",
 }
@@ -33,7 +32,6 @@ PHASE_EMOJI = {
     "investigation":  "🔍",
     "contradiction":  "⚡",
     "rational":        "🧠",
-    "perspectives":    "👥",
     "practice":        "⚙️",
     "reflection":      "🔄",
 }
@@ -76,7 +74,7 @@ class DevTracer:
         Args:
             phase: 阶段标识（investigation/contradiction/...）
             output: LLM 原始输出文本
-            tag: 可选的子标签（如 perspectives 的视角名，practice 的 "plan_round1" 等）
+            tag: 可选的子标签（如 practice 的 "plan_round1" 等）
         """
         if not self.enabled:
             return
@@ -153,8 +151,7 @@ class DevTracer:
             console = Console()
             phase_color = {
                 "investigation": "cyan", "contradiction": "yellow",
-                "rational": "blue",
-                "perspectives": "magenta", "practice": "bright_yellow",
+                "rational": "blue", "practice": "bright_yellow",
                 "reflection": "red",
             }.get(phase, "white")
 

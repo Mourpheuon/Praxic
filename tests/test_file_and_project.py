@@ -26,7 +26,7 @@ SENTINEL = "SENTINEL_QUANTUM_42_UPLOADED_FILE"
 p = settings.data_dir / "ui-settings.json"
 p.parent.mkdir(parents=True, exist_ok=True)
 with open(p, "w") as f:
-    json.dump({"agent_persona": "", "custom_knowledge": "", "phase_models": {}, "max_iterations": 1}, f)
+    json.dump({"agent_persona": "", "custom_knowledge": "", "max_iterations": 1}, f)
 
 _SUPERSET = {
     "original_question": "分析上传的文件", "expanded_question": "分析上传的文件内容并总结",
@@ -74,7 +74,7 @@ async def main():
     fake = CapturingFake()
     loop = CognitiveLoop(llm=fake, project_id="")   # project 通过 run() 传
     for attr in ("preprocessor","preprocessing","investigation","contradiction","rational",
-                 "practice","reflection","perspectives"):
+                 "practice","reflection"):
         obj = getattr(loop, attr, None)
         if obj is not None and hasattr(obj, "llm"):
             obj.llm = fake

@@ -39,6 +39,7 @@ def register_workspace_tools(registry: ToolRegistry, workspace: Path) -> None:
         EnvTool, TimeTool, HttpRequestTool,
         ProcessListTool, DiskInfoTool, FileDownloadTool,
     )
+    from .command_probe import CommandProbeTool
     from .file_ops import FileCopyTool, FileMoveTool, FileTailTool
     from .archive import ArchiveExtractTool, ArchiveCreateTool
 
@@ -65,6 +66,7 @@ def register_workspace_tools(registry: ToolRegistry, workspace: Path) -> None:
         (ProcessListTool, False),
         (DiskInfoTool, True),
         (FileDownloadTool, True),
+        (CommandProbeTool, False),
         # ── 文件操作 / 归档 ──
         (FileCopyTool, True),
         (FileMoveTool, True),

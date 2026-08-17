@@ -209,6 +209,7 @@ class InvestigationModule:
         steering_checkpoint: callable = None,
         budget: dict = None,
         contradiction: ContradictionGraph = None,
+        skip_external_collection: bool = False,
     ) -> FactReport:
         def _notify(tool: str, summary: str, result: dict | None = None) -> None:
             if not on_progress:
@@ -250,64 +251,69 @@ class InvestigationModule:
             all_external_info += f"\n## 已有工具结果\n{tools_results}"
 
         # 本地文件检索（替代旧的 _read_workspace_files）
-        if self.workspace and self._local_retriever:
-            if settings.local_retrieval_mode != "off":
-                file_contents = await self._local_retriever.retrieve(question)
-                if file_contents:
-                    all_external_info += f"\n## 工作区文件内容\n{file_contents}"
-            else:
-                file_contents = await self._read_workspace_files(question)
-                if file_contents:
-                    all_external_info += f"\n## 工作区文件内容\n{file_contents}"
+        # 断点续跑：已收集工具结果时跳过重新获取，直接复用（避免重跑昂贵搜索/抓取）
+        if not skip_external_collection:
+            if self.workspace and self._local_retriever:
+                if settings.local_retrieval_mode != "off":
+                    file_contents = await self._local_retriever.retrieve(question)
+                    if file_contents:
+                        all_external_info += f"\n## 工作区文件内容\n{file_contents}"
+                else:
+                    file_contents = await self._read_workspace_files(question)
+                    if file_contents:
+                        all_external_info += f"\n## 工作区文件内容\n{file_contents}"
 
-        # 网络搜索 + 网页全文抓取
-        if self.can_search_web:
-            _notify("web_search", "WEB_SEARCH · 进行中")
-            search_results_text, search_results = await self._do_web_search(question, additional_context, "", budget)
-            _notify(
-                "web_search",
-                "WEB_SEARCH · 已完成",
-                {
-                    "status": "success" if search_results_text else "error",
-                    "content": search_results_text[:500] if search_results_text else "未获得搜索结果",
-                    "n_results": len(search_results),
-                },
-            )
-            steering = await _checkpoint("web_search")
-            if steering:
-                additional_context += "\n" + steering
-            if search_results_text:
-                all_external_info += f"\n## 网络搜索结果\n{search_results_text}"
-            if self._web_fetch and search_results:
-                url_score_pairs = []
-                seen_urls = set()
-                for sr in search_results:
-                    if not sr.ok or not sr.data:
-                        continue
-                    for item in sr.data.get("results", []):
-                        url = item.get("url", "")
-                        score = float(item.get("score", 0))
-                        if score >= settings.web_fetch_min_score and url and url not in seen_urls:
-                            url_score_pairs.append((url, score))
-                            seen_urls.add(url)
-                if url_score_pairs:
-                    _notify("web_fetch", "WEB_FETCH · 进行中", {"status": "running", "n_urls": len(url_score_pairs)})
-                    fetched = await self._web_fetch.fetch_urls(url_score_pairs)
-                    _notify(
-                        "web_fetch",
-                        "WEB_FETCH · 已完成",
-                        {
-                            "status": "success" if fetched else "error",
-                            "n_urls": len(url_score_pairs),
-                            "n_fetched": len(fetched),
-                        },
-                    )
-                    steering = await _checkpoint("web_fetch")
-                    if steering:
-                        additional_context += "\n" + steering
-                    full_text = WebFetchTool.format_for_llm(fetched)
-                    if full_text:
-                        all_external_info += f"\n## 网页全文\n{full_text}"
+            # 网络搜索 + 网页全文抓取
+            if self.can_search_web:
+                _notify("web_search", "WEB_SEARCH · 进行中")
+                search_results_text, search_results = await self._do_web_search(question, additional_context, "", budget)
+                _notify(
+                    "web_search",
+                    "WEB_SEARCH · 已完成",
+                    {
+                        "status": "success" if search_results_text else "error",
+                        "content": search_results_text[:500] if search_results_text else "未获得搜索结果",
+                        "n_results": len(search_results),
+                    },
+                )
+                steering = await _checkpoint("web_search")
+                if steering:
+                    additional_context += "\n" + steering
+                if search_results_text:
+                    all_external_info += f"\n## 网络搜索结果\n{search_results_text}"
+                if self._web_fetch and search_results:
+                    url_score_pairs = []
+                    seen_urls = set()
+                    for sr in search_results:
+                        if not sr.ok or not sr.data:
+                            continue
+                        for item in sr.data.get("results", []):
+                            url = item.get("url", "")
+                            score = float(item.get("score", 0))
+                            if score >= settings.web_fetch_min_score and url and url not in seen_urls:
+                                url_score_pairs.append((url, score))
+                                seen_urls.add(url)
+                    if url_score_pairs:
+                        _notify("web_fetch", "WEB_FETCH · 进行中", {"status": "running", "n_urls": len(url_score_pairs)})
+                        fetched = await self._web_fetch.fetch_urls(url_score_pairs)
+                        _notify(
+                            "web_fetch",
+                            "WEB_FETCH · 已完成",
+                            {
+                                "status": "success" if fetched else "error",
+                                "n_urls": len(url_score_pairs),
+                                "n_fetched": len(fetched),
+                            },
+                        )
+                        steering = await _checkpoint("web_fetch")
+                        if steering:
+                            additional_context += "\n" + steering
+                        full_text = WebFetchTool.format_for_llm(fetched)
+                        if full_text:
+                            all_external_info += f"\n## 网页全文\n{full_text}"
+
+        elif skip_external_collection:
+            log.info("investigation.resume_skip_collection", n_tools=len(tools_results or ""))
 
         system = load_phase_prompt("investigation", _INVESTIGATION_PROMPT)
         try:

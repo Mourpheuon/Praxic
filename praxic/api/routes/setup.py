@@ -86,7 +86,6 @@ class UiSettings(BaseModel):
     show_thinking_after_answer: bool = True  # 回答后是否显示思维过程
     agent_persona: str = ""           # Agent 角色设定
     custom_knowledge: str = ""        # 用户自定义知识 / 重要经验
-    phase_models: dict[str, str] = {}  # 智能路由：各阶段模型选择
     # ── 运行时高级参数 ──
     max_iterations: int = 0           # 0 = 使用 config.toml 默认值
     practice_rounds: int = 0          # 实践阶段实验轮数
@@ -105,7 +104,6 @@ def _get_default_ui_settings() -> dict:
         "show_thinking_after_answer": True,
         "agent_persona": "",
         "custom_knowledge": "",
-        "phase_models": {},
         # Runtime params — 0 means "use config.toml default"
         "max_iterations": 0,
         "practice_rounds": 0,
@@ -128,12 +126,11 @@ async def get_settings():
         "show_thinking_after_answer": settings.ui_show_thinking,
         "agent_persona": settings.ui_agent_persona,
         "custom_knowledge": settings.ui_custom_knowledge,
-        "phase_models": json.loads(settings.ui_phase_models) if settings.ui_phase_models else {},
     }
     # Fallback to ui-settings.json for any missing non-empty values, and for runtime params
     legacy = _load_ui_settings()
     for k in ["font_family", "font_size", "page_zoom", "show_thinking_after_answer",
-               "agent_persona", "custom_knowledge", "phase_models"]:
+               "agent_persona", "custom_knowledge"]:
         if not data.get(k) and legacy.get(k):
             data[k] = legacy[k]
     # Runtime params still come from ui-settings.json (not in config.toml)
@@ -159,8 +156,6 @@ async def save_settings(req: UiSettings):
         ui_lines.append(f"agent_persona = {_toml_value(req.agent_persona)}")
     if req.custom_knowledge:
         ui_lines.append(f"custom_knowledge = {_toml_value(req.custom_knowledge)}")
-    if req.phase_models:
-        ui_lines.append(f"phase_models = {_toml_value(json.dumps(req.phase_models, ensure_ascii=False))}")
 
     save_config_section("ui", ui_lines)
     # Also write runtime params to [runtime] section in config.toml
@@ -182,7 +177,6 @@ async def save_settings(req: UiSettings):
     settings.ui_show_thinking = req.show_thinking_after_answer
     settings.ui_agent_persona = req.agent_persona or ""
     settings.ui_custom_knowledge = req.custom_knowledge or ""
-    settings.ui_phase_models = json.dumps(req.phase_models, ensure_ascii=False) if req.phase_models else ""
     if req.max_iterations > 0:
         settings.max_iterations = req.max_iterations
     if req.permission_mode:
@@ -248,6 +242,35 @@ async def scan_plugins():
     return {"ok": True, "found": len(tools), "names": [t.name for t in tools]}
 
 
+# ── 对话级权限 ─────────────────────────────────────────────
+
+_VALID_PERMISSION_MODES = {"read_only", "ask", "auto_review", "full"}
+
+
+@router.get("/conversations/{conv_id}/permission")
+async def get_conversation_permission(conv_id: str):
+    """读取某对话的权限模式；未显式设置返回当前全局默认。"""
+    from ...core.conversation_permissions import get_conversation_permission as _get
+    explicit = _get(conv_id)
+    effective = explicit if explicit else settings.permission_mode.name.lower()
+    return {"conversation_id": conv_id, "permission_mode": effective, "explicit": bool(explicit)}
+
+
+class ConversationPermissionRequest(BaseModel):
+    permission_mode: str = ""
+
+
+@router.put("/conversations/{conv_id}/permission")
+async def set_conversation_permission(conv_id: str, req: ConversationPermissionRequest):
+    """设置某对话的权限模式（覆盖全局默认）。"""
+    mode = (req.permission_mode or "").strip().lower()
+    if mode not in _VALID_PERMISSION_MODES:
+        raise HTTPException(status_code=400, detail=f"非法权限模式：{mode}（可选 {', '.join(sorted(_VALID_PERMISSION_MODES))}）")
+    from ...core.conversation_permissions import set_conversation_permission as _set
+    _set(conv_id, mode)
+    return {"ok": True, "conversation_id": conv_id, "permission_mode": mode}
+
+
 # ── Models endpoint ──────────────────────────────────────────
 
 @router.get("/models")
@@ -271,7 +294,7 @@ async def list_models(provider_key: str = ""):
                 pk = "custom"
     models = PROVIDER_MODELS.get(pk, [])
     current = settings.default_model
-    return {"models": ["智能路由"] + models, "current": current, "provider_key": pk}
+    return {"models": models, "current": current, "provider_key": pk}
 
 
 # ── Setup routes ─────────────────────────────────────────────
@@ -368,6 +391,40 @@ async def get_llm_config():
     )
 
 
+def _patch_env_file(updates: dict[str, str], removes: list[str] | None = None) -> Path:
+    """Patch .env in place: known keys are replaced, listed keys removed,
+    and all other lines (comments, unrelated vars like TAVILY_API_KEY) kept."""
+    env_path = Path.cwd() / ".env"
+    lines: list[str] = []
+    if env_path.exists():
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+        except OSError:
+            lines = []
+    removes = removes or []
+    keys_seen: set[str] = set()
+    out: list[str] = []
+    for raw in lines:
+        line = raw.rstrip("\r\n")
+        if not line.strip() or line.lstrip().startswith("#"):
+            out.append(raw)
+            continue
+        if "=" in line:
+            key = line.split("=", 1)[0].strip()
+            if key in removes:
+                continue
+            if key in updates:
+                out.append(f'{key}="{updates[key]}"\n')
+                keys_seen.add(key)
+                continue
+        out.append(raw)
+    for key, value in updates.items():
+        if key not in keys_seen:
+            out.append(f'{key}="{value}"\n')
+    env_path.write_text("".join(out), encoding="utf-8")
+    return env_path
+
+
 @router.post("/setup")
 async def save_setup(req: SetupRequest):
     """保存 LLM 配置到 config.toml 和 .env，并重新加载。"""
@@ -376,41 +433,40 @@ async def save_setup(req: SetupRequest):
 
     is_anthropic = req.provider.lower() == "anthropic"
 
-    # Patch the [llm] section in config.toml (preserves all other sections)
+    # ── config.toml：只保存 provider/base_url/model，永不落盘 API Key ──
+    # （密钥只存在于 .env；config.toml 会随设置生成/更新，不能成为密钥容器）
     if is_anthropic:
         save_config_section("llm", [
             'provider = "anthropic"',
-            f"anthropic_api_key = {_toml_value(req.api_key)}",
             f"model = {_toml_value(req.model)}",
         ])
     else:
         save_config_section("llm", [
             'provider = "openai_compatible"',
             f"base_url = {_toml_value(req.base_url)}",
-            f"api_key = {_toml_value(req.api_key)}",
             f"model = {_toml_value(req.model)}",
         ])
-    log.info("config_patched | section=llm")
+    log.info("config_patched | section=llm (no api_key — secrets live in .env)")
 
-    # ── Also write to .env for dotenv compatibility ──
-    # Variable names must match what praxic/config.py _build() reads
+    # ── API Key 只写入 .env（原地补丁，保留 TAVILY_API_KEY 等其他变量）──
     try:
-        env_path = Path.cwd() / ".env"
-        env_lines = [
-            f"# 即物穷理 —— API 配置（由 Web UI 自动生成）",
-            f"PRAXIC_LLM_PROVIDER={'anthropic' if is_anthropic else 'openai_compatible'}",
-        ]
+        updates = {
+            "PRAXIC_LLM_PROVIDER": "anthropic" if is_anthropic else "openai_compatible",
+            "PRAXIC_LLM_MODEL": req.model.strip(),
+        }
+        removes: list[str] = []
         if is_anthropic:
-            env_lines.append(f"ANTHROPIC_API_KEY={req.api_key.strip()}")
+            updates["ANTHROPIC_API_KEY"] = req.api_key.strip()
         else:
-            env_lines.append(f"OPENAI_API_KEY={req.api_key.strip()}")
-            env_lines.append(f"PRAXIC_LLM_BASE_URL={req.base_url.strip()}")
-        env_lines.append(f"PRAXIC_LLM_MODEL={req.model.strip()}")
-        env_lines.append("")
-        env_path.write_text("\n".join(env_lines), encoding="utf-8")
-        log.info("env_written | path=%s", str(env_path))
+            updates["PRAXIC_LLM_API_KEY"] = req.api_key.strip()
+            updates["PRAXIC_LLM_BASE_URL"] = req.base_url.strip()
+            # OPENAI_API_KEY 是旧版 UI 写法的别名，与 PRAXIC_LLM_API_KEY 同义，删除避免残留
+            removes = ["OPENAI_API_KEY"]
+        env_path = _patch_env_file(updates, removes)
+        log.info("env_patched | path=%s", str(env_path))
     except Exception as e:
         log.warning("env_write_failed | %s", str(e))
+        raise HTTPException(status_code=500, detail=f"API Key 写入 .env 失败：{e}") from e
 
     # Update in-memory settings so the next request uses the new config
     if is_anthropic:
@@ -578,7 +634,6 @@ import re as _re
 
 _VERSION_FILES = [
     "package.json",
-    "praxic/web/package.json",
     "pyproject.toml",
     "praxic/__init__.py",
 ]

@@ -34,7 +34,10 @@ class ShellTool(BaseTool):
     description = "在允许的工作目录中执行结构化命令并返回 stdout、stderr 和退出码"
     requires_network = False
     action_kind = ActionKind.COMPUTE
-    requires_authorization = True
+    # 不在类级声明授权：只读命令（pwd/ls/cat 等，classify 为 OBSERVE）沙箱内安全应自动放行；
+    # 变更/外部命令（git commit、rm 等，classify 为 EXTERNAL）由 registry 按 action_kind 走授权。
+    # 类级 requires_authorization=True 会把只读命令误判为门控观察，导致每次执行都等授权。
+    requires_authorization = False
     sandbox_safe = True
     parameter_schema = {
         "command": {"type": "array", "description": "程序及参数，例如 ['python', '-V']"},
@@ -46,6 +49,7 @@ class ShellTool(BaseTool):
         "cat",
         "dir",
         "echo",
+        "find",
         "git",
         "ls",
         "node",
@@ -187,7 +191,7 @@ class ShellTool(BaseTool):
             return ActionKind.EXTERNAL
         return (
             ActionKind.OBSERVE
-            if exe in {"git", "rg", "ls", "dir", "cat", "type", "where", "whoami", "pwd"}
+            if exe in {"git", "rg", "ls", "dir", "cat", "type", "where", "whoami", "pwd", "find"}
             else ActionKind.COMPUTE
         )
 

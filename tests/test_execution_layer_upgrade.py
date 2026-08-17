@@ -368,3 +368,75 @@ async def test_history_compression_produces_summary_node():
     assert "假设1成立" in node
     # 方向状态作为压缩输入被传入（E2：保留方向，不丢）
     assert "方向状态保持不变" in captured["content"]
+
+
+# ── Direct answer 工具探查 ───────────────────────────
+
+class _ProbeLLM(BaseLLM):
+    """第一次返回 need_tools=true + shell ls；后续返回回答。"""
+
+    def __init__(self):
+        self.n = 0
+
+    async def call(self, messages, system=None, temperature=0.5, max_tokens=4096, **kwargs):
+        self.n += 1
+        user = messages[-1]["content"] if messages else ""
+        if self.n == 1 and "need_tools" in user:
+            return LLMResponse(content=json.dumps({
+                "need_tools": True,
+                "tool_calls": [{"tool": "shell_exec", "params": {"command": ["ls"], "cwd": ""}}],
+                "reason": "需要探查工作区",
+            }), model="f")
+        return LLMResponse(content="回答", model="f")
+
+    async def stream(self, messages, system=None, temperature=0.5, max_tokens=4096, **kwargs):
+        yield ""
+
+
+@pytest.mark.asyncio
+async def test_direct_answer_runs_real_tools():
+    from praxic.config import settings as _s
+    from praxic.core.autonomy import PermissionMode as _PM
+    _s.permission_mode = _PM.AUTO_REVIEW
+    from praxic.core.cognitive_loop import CognitiveLoop
+    loop = CognitiveLoop(llm=_ProbeLLM())
+    probe = await loop._direct_answer_with_tools("用shell探查工作区", context="")
+    assert "工具探查结果" in probe
+    assert "shell_exec" in probe  # 真实执行，不是编造
+
+
+@pytest.mark.asyncio
+async def test_direct_answer_skips_when_no_tools_needed():
+    from praxic.core.cognitive_loop import CognitiveLoop
+
+    class NoToolLLM(BaseLLM):
+        async def call(self, messages, system=None, temperature=0.5, max_tokens=4096, **kwargs):
+            return LLMResponse(content=json.dumps({"need_tools": False, "tool_calls": [], "reason": "常识"}), model="f")
+
+        async def stream(self, messages, system=None, temperature=0.5, max_tokens=4096, **kwargs):
+            yield ""
+
+    loop = CognitiveLoop(llm=NoToolLLM())
+    probe = await loop._direct_answer_with_tools("你好", context="")
+    assert probe == ""  # 无需工具时返回空，不打扰回答
+
+
+@pytest.mark.asyncio
+async def test_direct_answer_tool_failure_does_not_crash():
+    from praxic.core.cognitive_loop import CognitiveLoop
+
+    class BadToolLLM(BaseLLM):
+        async def call(self, messages, system=None, temperature=0.5, max_tokens=4096, **kwargs):
+            return LLMResponse(content=json.dumps({
+                "need_tools": True,
+                "tool_calls": [{"tool": "nonexistent_tool", "params": {}}],
+                "reason": "测试",
+            }), model="f")
+
+        async def stream(self, messages, system=None, temperature=0.5, max_tokens=4096, **kwargs):
+            yield ""
+
+    loop = CognitiveLoop(llm=BadToolLLM())
+    probe = await loop._direct_answer_with_tools("测试", context="")
+    # 工具失败应记录错误而非崩溃
+    assert "调用失败" in probe or "未知工具" in probe or probe == ""

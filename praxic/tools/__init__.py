@@ -17,6 +17,7 @@ from .data_query import DataQueryTool
 from .sqlite_query import SqliteQueryTool
 from .pdf_extract import PdfExtractTool
 from .environment import EnvTool, TimeTool, HttpRequestTool, ProcessListTool, DiskInfoTool, FileDownloadTool
+from .command_probe import CommandProbeTool
 from .file_ops import FileCopyTool, FileMoveTool, FileTailTool
 from .archive import ArchiveExtractTool, ArchiveCreateTool
 from .permissions import AuthorizationGrant, AuthorizationRequest, PathGuard, PermissionPolicy
@@ -34,6 +35,7 @@ __all__ = [
     "DataQueryTool",
     "SqliteQueryTool", "PdfExtractTool",
     "EnvTool", "TimeTool", "HttpRequestTool", "ProcessListTool", "DiskInfoTool", "FileDownloadTool",
+    "CommandProbeTool",
     "FileCopyTool", "FileMoveTool", "FileTailTool",
     "ArchiveExtractTool", "ArchiveCreateTool",
     "WorkspaceToolkit",

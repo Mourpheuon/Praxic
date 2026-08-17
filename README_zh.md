@@ -52,6 +52,9 @@ cp config.toml.example config.toml
 # 或通过 Web UI 设置页面直接配置
 ```
 
+> API Key 不写入 `config.toml`：请复制 `.env.example` 为 `.env` 并填入密钥，
+> 或直接在 Web UI 设置页保存（会自动写入 `.env`）。环境变量优先于 config.toml。
+
 配置 API Key（三选一）：
 
 ```bash

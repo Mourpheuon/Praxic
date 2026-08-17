@@ -6,18 +6,11 @@ from typing import AsyncIterator, Callable, Optional
 import structlog
 from ..api.schemas.models import AgentResponse, CognitiveTrace, CognitivePhaseName, TraceMetadata
 from ..config import settings
-from ..core.autonomy import PermissionMode
-from ..llm import get_llm, get_phase_llm
+from ..llm import get_llm
 from ..llm.base import BaseLLM
 from ..memory.episodic_memory import EpisodicMemory
 from ..memory.working_memory import WorkingMemory
 from ..tools.filesystem import WorkspaceToolkit
-from ..tools.registry import ToolRegistry
-from ..tools.permissions import PermissionPolicy
-from ..tools.shell import ShellTool
-from ..tools.web_search import WebSearchTool
-from ..tools.web_fetch import WebFetchTool
-from ..tools.user_context import ReadUserContextTool
 from .contradiction import ContradictionAnalyzer
 from .depth import initial_depth_for
 from .dev_tracer import DevTracer, TracingLLMWrapper
@@ -168,8 +161,23 @@ def _wants_detailed_report(text: str) -> bool:
 
 class CognitiveLoop:
     def __init__(self, llm=None, web_search_enabled=None, conversation_id="", review_strategy="", project_id=""):
+        # 核心状态（llm/workspace/阶段模块/运行时参数）与工具装配分离：
+        # “怎么想”归 CognitiveLoop，“装配什么”归 cordis（assembly 单点维护）。
+        self._init_core(llm, web_search_enabled, conversation_id, review_strategy, project_id)
+        from ..core.assembly import assemble_loop_runtime
+
+        assemble_loop_runtime(self)
+
+    def _init_core(self, llm=None, web_search_enabled=None, conversation_id="", review_strategy="", project_id=""):
+        """核心状态装配：llm / workspace / tracer / 阶段模块 / skill_manager / 运行时参数。
+
+        不包含工具注册表装配（policy + ToolRegistry + 工具注册），那部分由
+        ``assembly.assemble_loop_runtime`` 单点维护；组合路径复用本方法后
+        再注入组合装配好的 registry。
+        """
         self.llm = llm or get_llm()
         _web = web_search_enabled if web_search_enabled is not None else settings.web_search_enabled
+        self._web_enabled = _web
         self.conversation_id = conversation_id
         self.review_strategy = review_strategy or settings.review_strategy
         self.project_id = project_id
@@ -187,10 +195,11 @@ class CognitiveLoop:
             if llm is not None:
                 raw = llm
             else:
-                raw = get_phase_llm(phase)
+                raw = get_llm()
             if settings.dev_enabled and not isinstance(raw, TracingLLMWrapper):
                 return TracingLLMWrapper(raw, self.tracer, phase, tag=tag)
             return raw
+        self._llm_factory = _llm
         self.investigation = InvestigationModule(_llm("investigation"), settings.phase("investigation"), web_search_enabled=_web, workspace=self.workspace)
         self.preprocessing = QuestionPreprocessing(_llm("preprocessing"), settings.phase("preprocessing"))
         self.contradiction = ContradictionAnalyzer(_llm("contradiction"), settings.phase("contradiction"))
@@ -202,39 +211,6 @@ class CognitiveLoop:
             from pathlib import Path
             skills_dir = Path("praxic/skills")
         self.skill_manager = SkillManager(skills_dir)
-        # 初始化统一行动注册表：观察、计算、沙箱变更和外部行动都经过同一契约。
-        policy = PermissionPolicy(
-            permission_mode=settings.permission_mode,
-            allowed_roots=(self.workspace.workspace,) if self.workspace else (),
-            allow_network=_web,
-        )
-        if settings.permission_mode == PermissionMode.AUTO_REVIEW:
-            # 自动审核模式：为越界/外部操作挂上 LLM 语义审核器。
-            from ..core.reviewer import build_reviewer
-            policy.reviewer = build_reviewer(_llm("practice", tag="reviewer"))
-        self._registry = ToolRegistry(
-            policy=policy,
-            event_sink=self._on_registry_event,
-        )
-        try:
-            from ..tools.python_exec import PythonExecTool
-            self._registry.register(PythonExecTool(workspace_dir=str(self.workspace.workspace) if self.workspace else ""))
-        except Exception:
-            pass
-        if self.workspace:
-            from ..tools.assembler import register_workspace_tools
-            register_workspace_tools(self._registry, self.workspace.workspace)
-            self._registry.register(ShellTool(allowed_roots=(self.workspace.workspace,)))
-        self._registry.register(WebSearchTool(
-            api_key=settings.tavily_api_key,
-            max_results=settings.web_search_max_results,
-        ))
-        if _web and settings.web_fetch_enabled:
-            self._registry.register(WebFetchTool())
-        self._registry.register(ReadUserContextTool())
-        # 插件（档 3）：用户/第三方工具，从 data_dir/plugins 自动加载。
-        from ..tools.assembler import register_plugins
-        register_plugins(self._registry)
         self.max_iterations = settings.max_iterations
         self.convergence_threshold = 0.85
         self.enable_trajectory_logging = settings.enable_trajectory_logging
@@ -460,9 +436,212 @@ class CognitiveLoop:
         
         return evidence
 
-    async def run(self, question, context="", mode="standard", on_phase=None, session_id=None, conversation_id="", review_strategy="", on_title=None, model_override="", files=None, project_id="", on_clarification=None):
+    def _apply_conversation_permission(self, conversation_id: str) -> None:
+        """按对话显式权限覆盖 policy 的 permission_mode。
+
+        单例 loop 共享 policy：无显式设置的对话必须重置回全局默认
+        （settings.permission_mode），不能继承上一个对话的设置。
+        AUTO_REVIEW 档挂语义审核器；其他档移除审核器（避免审核逻辑残留）。
+        """
+        from ..core.conversation_permissions import get_conversation_permission
+        from ..core.autonomy import PermissionMode as _PM
+        explicit = get_conversation_permission(conversation_id) if conversation_id else None
+        if explicit:
+            try:
+                mode = _PM[explicit.upper()]
+            except KeyError:
+                log.warning("conversation_permission.invalid", conversation_id=conversation_id, mode=explicit)
+                mode = settings.permission_mode
+        else:
+            # 无显式设置：重置为全局默认（不继承上一个对话）。
+            mode = settings.permission_mode
+        policy = getattr(self._registry, "policy", None)
+        if policy is None:
+            return
+        policy.permission_mode = mode
+        if mode == _PM.AUTO_REVIEW:
+            if policy.reviewer is None:
+                from ..core.reviewer import build_reviewer
+                policy.reviewer = build_reviewer(self._llm_for_reviewer())
+        else:
+            policy.reviewer = None
+        log.info("conversation_permission.applied", conversation_id=conversation_id, mode=mode.name)
+
+    def _llm_for_reviewer(self):
+        """获取审核器用的 LLM。"""
+        return get_llm()
+
+    def _gather_resume_events(self, conv_id: str, resume_events: Optional[list]) -> list:
+        """收集续跑所需的事件序列。
+
+        优先使用内存 replay（resume_events，最新），否则从 episodic phase_logs
+        重建（持久化，跨进程可用）。返回列表，空则无断点。
+        """
+        if resume_events:
+            return list(resume_events)
+        if not conv_id:
+            return []
+        try:
+            turns = self.episodic.get_conversation_turns(conv_id)
+            events: list = []
+            for turn in turns:
+                events.extend(turn.get("phase_logs") or [])
+            return events
+        except Exception as e:
+            log.warning("cognitive_loop.resume_events_failed", error=str(e))
+            return []
+
+    async def _prepare_resume(self, conv_id, question, context, working_mem, trace, resume_from, resume_events, mode):
+        """准备断点续跑状态。
+
+        返回 resume_state dict（续跑路径需要）或 None（无可用断点 → 完整重跑）。
+        resume_state 包含：preprocessed / skips / initial_depths / task_nature /
+        task_complexity / phase_necessity / effective_question。
+        副产品：把已完成阶段产物写入 working_mem 与 trace。
+        """
+        from .resume import (
+            parse_resume_from, locate_resume_point, reconstruct_products,
+            phases_before, TRACE_FIELD,
+        )
+        spec = parse_resume_from(resume_from)
+        if spec is None:
+            return None
+        events = self._gather_resume_events(conv_id, resume_events)
+        if not events:
+            log.warning("cognitive_loop.resume_no_events", conv_id=conv_id, resume_from=resume_from)
+            return None
+        # 断点定位：显式 tool/phase spec 优先；auto/未知则按事件序列自动定位最后成功点
+        if spec.get("kind") == "tool" and spec.get("phase"):
+            point = spec
+        elif spec.get("kind") == "phase" and spec.get("phase"):
+            point = {"kind": "phase", "phase": spec["phase"], "product_phase": spec["phase"]}
+        else:
+            point = locate_resume_point(events)
+        if point is None:
+            log.warning("cognitive_loop.resume_no_point", conv_id=conv_id)
+            return None
+        products = reconstruct_products(events)
+        if not products:
+            log.warning("cognitive_loop.resume_no_products", conv_id=conv_id)
+            return None
+
+        # 1. preprocessing 产物 → working_mem 键注入（供各阶段上下文使用）
+        ppre = products.get("preprocessing")
+        if ppre is None:
+            # 无 preprocessing 产物：无法重建有效上下文，回退完整重跑
+            log.warning("cognitive_loop.resume_no_preprocess", conv_id=conv_id)
+            return None
+        from .resume import preprocess_keys_from_product
+        for k, v in preprocess_keys_from_product(ppre).items():
+            if v is not None:
+                working_mem.set(k, v)
+        working_mem.set(
+            "report_requested",
+            bool(getattr(ppre, "wants_detailed_report", False) or _wants_detailed_report(question)),
+        )
+
+        # 2. 完成阶段产物 → trace（下游可引用）
+        for phase, product in products.items():
+            field = TRACE_FIELD.get(phase)
+            if not field:
+                continue
+            if getattr(trace, field, None) is None:
+                setattr(trace, field, product)
+        if trace.contradictions:
+            working_mem.set_contradiction(trace.contradictions)
+            if trace.contradictions.system_model:
+                working_mem.set("_system_model", trace.contradictions.system_model)
+        if trace.investigation:
+            working_mem.set("last_investigation", trace.investigation.summary)
+        if trace.practice:
+            if trace.practice.unexpected_findings:
+                working_mem.set("practice_surprises", "\n".join("- " + f for f in trace.practice.unexpected_findings))
+            if trace.practice.unexpected_insights:
+                existing = working_mem.get("practice_surprises", "")
+                new_insights = "\n".join("- " + s for s in trace.practice.unexpected_insights)
+                working_mem.set("practice_surprises", (existing + "\n" + new_insights) if existing else new_insights)
+
+        # 3. 断点阶段解析
+        resume_phase = point.get("product_phase") or point.get("phase") or "investigation"
+        if resume_phase == "preprocessing":
+            resume_phase = "investigation"
+        # 断点之前的阶段视为已完成并跳过；但只有其产物可在 trace 中重建时才能安全跳过，
+        # 否则该阶段仍需重跑（避免下游引用 None 崩溃）。
+        def _has_product(p: str) -> bool:
+            return bool(TRACE_FIELD.get(p) and p in products)
+        _skips = [p for p in phases_before(resume_phase)
+                  if p != "preprocessing" and _has_product(p)]
+        working_mem.set("skip_phases", _skips)
+
+        # 4. 重新派生 preprocessing 派生的局部量
+        _phase_necessity = {
+            p: getattr(ppre, f"{p}_necessity", "required")
+            for p in ["investigation", "contradiction", "rational", "practice", "reflection"]
+        }
+        _task_nature = getattr(ppre, "task_nature", "other")
+        _task_complexity = getattr(ppre, "task_complexity", "standard")
+        from .depth import initial_depth_for
+        _initial_depths = {
+            p: initial_depth_for(_task_nature, _task_complexity, p).value
+            for p in ["investigation", "contradiction", "rational", "practice", "reflection"]
+        }
+
+        # 5. 工具调用级续跑：investigation 复用已有外部信息（避免重跑昂贵搜索）
+        resume_tools = ""
+        if point.get("kind") == "tool" or (point.get("tool") and resume_phase == "investigation"):
+            resume_tools = self._extract_collected_tools(events, resume_phase)
+            if resume_tools:
+                working_mem.set("_resume_tools_results", resume_tools)
+
+        working_mem.set("_resume_active", True)
+        trace.metadata.resumed = True
+        trace.metadata.resume_point = str(resume_from)
+        log.info("cognitive_loop.resume_ready",
+                 conv_id=conv_id, phase=resume_phase, skips=_skips,
+                 products=list(products.keys()), has_tools=bool(resume_tools))
+        return {
+            "preprocessed": ppre,
+            "skips": _skips,
+            "initial_depths": _initial_depths,
+            "task_nature": _task_nature,
+            "task_complexity": _task_complexity,
+            "phase_necessity": _phase_necessity,
+            "effective_question": getattr(ppre, "expanded_question", None) or question,
+            "resume_phase": resume_phase,
+            "tool_point": point.get("tool") or "",
+        }
+
+    def _extract_collected_tools(self, events: list, phase: str = "investigation") -> str:
+        """从事件序列提取某阶段已成功完成的工具调用结果，合并为文本。
+
+        供工具调用级续跑：continuation 跳过已执行完成的工具，复用其结果。
+        """
+        parts: list = []
+        for ev in events:
+            if not isinstance(ev, dict):
+                continue
+            if (ev.get("event_type") or "") != "tool_call":
+                continue
+            if ev.get("phase") and ev.get("phase") != phase:
+                continue
+            rec = ev.get("data") or {}
+            if isinstance(rec, dict):
+                record = rec.get("record") or rec
+                if not isinstance(record, dict):
+                    continue
+                tool = record.get("tool") or ""
+                result = record.get("result") or {}
+                content = result.get("content") if isinstance(result, dict) else ""
+                status = str(result.get("status", "") or "")
+                if not content:
+                    continue
+                parts.append(f"[{tool}] {str(content)[:800]}")
+        return "\n\n".join(parts)
+
+    async def run(self, question, context="", mode="standard", on_phase=None, session_id=None, conversation_id="", review_strategy="", on_title=None, model_override="", files=None, project_id="", on_clarification=None, resume_from="", resume_events=None):
         session_id = session_id or str(uuid.uuid4())[:8]
         conv_id = conversation_id or self.conversation_id
+        self._apply_conversation_permission(conv_id)
 
         # Keep the event stream durable. The UI can reconnect or load a completed
         # conversation later without losing the events emitted before an error.
@@ -572,160 +751,212 @@ class CognitiveLoop:
         if persona_ctx:
             working_mem.set("_persona_context", persona_ctx)
 
-        _emit_phase(on_phase, "preprocessing", "正在分析问题意图与结构")
-        preprocess_history = conv_context
-        if str(context or "").strip():
-            context_block = "## 用户补充背景（本轮）\n" + str(context).strip()
-            preprocess_history = context_block + ("\n\n" + conv_context if conv_context else "")
-        preprocessed = await self.preprocessing.preprocess(
-            question, conversation_history=preprocess_history,
-            current_datetime=working_mem.get("_current_datetime", ""),
-        )
-        working_mem.set("preprocessed_question", preprocessed)
-        working_mem.set("original_question", preprocessed.original_question)
-        working_mem.set("expanded_question", preprocessed.expanded_question)
-        working_mem.set("question_intent", preprocessed.question_intent)
-        working_mem.set("question_domains", preprocessed.question_domains)
-        working_mem.set("contradiction_in_question", preprocessed.contradiction_in_question)
-        working_mem.set("core_anxiety", preprocessed.core_anxiety)
-        working_mem.set("questionable_premises", preprocessed.questionable_premises)
-        working_mem.set("overlooked_factors", preprocessed.overlooked_factors)
-        working_mem.set("structured_sub_questions", preprocessed.structured_sub_questions)
-        working_mem.set("report_requested", bool(getattr(preprocessed, "wants_detailed_report", False) or _wants_detailed_report(question)))
+        # ── 断点续跑：复用已产出的思维过程，从断点之后继续 ──
+        # 当 resume_from 非空且能从 resiume 源重建产物时，走续跑路径；
+        # 否则回退完整重跑（现状）。续跑通过 skip_phases + 预填 trace 实现：
+        #   - preprocessing 不用重跑，直接从重建产物注入 working_mem
+        #   - 断点之前的阶段进入 skip_phases（下游可引用其重建产物）
+        #   - 断点阶段本身照常执行（investigation 工具级续跑时复用已收集信息）
+        resume_state = None
+        if resume_from:
+            resume_state = await self._prepare_resume(
+                conv_id, question, context, working_mem, trace,
+                resume_from, resume_events, mode,
+            )
+            if resume_state is not None:
+                _emit_phase(
+                    on_phase, "preprocessing",
+                    "已复用中断前完成的思维过程，从断点继续",
+                    data={"event_type": "resume", "resume_from": resume_from},
+                )
 
-        # ── 根据预处理判断的阶段必要性调整执行计划 ──
-        _phase_necessity = {}
-        for _phase in ["investigation", "contradiction", "rational",
-                       "practice", "reflection"]:
-            _nec = getattr(preprocessed, f"{_phase}_necessity", "required")
-            _phase_necessity[_phase] = _nec
+        if resume_state is not None:
+            preprocessed = resume_state["preprocessed"]
+            _skips = resume_state["skips"]
+            _initial_depths = resume_state["initial_depths"]
+            working_mem.set("initial_depths", _initial_depths)
+            _task_nature = resume_state["task_nature"]
+            _task_complexity = resume_state["task_complexity"]
+            _phase_necessity = resume_state["phase_necessity"]
+            effective_question = resume_state["effective_question"]
+            conv_context = working_mem.get("conversation_history", "")
+        else:
+            # ── 第零阶段：问题预处理 ──
+            # 在进入调查之前，对用户问题进行深度解析——
+            # 矛盾分析、广泛联系、揣度意图、结构化扩展
+            # 关键：必须在预处理之前加载对话历史，否则短追问（"继续"等）LLM 无法理解指代
+            conv_context = self.episodic.build_conversation_context(
+                conversation_id=conv_id, current_question=question,
+                max_turns=5, exclude_session=session_id,
+            )
 
-        # skip_phases：完全跳过的阶段（现有循环体已支持 skip_phases 检查）
-        _skips = [_p for _p, _n in _phase_necessity.items() if _n == "skip"]
-        working_mem.set("skip_phases", _skips)
+            _emit_phase(on_phase, "preprocessing", "正在分析问题意图与结构")
+            preprocess_history = conv_context
+            if str(context or "").strip():
+                context_block = "## 用户补充背景（本轮）\n" + str(context).strip()
+                preprocess_history = context_block + ("\n\n" + conv_context if conv_context else "")
+            preprocessed = await self.preprocessing.preprocess(
+                question, conversation_history=preprocess_history,
+                current_datetime=working_mem.get("_current_datetime", ""),
+            )
+            working_mem.set("preprocessed_question", preprocessed)
+            working_mem.set("original_question", preprocessed.original_question)
+            working_mem.set("expanded_question", preprocessed.expanded_question)
+            working_mem.set("question_intent", preprocessed.question_intent)
+            working_mem.set("question_domains", preprocessed.question_domains)
+            working_mem.set("contradiction_in_question", preprocessed.contradiction_in_question)
+            working_mem.set("core_anxiety", preprocessed.core_anxiety)
+            working_mem.set("questionable_premises", preprocessed.questionable_premises)
+            working_mem.set("overlooked_factors", preprocessed.overlooked_factors)
+            working_mem.set("structured_sub_questions", preprocessed.structured_sub_questions)
+            working_mem.set("report_requested", bool(getattr(preprocessed, "wants_detailed_report", False) or _wants_detailed_report(question)))
 
-        # D1：第一轮初始深度表（替代原 light_phases 死配置）。
-        # 按任务性质×复杂度查 INITIAL_DEPTH_TABLE，为各阶段生成初始深度档位。
-        # 反思阶段（D2）通过 phase_budgets 在后续轮次覆盖。
-        _task_nature = getattr(preprocessed, "task_nature", "other")
-        _task_complexity = getattr(preprocessed, "task_complexity", "standard")
-        _initial_depths = {
-            _phase: initial_depth_for(_task_nature, _task_complexity, _phase).value
-            for _phase in ["investigation", "contradiction", "rational", "practice", "reflection"]
-        }
-        working_mem.set("initial_depths", _initial_depths)
+            # ── 根据预处理判断的阶段必要性调整执行计划 ──
+            _phase_necessity = {}
+            for _phase in ["investigation", "contradiction", "rational",
+                           "practice", "reflection"]:
+                _nec = getattr(preprocessed, f"{_phase}_necessity", "required")
+                _phase_necessity[_phase] = _nec
 
-        # 记录任务性质供各阶段 prompt 自行适配
-        working_mem.set("task_nature", _task_nature)
-        working_mem.set("task_complexity", _task_complexity)
+            # skip_phases：完全跳过的阶段（现有循环体已支持 skip_phases 检查）
+            _skips = [_p for _p, _n in _phase_necessity.items() if _n == "skip"]
+            working_mem.set("skip_phases", _skips)
 
-        if on_phase:
-            _nature_display = {
-                "code_generation": "代码生成", "fact_lookup": "事实查询",
-                "causal_explanation": "因果解释", "comparison_decision": "比较决策",
-                "exploration_understanding": "探索理解", "creative_design": "创造设计",
-            }.get(getattr(preprocessed, "task_nature", ""), "")
-            _nature_str = " [" + _nature_display + "]" if _nature_display else ""
-            _needs_inv = getattr(preprocessed, "needs_investigation", True)
-            _skip_info = ""
-            if _skips:
-                if not _needs_inv:
-                    _skip_info = " → 无需调查，直接回答"
-                elif len(_skips) >= 4:
-                    _skip_info = " (跳" + "、".join(_skips) + ")"
+            # D1：第一轮初始深度表（替代原 light_phases 死配置）。
+            # 按任务性质×复杂度查 INITIAL_DEPTH_TABLE，为各阶段生成初始深度档位。
+            # 反思阶段（D2）通过 phase_budgets 在后续轮次覆盖。
+            _task_nature = getattr(preprocessed, "task_nature", "other")
+            _task_complexity = getattr(preprocessed, "task_complexity", "standard")
+            _initial_depths = {
+                _phase: initial_depth_for(_task_nature, _task_complexity, _phase).value
+                for _phase in ["investigation", "contradiction", "rational", "practice", "reflection"]
+            }
+            working_mem.set("initial_depths", _initial_depths)
+
+            # 记录任务性质供各阶段 prompt 自行适配
+            working_mem.set("task_nature", _task_nature)
+            working_mem.set("task_complexity", _task_complexity)
+
+            if on_phase:
+                _nature_display = {
+                    "code_generation": "代码生成", "fact_lookup": "事实查询",
+                    "causal_explanation": "因果解释", "comparison_decision": "比较决策",
+                    "exploration_understanding": "探索理解", "creative_design": "创造设计",
+                }.get(getattr(preprocessed, "task_nature", ""), "")
+                _nature_str = " [" + _nature_display + "]" if _nature_display else ""
+                _needs_inv = getattr(preprocessed, "needs_investigation", True)
+                _skip_info = ""
+                if _skips:
+                    if not _needs_inv:
+                        _skip_info = " → 无需调查，直接回答"
+                    elif len(_skips) >= 4:
+                        _skip_info = " (跳" + "、".join(_skips) + ")"
+                    else:
+                        _skip_info = " (跳" + "、".join(_skips) + ")"
+                _emit_phase(
+                    on_phase,
+                    "preprocessing",
+                    "意图：" + (preprocessed.question_intent[:60] or "未识别") +
+                    " 领域：" + "、".join(preprocessed.question_domains[:3]) +
+                    _nature_str + _skip_info,
+                    data=preprocessed,
+                )
+
+            # 整个认知循环使用扩展后的结构化问题作为有效问题
+            effective_question = preprocessed.expanded_question or question
+            log.info("cognitive_loop.preprocessed",
+                     original=question[:80],
+                     expanded=effective_question[:120],
+                     intent=preprocessed.question_intent[:60],
+                     domains=preprocessed.question_domains)
+
+            # 简单任务直接切 fast 模式，只跑一轮
+            if (getattr(preprocessed, "task_complexity", "standard") == "simple"
+                    and mode != "deep"):
+                mode = "fast"
+                mode_max_iter = 1
+
+            log.info("cognitive_loop.phase_plan",
+                     task_nature=getattr(preprocessed, "task_nature", ""),
+                     task_complexity=getattr(preprocessed, "task_complexity", ""),
+                     skips=_skips, mode=mode)
+
+            # ── 无需调查：LLM 知识可直接回答 → 跳过全部认知阶段，直接生成回复 ──
+            if not getattr(preprocessed, "needs_investigation", True):
+                log.info("cognitive_loop.direct_answer", question=question[:80])
+                trace.metadata.end_time = datetime.now()
+                trace.metadata.iterations = 0
+                _title = await self._generate_title(question, preprocessed) if on_title else ""
+                if _title and on_title:
+                    on_title(_title, conv_id)
+                # direct answer 工具探查：即使跳过认知阶段，也给模型真实工具能力，
+                # 避免"用shell探查"这类行动指令被模型在回答里编造执行结果。
+                tool_probe = await self._direct_answer_with_tools(
+                    question, context=context,
+                    conversation_history=working_mem.get("conversation_history", ""),
+                )
+                if tool_probe:
+                    context = (context + "\n\n" + tool_probe).strip()
+                    if on_phase:
+                        try:
+                            on_phase("action", "工具探查", data={"event_type": "tool_probe", "summary": tool_probe[:100]})
+                        except Exception:
+                            pass
+                response = await self._build_response(
+                    question,
+                    trace,
+                    session_id,
+                    conv_id,
+                    detailed=False,
+                    context=context,
+                    conversation_history=working_mem.get("conversation_history", ""),
+                )
+                self._save_episode(response, conv_id, _project_id, context=context)
+                if conv_id:
+                    release_conv_controller(conv_id)
                 else:
-                    _skip_info = " (跳" + "、".join(_skips) + ")"
-            _emit_phase(
-                on_phase,
-                "preprocessing",
-                "意图：" + (preprocessed.question_intent[:60] or "未识别") +
-                " 领域：" + "、".join(preprocessed.question_domains[:3]) +
-                _nature_str + _skip_info,
-                data=preprocessed,
-            )
+                    release_controller(session_id)
+                self._active_phase_callback = None
+                return response
 
-        # 整个认知循环使用扩展后的结构化问题作为有效问题
-        effective_question = preprocessed.expanded_question or question
-        log.info("cognitive_loop.preprocessed",
-                 original=question[:80],
-                 expanded=effective_question[:120],
-                 intent=preprocessed.question_intent[:60],
-                 domains=preprocessed.question_domains)
+            # ── 首轮对话自动生成标题 ──
+            # 当 conv_context 为空且 conv_id 有效时，说明是新对话的第一轮，
+            # 用 LLM 快速生成一个简洁的会话标题，并通过 on_title 推送到前端。
+            log.info("cognitive_loop.title_check",
+                     conv_id=conv_id,
+                     has_conv_context=bool(conv_context),
+                     has_on_title=on_title is not None)
+            if conv_id and not conv_context and on_title:
+                try:
+                    log.info("cognitive_loop.title_generating", conv_id=conv_id)
+                    title = await self._generate_title(question, preprocessed)
+                    log.info("cognitive_loop.title_result", conv_id=conv_id, title=title or "(empty)")
+                    if title:
+                        self.episodic.set_conversation_name(conv_id, title)
+                        on_title(title, conv_id)
+                        log.info("cognitive_loop.title_generated", conversation=conv_id, title=title)
+                except Exception:
+                    log.warning("cognitive_loop.title_generation_failed", exc_info=True)
 
-        # 简单任务直接切 fast 模式，只跑一轮
-        if (getattr(preprocessed, "task_complexity", "standard") == "simple"
-                and mode != "deep"):
-            mode = "fast"
-            mode_max_iter = 1
-
-        log.info("cognitive_loop.phase_plan",
-                 task_nature=getattr(preprocessed, "task_nature", ""),
-                 task_complexity=getattr(preprocessed, "task_complexity", ""),
-                 skips=_skips, mode=mode)
-
-        # ── 无需调查：LLM 知识可直接回答 → 跳过全部认知阶段，直接生成回复 ──
-        if not getattr(preprocessed, "needs_investigation", True):
-            log.info("cognitive_loop.direct_answer", question=question[:80])
-            trace.metadata.end_time = datetime.now()
-            trace.metadata.iterations = 0
-            _title = await self._generate_title(question, preprocessed) if on_title else ""
-            if _title and on_title:
-                on_title(_title, conv_id)
-            response = await self._build_response(
-                question,
-                trace,
-                session_id,
-                conv_id,
-                detailed=False,
-                context=context,
-                conversation_history=working_mem.get("conversation_history", ""),
-            )
-            self._save_episode(response, conv_id, _project_id, context=context)
-            if conv_id:
-                release_conv_controller(conv_id)
-            else:
-                release_controller(session_id)
-            self._active_phase_callback = None
-            return response
-
-        # ── 首轮对话自动生成标题 ──
-        # 当 conv_context 为空且 conv_id 有效时，说明是新对话的第一轮，
-        # 用 LLM 快速生成一个简洁的会话标题，并通过 on_title 推送到前端。
-        log.info("cognitive_loop.title_check",
-                 conv_id=conv_id,
-                 has_conv_context=bool(conv_context),
-                 has_on_title=on_title is not None)
-        if conv_id and not conv_context and on_title:
-            try:
-                log.info("cognitive_loop.title_generating", conv_id=conv_id)
-                title = await self._generate_title(question, preprocessed)
-                log.info("cognitive_loop.title_result", conv_id=conv_id, title=title or "(empty)")
-                if title:
-                    self.episodic.set_conversation_name(conv_id, title)
-                    on_title(title, conv_id)
-                    log.info("cognitive_loop.title_generated", conversation=conv_id, title=title)
-            except Exception:
-                log.warning("cognitive_loop.title_generation_failed", exc_info=True)
-
-        # ── 智能体主动提问（即时）──
-        # 预处理阶段若判定必须先问用户才能答好，此刻立即阻塞发问，不拖到调查之后。
-        # 仅流式/交互场景提供 on_clarification；一轮对话只问一次。
-        _cq = getattr(preprocessed, "clarifying_questions", None) or []
-        if _cq and on_clarification is not None and not working_mem.get("clarification_asked", False):
-            working_mem.set("clarification_asked", True)
-            log.info("cognitive_loop.clarification_ask", n=len(_cq), where="post_preprocessing")
-            on_clarification(_cq)
-            controller.begin_clarification(_cq)
-            _ans = await controller.await_clarification(timeout=_CLARIFICATION_TIMEOUT)
-            if controller.should_stop:
-                _emit_phase(on_phase, "preprocessing", "已终止")
-                # 交由下方迭代循环首个 _check("investigation") 捕获 stop 并跳出，走正常收尾
-            elif _ans:
-                working_mem.set("user_clarification", _ans)
-                effective_question = effective_question + "\n\n[用户对智能体提问的补充回答]：" + _ans
-                _emit_phase(on_phase, "preprocessing", "已收到你的补充，开始调查")
-            else:
-                _emit_phase(on_phase, "preprocessing", "未收到补充（超时/跳过），按现有信息继续")
+            # ── 智能体主动提问（即时）──
+            # 预处理阶段若判定必须先问用户才能答好，此刻立即阻塞发问，不拖到调查之后。
+            # 仅流式/交互场景提供 on_clarification；一轮对话只问一次。
+            _cq = getattr(preprocessed, "clarifying_questions", None) or []
+            if _cq and on_clarification is not None and not working_mem.get("clarification_asked", False):
+                working_mem.set("clarification_asked", True)
+                log.info("cognitive_loop.clarification_ask", n=len(_cq), where="post_preprocessing")
+                on_clarification(_cq)
+                controller.begin_clarification(_cq)
+                _ans = await controller.await_clarification(timeout=_CLARIFICATION_TIMEOUT)
+                if controller.should_stop:
+                    _emit_phase(on_phase, "preprocessing", "已终止")
+                    # 交由下方迭代循环首个 _check("investigation") 捕获 stop 并跳出，走正常收尾
+                elif _ans:
+                    working_mem.set("user_clarification", _ans)
+                    effective_question = effective_question + "\n\n[用户对智能体提问的补充回答]：" + _ans
+                    _emit_phase(on_phase, "preprocessing", "已收到你的补充，开始调查")
+                else:
+                    _emit_phase(on_phase, "preprocessing", "未收到补充（超时/跳过），按现有信息继续")
 
         for iteration in range(1, mode_max_iter + 1):
             log.info("cognitive_loop.iteration", i=iteration)
@@ -786,6 +1017,15 @@ class CognitiveLoop:
             fact_report = None
             contradiction_graph = None
             rational_synthesis = None
+            if working_mem.get("_resume_active", False):
+                # 断点续跑：把已重建的之前阶段产物填入本地变量，
+                # 使被跳过/重跑后的下游阶段能引用断点前的产物。
+                if trace.investigation:
+                    fact_report = trace.investigation
+                if trace.contradictions:
+                    contradiction_graph = trace.contradictions
+                if trace.rational_synthesis:
+                    rational_synthesis = trace.rational_synthesis
             if await _check("investigation"): break
             if "investigation" in skip_phases:
                 log.info("cognitive_loop.skip_phase", phase="investigation")
@@ -794,9 +1034,17 @@ class CognitiveLoop:
                 _emit_phase(on_phase, CognitivePhaseName.INVESTIGATION, "正在调查研究")
                 self.skill_manager.inject_phase_skills("investigation", working_mem)
                 extra_ctx = working_mem.get_context_for_phase("investigation") + _hint("investigation") + _steer("investigation")
+                # 断点工具级续跑：复用已收集的工具结果，跳过重新抓取/搜索
+                _resume_tools = working_mem.get("_resume_tools_results", "")
+                _skip_collect = bool(_resume_tools) and working_mem.get("_resume_active", False)
+                if _resume_tools:
+                    extra_ctx = extra_ctx + ("\n\n## 断点前已收集的工具结果\n" + _resume_tools)
+                    working_mem.set("_resume_tools_results", "")  # 只生效一次
                 fact_report = await self.investigation.investigate(
                     question=effective_question,
                     additional_context=extra_ctx,
+                    tools_results=_resume_tools,
+                    skip_external_collection=_skip_collect,
                     budget=phase_budgets.get("investigation", {}),
                     contradiction=working_mem.get_contradiction_graph(),
                     on_progress=(
@@ -849,10 +1097,14 @@ class CognitiveLoop:
                         budget=phase_budgets.get("contradiction", {}),
                     )
                 else:
+                    _probe_ctx = working_mem.get_context_for_phase("contradiction")
+                    _probe_result = await self._phase_probe("contradiction", _q_c, _probe_ctx)
+                    if _probe_result:
+                        _probe_ctx = (_probe_ctx + "\n\n" + _probe_result).strip()
                     contradiction_graph = await self.contradiction.analyze(
                         fact_report=fact_report,
                         question=_q_c,
-                        additional_context=working_mem.get_context_for_phase("contradiction"),
+                        additional_context=_probe_ctx,
                         budget=phase_budgets.get("contradiction", {}),
                     )
                 trace.contradictions = contradiction_graph
@@ -1098,10 +1350,9 @@ class CognitiveLoop:
                 continue
         return metrics
 
-    async def stream_run(self, question, context="", mode="standard", conversation_id="", review_strategy="", model_override="", files=None, project_id=""):
-        # model_override 为空或"智能路由"时，各阶段用各自配置的模型（get_phase_llm）
-        # 指定具体模型名时，全流程统一使用该模型
-        effective_override = model_override if (model_override and model_override != "智能路由") else ""
+    async def stream_run(self, question, context="", mode="standard", conversation_id="", review_strategy="", model_override="", files=None, project_id="", resume_from="", resume_events=None):
+        # model_override 为空时使用服务端默认模型；指定具体模型名时全流程统一使用该模型
+        effective_override = model_override or ""
         if effective_override:
             from ..llm import get_llm as _get_llm_override
             override_loop = CognitiveLoop(
@@ -1116,6 +1367,7 @@ class CognitiveLoop:
                 conversation_id=conversation_id,
                 review_strategy=review_strategy,
                 files=files, project_id=project_id,
+                resume_from=resume_from, resume_events=resume_events,
             ):
                 yield event
             return
@@ -1157,7 +1409,8 @@ class CognitiveLoop:
                     session_id=stream_session_id,
                     conversation_id=conversation_id, review_strategy=review_strategy,
                     on_title=_push_title, files=files, project_id=project_id,
-                    on_clarification=_push_clarification)
+                    on_clarification=_push_clarification,
+                    resume_from=resume_from, resume_events=resume_events)
                 queue.put_nowait({"type": "result", "data": result})
             except Exception as exc:
                 log.error("cognitive_loop.stream_error", error=str(exc), exc_info=True)
@@ -1224,6 +1477,79 @@ class CognitiveLoop:
                 await asyncio.sleep(0.05)
         await task
 
+    async def _direct_answer_with_tools(self, question, context="", conversation_history=""):
+        """direct answer 路径的工具探查：模型先判断是否需要真实工具调用。
+
+        解决"短行动指令被误判为寒暄→跳过实践→模型编造执行结果"的问题：
+        即使 needs_investigation=False 走了直接回答，也先给模型一次机会
+        用真实工具（shell/file/data）获取信息，再生成回答。
+        工具执行走 self._registry（含权限门控），最多执行 3 次，不引入完整实践编排。
+        """
+        from ..tools.base import ToolResult
+        try:
+            tools_text = self._registry.format_for_prompt(categories=["file", "data", "code", "system"], grouped=True)
+        except Exception:
+            tools_text = "（工具不可用）"
+        probe_prompt = (
+            "用户问题需要真实信息才能准确回答。判断是否需要调用工具获取事实：\n"
+            "- 若能凭已知知识直接回答（寒暄、常识、观点），输出 need_tools=false；\n"
+            "- 若需要查看文件、运行命令、查询数据才能回答（如探查项目、看目录、读配置），输出 need_tools=true 并给出工具调用。\n\n"
+            + tools_text
+            + "\n\n输出严格 JSON：{\"need_tools\": true|false, \"tool_calls\": [{\"tool\": \"shell_exec\", \"params\": {\"command\": [\"ls\"], \"cwd\": \"\"}}], \"reason\": \"一句话\"}"
+        )
+        try:
+            resp = await self.llm.call(
+                messages=[{"role": "user", "content": f"用户问题：{question}\n\n{probe_prompt}"}],
+                system="你是判断是否需要用工具的回答助手。",
+                temperature=0.1,
+                max_tokens=800,
+                enable_reasoning=False,
+            )
+            import json
+            plan = json.loads(self._extract_json(resp.content))
+            if not plan.get("need_tools"):
+                return ""
+            tool_results = []
+            for tc in (plan.get("tool_calls") or [])[:3]:
+                tname = tc.get("tool", "")
+                params = tc.get("params") or {}
+                if not tname:
+                    continue
+                try:
+                    result = await self._registry.call(tname, **params)
+                    snippet = (result.content or "")[:600] if isinstance(result, ToolResult) else str(result)[:600]
+                    if not snippet and getattr(result, "error", ""):
+                        snippet = f"错误: {result.error[:200]}"
+                    tool_results.append(f"[{tname}] {snippet}")
+                except Exception as e:
+                    tool_results.append(f"[{tname}] 调用失败: {str(e)[:200]}")
+            if tool_results:
+                return "\n\n## 工具探查结果（真实执行）\n" + "\n".join(tool_results)
+            return ""
+        except Exception as e:
+            log.warning("cognitive_loop.direct_answer_tools_error", error=str(e))
+            return ""
+
+    @staticmethod
+    def _extract_json(raw: str) -> str:
+        import re
+        s = str(raw or "").strip()
+        start, end = s.find("{"), s.rfind("}")
+        return s[start:end + 1] if start != -1 and end > start else "{}"
+
+    async def _phase_probe(self, phase: str, question: str, extra_context: str = "") -> str:
+        """方案 A：某阶段的轻量工具探查。返回探查结果文本（无则空串）。
+
+        实践阶段跳过（它用完整编排）；其他阶段按 PHASE_TOOLS 清单执行。
+        """
+        from ..core.phase_tools import run_phase_probe
+        if phase == "practice":
+            return ""
+        try:
+            return await run_phase_probe(self.llm, self._registry, question, phase, extra_context)
+        except Exception as e:
+            log.warning("cognitive_loop.phase_probe_error", phase=phase, error=str(e))
+            return ""
 
     async def _build_response(
         self,
@@ -1405,9 +1731,6 @@ class CognitiveLoop:
                 parts.append(f"意外发现：{'；'.join(p.unexpected_findings[:n_list])}")
             if p.analysis_summary:
                 parts.append(f"知性分析：{p.analysis_summary[:cap_ess]}")
-
-        if trace.perspectives and trace.perspectives.synthesized_insight:
-            parts.append(f"\n## 多视角综合\n{trace.perspectives.synthesized_insight[:cap_ess]}")
 
         parts.append("\n---\n请根据以上材料，直接回答用户的原始问题。")
         return "\n".join(parts)

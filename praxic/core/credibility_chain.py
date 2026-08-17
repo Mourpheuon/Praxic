@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from ..api.schemas.models import (
-    ContradictionGraph, RationalSynthesis, DecisionReport, FactReport, PracticeReport
+    ContradictionGraph, RationalSynthesis, FactReport, PracticeReport
 )
 
 
@@ -24,15 +24,6 @@ class CredibilityChain:
     weakest_link: str = ""               # 可信度链最薄弱环节的描述
     decay_path: list[str] = field(default_factory=list)
 
-    @property
-    def decision_max(self) -> float:
-        """Deprecated compatibility alias for the former decision stage."""
-        return self.practice_max
-
-    @decision_max.setter
-    def decision_max(self, value: float) -> None:
-        self.practice_max = value
-
     @classmethod
     def from_trace(
         cls,
@@ -40,8 +31,6 @@ class CredibilityChain:
         contradiction_graph: Optional[ContradictionGraph] = None,
         rational_synthesis: Optional[RationalSynthesis] = None,
         practice_report: Optional[PracticeReport] = None,
-        # Deprecated compatibility input for callers using the former phase.
-        decision_report: Optional[DecisionReport] = None,
     ) -> "CredibilityChain":
         chain = cls()
 
@@ -97,13 +86,6 @@ class CredibilityChain:
             )
         elif practice_report and practice_report.mode == "partial":
             chain.practice_max = chain.rational_max * 0.7
-        elif decision_report:
-            # Keep old standalone callers working while the runtime no longer
-            # creates a separate DecisionReport.
-            chain.practice_max = min(
-                chain.rational_max * 0.85,
-                chain.investigation_max,
-            )
         else:
             chain.practice_max = chain.rational_max * 0.7
         chain.decay_path.append(f"实践检验 → {chain.practice_max:.2f}")

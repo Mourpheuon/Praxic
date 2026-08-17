@@ -37,26 +37,11 @@ fi
 echo -e "[1/5] Node.js $(node --version)"
 
 # ── 2. 安装依赖 ──
-echo "[2/5] 安装 npm 依赖..."
+echo "[2/4] 安装 npm 依赖..."
 npm install
 
-# 安装前端依赖
-if [ -d "praxic/web" ]; then
-    echo "       安装前端依赖..."
-    cd praxic/web && npm install && cd "$PROJECT_ROOT"
-fi
-
-# ── 3. 构建前端 ──
-echo "[3/5] 构建前端（Vite）..."
-if [ -d "praxic/web" ]; then
-    cd praxic/web && npx vite build && cd "$PROJECT_ROOT"
-    echo "       前端构建完成 → praxic/web/dist/"
-else
-    echo -e "${YELLOW}       praxic/web/ 不存在，跳过前端构建${NC}"
-fi
-
-# ── 4. Electron Builder 打包 ──
-echo "[4/5] 打包 Electron 应用..."
+# ── 3. Electron Builder 打包 ──
+echo "[3/4] 打包 Electron 应用..."
 if [ "${1:-}" = "--all" ]; then
     npx electron-builder --win --mac --linux
 elif [ "${1:-}" = "--publish" ]; then

@@ -1,0 +1,66 @@
+# Praxic 默认组合（对应 dsh agent.cordis.yml 的 Praxic 版）
+# 装配声明化：CognitiveLoop 的工具装配段由此文件驱动。
+# 行结构：{id, name, config, disabled, inject, isolate, group}
+#   - id   服务标识（= 注册名）
+#   - name module:Class（importlib 导入）
+#   - inject 声明的依赖服务（缺失则该行跳过并警告）
+#   - disabled 白名单表达式：true/false、platform:win32|linux、env:KEY
+#
+# 注意：YAML 1.1 会把 off/on/yes/no/true/false 解析为布尔值，id 避免使用这些词。
+
+# ── 服务行 ──
+- id: llm
+  name: praxic.cordis.services.llm:LLMService
+
+- id: workspace
+  name: praxic.cordis.services.host:WorkspaceService
+  config:
+    project_id: ""
+
+- id: memory
+  name: praxic.cordis.services.host:MemoryService
+
+- id: permission-policy
+  name: praxic.cordis.services.host:PermissionPolicyService
+  inject: [workspace]
+
+- id: skill-manager
+  name: praxic.cordis.services.host:SkillManagerService
+
+- id: tool-registry
+  name: praxic.cordis.services.tools:ToolRegistryService
+  inject: [permission-policy]
+
+# ── 内置工具行（与 CognitiveLoop 旧装配段逐一对应，不增不减）──
+- id: python-exec
+  name: praxic.cordis.services.tools:ToolService
+  inject: [tool-registry, workspace]
+
+- id: workspace-tools
+  name: praxic.cordis.services.tools:ToolService
+  inject: [tool-registry, workspace]
+
+- id: shell
+  name: praxic.cordis.services.tools:ToolService
+  inject: [tool-registry, workspace]
+
+- id: web-search
+  name: praxic.cordis.services.tools:ToolService
+  inject: [tool-registry]
+
+- id: web-fetch
+  name: praxic.cordis.services.tools:ToolService
+  inject: [tool-registry]
+
+- id: user-context
+  name: praxic.cordis.services.tools:ToolService
+  inject: [tool-registry]
+
+- id: plugin-scan
+  name: praxic.cordis.services.tools:ToolService
+  inject: [tool-registry]
+
+# ── 核心服务：认知循环（不可禁用）──
+- id: cognitive-loop
+  name: praxic.core.assembly:CognitiveLoopService
+  inject: [llm, workspace, memory, permission-policy, skill-manager, tool-registry]

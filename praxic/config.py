@@ -130,18 +130,10 @@ _PERMISSION_MAP = {
 
 @dataclass
 class PhaseConfig:
-    model: str = ""
     temperature: float = 0.5
     max_tokens: int = 4096
     reasoning_effort: str = "medium"
     system_prompt: str = ""
-
-
-@dataclass
-class PerspectiveEntry:
-    name: str = ""
-    role: str = ""
-    temperature: float = 0.5
 
 
 @dataclass
@@ -179,9 +171,6 @@ class Settings:
     skill_max_tokens_per_phase: int = 2000
     # ── 实践阶段沙箱级别 ── strict=禁网禁pip; relaxed=允许 pip 安装与联网
     practice_sandbox_level: str = "relaxed"
-    perspectives_model: str = ""
-    perspectives_max_tokens: int = 1024
-    perspectives_defaults: list = field(default_factory=list)
     cockpit_managed: bool = False
     cockpit_profile: str = "default"
     dev_enabled: bool = False
@@ -194,7 +183,6 @@ class Settings:
     ui_show_thinking: bool = True
     ui_agent_persona: str = ""
     ui_custom_knowledge: str = ""
-    ui_phase_models: str = ""  # JSON blob, kept simple
     # ── 调查阶段：本地文件检索 ──
     local_retrieval_mode: str = "keyword"  # keyword | embedding | off
     local_retrieval_max_chunks: int = 15
@@ -220,10 +208,7 @@ class Settings:
     detailed_report_max_tokens: int = 0
 
     def phase(self, name: str) -> PhaseConfig:
-        cfg = self.phases.get(name, PhaseConfig())
-        if not cfg.model:
-            cfg.model = self.default_model
-        return cfg
+        return self.phases.get(name, PhaseConfig())
 
     def effective_db_url(self) -> str:
         return self.db_url or ("sqlite+aiosqlite:///" + str(self.data_dir / "praxic.db"))
@@ -261,7 +246,6 @@ def _build() -> Settings:
     rt = t.get("runtime", {})
     pth = t.get("paths", {})
     ph = t.get("phases", {})
-    ps = t.get("perspectives", {})
     ck = t.get("cockpit", {})
     dv = t.get("developer", {})
     inv = t.get("investigation", {})
@@ -322,20 +306,11 @@ def _build() -> Settings:
     for n, d in ph.items():
         if isinstance(d, dict):
             phases[n] = PhaseConfig(
-                model=d.get("model", ""),
                 temperature=float(d.get("temperature", 0.5)),
                 max_tokens=int(d.get("max_tokens", 4096)),
                 reasoning_effort=d.get("reasoning_effort", "medium"),
                 system_prompt=d.get("system_prompt", "").strip(),
             )
-    pe = [
-        PerspectiveEntry(
-            name=p.get("name", ""),
-            role=p.get("role", ""),
-            temperature=float(p.get("temperature", 0.5)),
-        )
-        for p in ps.get("defaults", [])
-    ]
     return Settings(
         llm_provider=prov,
         default_model=mdl,
@@ -367,9 +342,6 @@ def _build() -> Settings:
         projects_dir=pj,
         prompts_dir=pd,
         phases=phases,
-        perspectives_model=ps.get("model", ""),
-        perspectives_max_tokens=int(ps.get("max_tokens", 1024)),
-        perspectives_defaults=pe,
         review_strategy=rt.get("review_strategy", "once"),
         practice_rounds=int(rt.get("practice_rounds", 3)),
         skills_dir=Path(dv.get("skills_dir", str(Path.cwd() / "praxic" / "skills"))),
@@ -390,7 +362,6 @@ def _build() -> Settings:
         ui_show_thinking=_bool(ui.get("show_thinking", True), True),
         ui_agent_persona=ui.get("agent_persona", ""),
         ui_custom_knowledge=ui.get("custom_knowledge", ""),
-        ui_phase_models=ui.get("phase_models", ""),
         # ── 调查阶段 ──
         local_retrieval_mode=_env("PRAXIC_LOCAL_RETRIEVAL_MODE")
         or inv.get("local_retrieval_mode", "keyword"),

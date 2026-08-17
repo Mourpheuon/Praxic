@@ -49,6 +49,7 @@ _STEP1_TASK_NATURE_PROMPT = """判断以下用户问题的任务性质与复杂�
 
 - 大多数编程问题是 code_generation + simple。
 - "你好""谢谢"等寒暄 needs_investigation=false。
+- **请求执行工具/操作的指令（如"用 shell 查看""执行命令""尝试跑一下""分析这个文件"），即使简短也是行动任务：需要调用工具，needs_investigation=true、complexity 至少 standard。**
 - 不确定任务性质就选 other；不确定复杂度就选 standard。
 - 不确定是否需要调查就选 true。"""
 
@@ -406,13 +407,18 @@ class QuestionPreprocessing:
             content = f"对话历史：\n{conversation_history}\n\n---\n\n{content}"
         # fallback：LLM 失败时，极短问题（<20字符，通常是寒暄/简单问句）保守判为无需调查，
         # 避免因 API 超时/解析失败把寒暄拖入 investigation 卡住。
-        # 这是 LLM 失败兜底，不是主逻辑硬编码——正常 LLM 调用仍完全由模型判断。
+        # 但短问题若含行动/工具意图（“用/执行/尝试/查看/跑/写/读/查/试”），是明确行动指令，
+        # 必须 needs_investigation=true——否则“用shell探查”这类请求会被当成寒暄跳过实践阶段，
+        # 工具永远不会被调用（模型只能在回答里编造执行结果）。
         _short_q = len(question.strip()) < 20
+        _action_markers = ("用", "执行", "尝试", "查看", "跑", "写", "读", "查", "试", "shell", "命令", "执行命令", "运行", "探测", "分析文件")
+        _has_action_intent = any(m in question for m in _action_markers)
         _fallback = {
             "task_nature": "other",
             "complexity": "simple" if _short_q else "standard",
-            "needs_investigation": not _short_q,
-            "reasoning": "解析失败-兜底",
+            # 短行动指令也要调查/执行；纯寒暄（无动作意图）才判无需调查。
+            "needs_investigation": (not _short_q) or _has_action_intent,
+            "reasoning": "解析失败-兜底" + ("，含行动意图" if _has_action_intent else ""),
         }
         result = await self._call_step(
             _STEP1_TASK_NATURE_PROMPT,

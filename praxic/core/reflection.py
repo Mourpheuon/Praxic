@@ -373,13 +373,6 @@ class ReflectionEngine:
                     "should_reinvestigate 应为 true，reinvestigation_focus 应指向重新分析矛盾结构。"
                 )
 
-        if trace.perspectives:
-            pv = trace.perspectives
-            if pv.critical_warnings:
-                parts.append(f"【多视角警告】{'；'.join(pv.critical_warnings[:5])}")
-            if pv.synthesized_insight:
-                parts.append(f"【多视角综合】{pv.synthesized_insight[:200]}")
-
         return "\n\n".join(parts) or "（轨迹为空）"
 
     def _parse_response(self, raw: str) -> ReflectionReport:
@@ -414,11 +407,7 @@ class ReflectionEngine:
             convergence_score=float(conv),
             investigation_retrospective=data.get("investigation_retrospective", ""),
             contradiction_retrospective=data.get("contradiction_retrospective", ""),
-            practice_retrospective=data.get(
-                "practice_retrospective",
-                data.get("decision_retrospective", ""),
-            ),
-            decision_retrospective=data.get("decision_retrospective", ""),
+            practice_retrospective=data.get("practice_retrospective", ""),
             skip_phases=data.get("skip_phases", []),
             focus_hints=data.get("focus_hints", {}),
             recommended_mode=data.get("recommended_mode", ""),

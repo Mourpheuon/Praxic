@@ -70,8 +70,6 @@ hiddenimports = [
     "praxic.core.investigation",
     "praxic.core.contradiction",
     "praxic.core.rational",
-    "praxic.core.decision",
-    "praxic.core.perspectives",
     "praxic.core.practice",
     "praxic.core.question_preprocessing",
     "praxic.core.reflection",

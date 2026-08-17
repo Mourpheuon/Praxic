@@ -1,6 +1,6 @@
 """Tests for CredibilityChain."""
 import pytest
-from praxic.api.schemas.models import (Contradiction, ContradictionGraph, ContradictionType, DecisionReport, Fact, FactReport, RationalSynthesis)
+from praxic.api.schemas.models import (Contradiction, ContradictionGraph, ContradictionType, Fact, FactReport, RationalSynthesis)
 from praxic.core.credibility_chain import CredibilityChain
 
 def _make_fact_report(facts):
@@ -14,8 +14,7 @@ class TestCredibilityChainBasic:
         facts = _make_fact_report([("f1","high cred fact 1",0.95),("f2","high cred fact 2",0.90),("f3","high cred fact 3",0.92)])
         cg = _make_contradiction(basis_ids=["f1","f2","f3"])
         rational = RationalSynthesis(essence="test", synthesis_text="test")
-        decision = DecisionReport(summary="test")
-        chain = CredibilityChain.from_trace(fact_report=facts, contradiction_graph=cg, rational_synthesis=rational, decision_report=decision)
+        chain = CredibilityChain.from_trace(fact_report=facts, contradiction_graph=cg, rational_synthesis=rational)
         assert chain.investigation_max > 0.9
         assert chain.overall_confidence > 0.5
 
@@ -49,13 +48,12 @@ class TestCredibilityChainFullPipeline:
         facts = _make_fact_report([("f1","fact",0.9)])
         cg = _make_contradiction(basis_ids=["f1"])
         rational = RationalSynthesis(essence="test", synthesis_text="test")
-        decision = DecisionReport(summary="test")
-        chain = CredibilityChain.from_trace(fact_report=facts, contradiction_graph=cg, rational_synthesis=rational, decision_report=decision)
+        chain = CredibilityChain.from_trace(fact_report=facts, contradiction_graph=cg, rational_synthesis=rational)
         assert chain.investigation_max > 0.8
         assert chain.contradiction_max <= chain.investigation_max
         assert chain.rational_max <= chain.contradiction_max
-        assert chain.decision_max <= chain.rational_max
-        assert chain.overall_confidence == min(chain.investigation_max, chain.contradiction_max, chain.rational_max, chain.decision_max)
+        assert chain.practice_max <= chain.rational_max
+        assert chain.overall_confidence == min(chain.investigation_max, chain.contradiction_max, chain.rational_max, chain.practice_max)
 
     def test_weakest_link_identified(self):
         facts = _make_fact_report([("f1","strong fact",0.95)])

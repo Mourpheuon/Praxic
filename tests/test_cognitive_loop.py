@@ -41,7 +41,7 @@ class TestBasic:
         assert t.investigation is not None
         assert t.contradictions is not None
         assert t.rational_synthesis is not None
-        assert t.decision is None
+        assert not hasattr(t, "decision")
         assert t.practice is not None
         assert t.reflection is not None
 
@@ -52,7 +52,7 @@ class TestBasic:
         r = await loop.run(question="快", mode="fast")
         t = r.full_trace
         assert t.investigation is not None
-        assert t.decision is None
+        assert not hasattr(t, "decision")
         assert t.practice is None
         assert t.reflection is None
 

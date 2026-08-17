@@ -65,14 +65,7 @@ jobs:
           cache: npm
 
       - name: Install npm deps
-        # --ignore-scripts: 避免 postinstall 自动安装前端（下面单独处理）
         run: npm ci --ignore-scripts
-
-      - name: Build frontend (Vite)
-        run: |
-          cd praxic/web
-          npm ci
-          npm run build
 
       # ── Electron 打包 ───────────────────────────────────────
       - name: Package (electron-builder)

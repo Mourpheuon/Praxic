@@ -74,8 +74,7 @@ def cmd_run(
         phase_order.append((phase, summary))
         phase_icons = {
             "investigation": "🔍", "contradiction":  "⚡",
-            "rational":       "🧠",
-            "perspectives":   "👥", "reflection":     "🔄",
+            "rational":       "🧠", "reflection":     "🔄",
             "practice":       "⚙️",
         }
         icon = phase_icons.get(phase, "•")

@@ -796,6 +796,8 @@
       animation: phaseActiveLine .55s cubic-bezier(.2,.75,.25,1) both;
     }
     .praxic-phase-group--waiting::before { background: #9e7b3a; }
+    .praxic-phase-group--active .praxic-phase-group__title,
+    .praxic-phase-group--waiting .praxic-phase-group__title { padding-left: .4rem; }
     .praxic-phase-group--active .praxic-phase-group__header,
     .praxic-phase-group--active .praxic-phase-group__events,
     .praxic-phase-group--waiting .praxic-phase-group__header,
@@ -1695,7 +1697,7 @@
       margin-top: 0;
       overflow: hidden;
       color: #fcfaf5;
-      font: 900 31px/1.1 'Noto Serif SC', serif;
+      font: 900 42px/1.1 'Noto Serif SC', serif;
       letter-spacing: .01em;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -1934,7 +1936,7 @@
 
     @media (max-width: 980px) and (min-width: 761px) {
       .praxic-inspector { flex-basis: var(--praxic-inspector-width, 280px); width: var(--praxic-inspector-width, 280px); min-width: 250px; }
-      .praxic-inspector__title { font-size: 27px; }
+      .praxic-inspector__title { font-size: 38px; }
     }
 
     @media (max-width: 760px) {
@@ -2297,7 +2299,7 @@
         }
       }, []);
 
-      const start = useCallback((question, context, mode, conversationId, reviewStrategy, model, projectId, files, { onPhase, onDone, onTitle, onClarification, onAuthorization, replaceSessionId = '' }) => {
+      const start = useCallback((question, context, mode, conversationId, reviewStrategy, model, projectId, files, { onPhase, onDone, onTitle, onClarification, onAuthorization, replaceSessionId = '', resumeFrom = '' }) => {
         // Don't re-start if already running for this conv
         if (esMapRef.current[conversationId]) return;
         cbMapRef.current[conversationId] = { onPhase, onDone, onTitle, onClarification, onAuthorization };
@@ -2311,6 +2313,7 @@
           + '&project_id=' + encodeURIComponent(projectId || '')
           + '&files=' + encodeURIComponent((files && files.length) ? files.join(',') : '')
           + '&replace_session_id=' + encodeURIComponent(replaceSessionId || '')
+          + (resumeFrom ? '&resume_from=' + encodeURIComponent(resumeFrom) : '')
           + '&dev_trace=1';
         const es = new EventSource(url);
         esMapRef.current[conversationId] = es;
@@ -2749,7 +2752,7 @@
         return parsed && typeof parsed === 'object' ? parsed : null;
       } catch {
         const loose = {};
-        const fieldPattern = /"(abstract_from|essence|return_to_concrete|fact_foundation|quality_assessment|investigation_retrospective|contradiction_retrospective|practice_retrospective|decision_retrospective|reinvestigation_focus)"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+        const fieldPattern = /"(abstract_from|essence|return_to_concrete|fact_foundation|quality_assessment|investigation_retrospective|contradiction_retrospective|practice_retrospective|reinvestigation_focus)"\s*:\s*"((?:\\.|[^"\\])*)"/g;
         let match;
         while ((match = fieldPattern.exec(text))) {
           try { loose[match[1]] = JSON.parse(`\"${match[2]}\"`); } catch {}
@@ -2932,7 +2935,7 @@
       );
     }
 
-    function PhaseBlock({ phases, activePhase, completedPhases, running = false, onSteer, steeringCount = 0 }) {
+    function PhaseBlock({ phases, activePhase, completedPhases, running = false, onSteer, steeringCount = 0, uiSettings = {} }) {
       const [expandedPhases, setExpandedPhases] = useState({});
       const [expandedDetail, setExpandedDetail] = useState(new Set());
       const [steerTarget, setSteerTarget] = useState('');
@@ -3180,7 +3183,7 @@
       return (
         <div className="praxic-agent-actions" aria-label="回答操作">
           <button type="button" onClick={() => onCopy(turn)} disabled={busy} title={copied ? '已复制回答' : '复制回答'} aria-label={copied ? '已复制回答' : '复制回答'}>{copied ? <span className="praxic-user-action-check" aria-hidden="true">✓</span> : <UserActionIcon kind="copy" />}</button>
-          {interrupted && <button type="button" onClick={() => onContinue(turn)} disabled={busy} title="继续认知循环" aria-label="继续认知循环"><UserActionIcon kind="resend" /></button>}
+          {interrupted && <button type="button" onClick={() => onContinue(turn)} disabled={busy} title="重新思考" aria-label="重新思考"><UserActionIcon kind="resend" /></button>}
           <button type="button" onClick={() => onToggleMetrics()} title="计量" aria-label="计量" aria-expanded={metricsOpen}><UserActionIcon kind="metrics" /></button>
         </div>
       );
@@ -3286,7 +3289,7 @@
       );
     }
 
-    function InputBar({ onSend, running, onStop, onSteer, model, availableModels, onModelChange, files, setFiles, uploading, handleFiles, awaitingClarification, onAnswer }) {
+    function InputBar({ onSend, running, onStop, onSteer, model, availableModels, onModelChange, files, setFiles, uploading, handleFiles, awaitingClarification, onAnswer, convPermission, onConvPermissionChange }) {
       const [question, setQuestion] = useState('');
       const [context, setContext] = useState('');
       const [mode, setMode] = useState('deep');
@@ -3354,23 +3357,31 @@
               className="text-xs text-warmgray hover:text-seal disabled:opacity-40" title="上传文件（作为本轮提问的资料）">{uploading ? '上传中…' : '📎 附件'}</button>
             {showContext && (
               <input value={context} onChange={e => setContext(e.target.value)} placeholder="背景上下文（可选）"
-                className="flex-1 bg-paper border border-linen/40 rounded px-2 py-1 text-xs text-ink placeholder:text-clay focus:outline-none focus:border-seal/40" />
+                className="flex-1 bg-paper border border-linen/40 rounded px-3 h-[132px] text-sm text-ink align-middle placeholder:text-clay focus:outline-none focus:border-seal/40" />
             )}
             <select value={mode} onChange={e => setMode(e.target.value)}
-              className="bg-paper border border-linen/40 rounded px-1.5 py-1 text-[11px] text-warmgray focus:outline-none">
+              className="bg-paper border border-linen/40 rounded px-1.5 py-2 text-[11px] text-warmgray focus:outline-none">
               <option value="fast">快速</option>
               <option value="standard">标准</option>
               <option value="deep">深度</option>
             </select>
             <select value={reviewStrategy} onChange={e => setReviewStrategy(e.target.value)}
-              className="bg-paper border border-linen/40 rounded px-1.5 py-1 text-[11px] text-warmgray focus:outline-none" title="多视角审查策略">
+              className="bg-paper border border-linen/40 rounded px-1.5 py-2 text-[11px] text-warmgray focus:outline-none" title="多视角审查策略">
               <option value="off">不审查</option>
               <option value="once">审查·首轮</option>
               <option value="iterative">审查·迭代</option>
             </select>
+            <select value={convPermission || 'ask'} onChange={e => onConvPermissionChange?.(e.target.value)}
+              className="bg-paper border border-linen/40 rounded px-1.5 py-2 text-[11px] text-warmgray focus:outline-none" title="本对话权限（可覆盖设置中的默认值）">
+              <option value="read_only">权限·只读</option>
+              <option value="ask">权限·询问</option>
+              <option value="auto_review">权限·自动审核</option>
+              <option value="full">权限·完全</option>
+            </select>
             {availableModels && availableModels.length > 0 && (
               <select value={model} onChange={e => onModelChange?.(e.target.value)}
-                className="bg-paper border border-linen/40 rounded px-1.5 py-1 text-[11px] text-warmgray focus:outline-none focus:border-seal/40" title="选择模型">
+                className="bg-paper border border-linen/40 rounded px-1.5 py-2 text-[11px] text-warmgray focus:outline-none focus:border-seal/40" title="选择模型">
+                <option value="">默认</option>
                 {availableModels.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             )}
@@ -3478,28 +3489,34 @@
       projectId, width, onResizeStart, onResizeKeyDown, onOpenEnvironment, onOpenFile, onChange, onSave,
     }) {
       const workspaceDir = project?.workspace_dir || '未配置工作目录';
-      const workspaceName = String(workspaceDir).split(/[\\/]/).filter(Boolean).pop() || '工作区';
+      const workspaceName = (project?.name && project.name.trim()) || String(workspaceDir).split(/[\\/]/).filter(Boolean).pop() || '工作区';
       const conversationName = conversation?.name || '未选择对话';
       const fileTitle = file?.label || file?.relativePath || file?.path || '文件';
       const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
       const titleText = file ? fileTitle : workspaceName;
       const titleRef = useRef(null);
       const titleTextRef = useRef(null);
-      const [titleFontSize, setTitleFontSize] = useState(31);
+      const titleFontRef = useRef(31);
 
+      // 自适应字号：span 的 fontSize 由 fit 直接控制（DOM），不用 setState，
+      // 避免 React 重渲染 → 尺寸变化 → ResizeObserver 循环（闪烁）。
+      // RO 只在容器宽度变化超过 1px 时重算，字号变化引起的高度变化不触发。
       useLayoutEffect(() => {
         const container = titleRef.current;
         const text = titleTextRef.current;
         if (!container || !text) return;
+        let lastWidth = -1;
         const fit = () => {
+          const maxW = container.clientWidth;
+          if (Math.abs(maxW - lastWidth) < 1) return;
+          lastWidth = maxW;
           let fs = 31;
           text.style.fontSize = fs + 'px';
-          const maxW = container.clientWidth;
-          while (fs > 14 && text.getBoundingClientRect().width > maxW) {
+          while (fs > 14 && text.getBoundingClientRect().width > maxW - 2) {
             fs -= 1;
             text.style.fontSize = fs + 'px';
           }
-          setTitleFontSize(fs);
+          titleFontRef.current = fs;
         };
         fit();
         const ro = new ResizeObserver(fit);
@@ -3521,7 +3538,7 @@
           />
           <div className="praxic-inspector__header">
             <div className="min-w-0">
-              <div className="praxic-inspector__title" ref={titleRef} style={{ fontSize: titleFontSize + 'px' }} title={titleText}>
+              <div className="praxic-inspector__title" ref={titleRef} title={titleText}>
                 <span ref={titleTextRef} style={{ whiteSpace: 'nowrap' }}>{titleText}</span>
               </div>
             </div>
@@ -3569,7 +3586,7 @@
               <div className="praxic-inspector__section">
                 <div className="praxic-inspector__label">当前对话</div>
                 <div className="praxic-inspector__value">{conversationName}</div>
-                <div className="praxic-inspector__file-meta"><span>{conversation?.question_count || 0} 条提问</span><span>{model || '智能路由'}</span></div>
+                <div className="praxic-inspector__file-meta"><span>{conversation?.question_count || 0} 条提问</span><span>{model || '默认'}</span></div>
               </div>
               <div className="praxic-inspector__section">
                 <div className="praxic-inspector__label">运行状态</div>
@@ -3721,26 +3738,6 @@
       </div>);
     }
 
-    function DecisionDetail({ data }) {
-      const d=data||{}; const actions=d.action_items||[];
-      return (<div className="space-y-2 text-xs">
-        {d.strategic_assessment && <div className="bg-olivewash border border-olive/20 rounded p-2"><div className="font-semibold text-olive mb-1">🎯 战略</div><p className="text-ink">{d.strategic_assessment}</p></div>}
-        {actions.length>0 && <div><div className="font-semibold text-seal mb-1">📋 行动 ({actions.length})</div>
-          {actions.map((a,i)=><div key={i} className="bg-paper border rounded p-1.5 mb-1"><span className="px-1 py-0.5 rounded text-[9px] bg-seal text-white mr-1">P{a.priority||i+1}</span><span className="text-ink font-medium">{a.description}</span>
-            {a.expected_outcome && <div className="text-[10px] text-olive mt-0.5">✓ {a.expected_outcome}</div>}</div>)}</div>}
-        {(d.risks||[]).length>0 && <div>{d.risks.map((r,i)=><div key={i} className="text-seal-light pl-2 border-l-2 border-seal/30 mb-0.5">• {r}</div>)}</div>}
-      </div>);
-    }
-
-    function PerspectivesDetail({ data }) {
-      const d=data||{}; const views=d.views||[];
-      return (<div className="space-y-2 text-xs">
-        {d.synthesized_insight && <p className="text-warmgray italic">{d.synthesized_insight}</p>}
-        {(d.critical_warnings||[]).length>0 && <div><div className="font-semibold text-seal mb-1">🚨 警告</div>{d.critical_warnings.map((w,i)=><div key={i} className="text-seal bg-seal-wash rounded px-2 py-1 mb-0.5">⚠ {w}</div>)}</div>}
-        {views.length>0 && <div><div className="font-semibold text-olive mb-1">👥 视角 ({views.length})</div>{views.map((v,i)=><div key={i} className="bg-paper border rounded p-1.5 mb-1"><span className="font-semibold text-ink">{v.perspective_name}</span><p className="text-warmgray mt-0.5">{v.critique}</p></div>)}</div>}
-      </div>);
-    }
-
     function PracticeDetail({ data }) {
       const d=data||{}; const steps=d.steps_taken||[];
       return (<div className="space-y-2 text-xs">
@@ -3758,7 +3755,6 @@
         ['investigation_retrospective', '调查回顾'],
         ['contradiction_retrospective', '矛盾回顾'],
         ['practice_retrospective', '实践回顾'],
-        ['decision_retrospective', '决策回顾'],
         ['reinvestigation_focus', '重新调查重点'],
       ];
       const reflectionValue = parseJsonText(d.quality_assessment) || {
@@ -3766,7 +3762,6 @@
         investigation_retrospective: d.investigation_retrospective,
         contradiction_retrospective: d.contradiction_retrospective,
         practice_retrospective: d.practice_retrospective,
-        decision_retrospective: d.decision_retrospective,
         reinvestigation_focus: d.reinvestigation_focus,
       };
       return (<div className="space-y-2 text-xs">
@@ -3776,7 +3771,7 @@
           {d.qualitative_leap && <span className="px-1.5 py-0.5 rounded-full bg-seal-wash text-[10px] text-seal">质变飞跃</span>}
           {d.should_reinvestigate && <span className="px-1.5 py-0.5 rounded-full bg-seal-wash text-[10px] text-seal">建议再调查</span>}
         </div>
-        {(d.quality_assessment || d.investigation_retrospective || d.contradiction_retrospective || d.practice_retrospective || d.decision_retrospective || d.reinvestigation_focus) && (
+        {(d.quality_assessment || d.investigation_retrospective || d.contradiction_retrospective || d.practice_retrospective || d.reinvestigation_focus) && (
           <StructuredNarrative value={reflectionValue} rawValue={d} fields={reflectionFields} />
         )}
         {(d.lessons_learned||[]).length>0 && <div>{d.lessons_learned.map((l,i)=><div key={i} className="text-warmgray pl-2 border-l-2 border-olive/30 mb-0.5">• {l}</div>)}</div>}
@@ -3845,7 +3840,6 @@
         case 'investigation': return <InvestigationDetail data={data} />;
         case 'contradiction':  return <ContradictionDetail data={data} showThinking={showThinking} />;
         case 'rational':       return <RationalDetail data={data} />;
-        case 'perspectives':   return <PerspectivesDetail data={data} />;
         case 'practice':       return <PracticeDetail data={data} />;
         case 'reflection':     return <ReflectionDetail data={data} />;
         default: return null;
@@ -3887,7 +3881,6 @@
       // ── 通用 (General) ──
       const [persona, setPersona] = useState(uiSettings.agent_persona || '');
       const [knowledge, setKnowledge] = useState(uiSettings.custom_knowledge || '');
-      const [phaseModels, setPhaseModels] = useState(uiSettings.phase_models || {});
       const [showThinking, setShowThinking] = useState(uiSettings.show_thinking_after_answer !== false);
       const [annotateOn, setAnnotateOn] = useState(() => {
         try { const v = localStorage.getItem('praxic_dev_annotate'); return v === '1' || v === 'true'; } catch { return false; }
@@ -4038,7 +4031,6 @@
         if (!syncedRef.current && uiSettings.agent_persona) {
           setPersona(uiSettings.agent_persona);
           setKnowledge(uiSettings.custom_knowledge || '');
-          setPhaseModels(uiSettings.phase_models || {});
           setShowThinking(uiSettings.show_thinking_after_answer !== false);
           setMaxIterations(uiSettings.max_iterations || 0);
           setPracticeRounds(uiSettings.practice_rounds || 0);
@@ -4127,16 +4119,24 @@
         } finally { setAccountSaving(false); }
       }, [provider, baseUrl, apiKey, model]);
 
+      // ── Save default permission (new conversations) ──
+      const saveDefaultPermission = useCallback(async (mode) => {
+        try {
+          const r = await fetch('/api/v1/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission_mode: mode }) });
+          if (r.ok) { onSave({ ...uiSettings, permission_mode: mode }); }
+        } catch (e) { console.error('[settings] 默认权限保存失败', e); }
+      }, [uiSettings, onSave]);
+
       // ── Save general/appearance settings ──
       const handleSave = useCallback(async () => {
         setSaving(true);
         try {
-          const body = { font_family: fontFamily, font_size: fontSize, page_zoom: pageZoom, show_thinking_after_answer: showThinking, agent_persona: persona, custom_knowledge: knowledge, phase_models: phaseModels, max_iterations: maxIterations, practice_rounds: practiceRounds, web_search_max_results: searchMaxResults, web_fetch_max_urls: fetchMaxUrls, web_fetch_max_chars_per_page: fetchMaxCharsPerPage, web_fetch_max_total_chars: fetchMaxTotalChars };
+          const body = { font_family: fontFamily, font_size: fontSize, page_zoom: pageZoom, show_thinking_after_answer: showThinking, agent_persona: persona, custom_knowledge: knowledge, max_iterations: maxIterations, practice_rounds: practiceRounds, web_search_max_results: searchMaxResults, web_fetch_max_urls: fetchMaxUrls, web_fetch_max_chars_per_page: fetchMaxCharsPerPage, web_fetch_max_total_chars: fetchMaxTotalChars };
           const r = await fetch('/api/v1/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
           if (r.ok) onSave(body);
         } catch {} finally { setSaving(false); }
         onClose();
-      }, [fontFamily, fontSize, pageZoom, showThinking, maxIterations, practiceRounds, searchMaxResults, fetchMaxUrls, fetchMaxCharsPerPage, fetchMaxTotalChars, persona, knowledge, phaseModels, onSave, onClose]);
+      }, [fontFamily, fontSize, pageZoom, showThinking, maxIterations, practiceRounds, searchMaxResults, fetchMaxUrls, fetchMaxCharsPerPage, fetchMaxTotalChars, persona, knowledge, onSave, onClose]);
 
       const applyFont = useCallback((fam, sz) => {
         const f = FONT_FAMILIES.find(x => x.id === fam);
@@ -4175,6 +4175,7 @@
 
       const TABS = [
         { id: 'general', label: '通用', icon: '⚙️' },
+        { id: 'permission', label: '权限', icon: '🔐' },
         { id: 'appearance', label: '外观', icon: '🎨' },
         { id: 'account', label: '账户', icon: '🔑' },
         { id: 'about', label: '关于', icon: 'ℹ️' },
@@ -4235,25 +4236,6 @@
                       </div>
                       <span className="text-xs text-warmgray">{showThinking ? '显示' : '隐藏'}</span>
                     </label>
-                  </div>
-                  {/* 智能路由 · 阶段模型 */}
-                  <div>
-                    <div className="text-sm font-medium text-ink mb-1.5">智能路由 · 阶段模型</div>
-                    <div className="text-xs text-warmgray mb-2">当顶部模型选择为"智能路由"时，各认知阶段使用的模型。留空则使用默认模型。</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {PHASES.map(p => (
-                        <div key={p.id} className="flex items-center gap-2">
-                          <span className="text-xs text-warmgray flex-shrink-0 whitespace-nowrap" style={{minWidth:'72px'}}>{p.icon} {p.label}</span>
-                          <select value={phaseModels[p.id] || ''} onChange={e => {
-                            const v = e.target.value;
-                            setPhaseModels(prev => { if (v) return { ...prev, [p.id]: v }; const next = { ...prev }; delete next[p.id]; return next; });
-                          }} className="flex-1 bg-paper border border-linen/40 rounded px-2 py-1 text-xs text-ink focus:outline-none focus:border-seal/40">
-                            <option value="">默认</option>
-                            {availableModels.filter(m => m !== '智能路由').map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                   {/* 高级运行时参数 */}
                   <div>
@@ -4352,7 +4334,7 @@
                     {accountModels.length > 1 ? (
                       <select value={model} onChange={e => setModel(e.target.value)}
                         className="w-full bg-paper border border-linen/60 rounded-lg px-4 py-2.5 text-sm text-ink focus:outline-none focus:border-seal/50 focus:ring-1 focus:ring-seal/20">
-                        {accountModels.filter(m => m !== '智能路由').map(m => <option key={m} value={m}>{m}</option>)}
+                        {accountModels.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     ) : (
                       <input value={model} onChange={e => setModel(e.target.value)}
@@ -4612,6 +4594,33 @@
                   </p>
                 </div>
               )}
+              {/* ═══ 权限 ═══ */}
+              {activeTab === 'permission' && (
+                <div className="space-y-5">
+                  <div>
+                    <div className="text-sm font-medium text-ink mb-1.5">默认权限</div>
+                    <div className="text-xs text-warmgray mb-3">新对话的默认权限模式。每个对话可在输入区下拉单独覆盖。</div>
+                    <div className="space-y-2">
+                      {[
+                        { v: 'read_only', l: '只读', d: '不改变世界：只能观察、搜索与推理' },
+                        { v: 'ask', l: '询问', d: '每次变更操作先请求你的授权' },
+                        { v: 'auto_review', l: '自动审核', d: '变更先经系统自动审核，通过才执行，不通过转询问' },
+                        { v: 'full', l: '完全权限', d: '变更自动放行，不打断' },
+                      ].map(pm => (
+                        <button key={pm.v} onClick={() => saveDefaultPermission(pm.v)}
+                          className={'w-full text-left px-4 py-3 rounded-lg border transition-colors ' + ((uiSettings.permission_mode || 'ask') === pm.v ? 'bg-seal border-seal text-white' : 'bg-white border-clay/30 text-ink hover:border-seal/50')}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-sm">{pm.l}</span>
+                            <span className={'text-xs ' + ((uiSettings.permission_mode || 'ask') === pm.v ? 'text-white/80' : 'text-warmgray')}>{pm.v}</span>
+                          </div>
+                          <div className={'text-xs mt-1 ' + ((uiSettings.permission_mode || 'ask') === pm.v ? 'text-white/85' : 'text-warmgray')}>{pm.d}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               </div>
             </div>
             {/* Footer */}
@@ -4710,11 +4719,32 @@
         try { return JSON.parse(localStorage.getItem('praxic_dev_mode')) === true; }
         catch { return false; }
       });
+      // 当前对话的权限模式（可单独覆盖全局默认）
+      const [convPermission, setConvPermission] = useState('');
+      // 切换 activeConvId 时加载该对话的权限
+      useEffect(() => {
+        if (!activeConvId) { setConvPermission(''); return; }
+        let cancelled = false;
+        fetch('/api/v1/conversations/' + encodeURIComponent(activeConvId) + '/permission')
+          .then(r => r.json()).then(d => { if (!cancelled && d && d.permission_mode) setConvPermission(d.permission_mode); })
+          .catch(() => {});
+        return () => { cancelled = true; };
+      }, [activeConvId]);
+      const saveConvPermission = async (mode) => {
+        if (!activeConvId || !mode) return;
+        try {
+          const r = await fetch('/api/v1/conversations/' + encodeURIComponent(activeConvId) + '/permission', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ permission_mode: mode }),
+          });
+          if (r.ok) setConvPermission(mode);
+        } catch (e) { console.error('[permission] 对话权限保存失败', e); }
+      };
       const [showSettings, setShowSettings] = useState(false);
       const [uiSettings, setUiSettings] = useState({ font_family: 'system', font_size: 'medium', page_zoom: 100, show_thinking_after_answer: true, agent_persona: '', custom_knowledge: '' });
       const [animTitleId, setAnimTitleId] = useState(null);  // conversation id that just got a title
-      const [selectedModel, setSelectedModel] = useState(() => { try { return localStorage.getItem('praxic_selected_model') || '智能路由'; } catch { return '智能路由'; } });
-      const [availableModels, setAvailableModels] = useState(['智能路由']);
+      const [selectedModel, setSelectedModel] = useState(() => { try { return localStorage.getItem('praxic_selected_model') || ''; } catch { return ''; } });
+      const [availableModels, setAvailableModels] = useState([]);
       const [projects, setProjects] = useState([]);
       const [activeProjectId, setActiveProjectId] = useState(() => {
         try {
@@ -5126,8 +5156,8 @@
         fetch('/api/v1/models').then(r => r.json()).then(data => {
           if (data?.models?.length) {
             setAvailableModels(data.models);
-            // If current selection is not in the list, fall back to 智能路由
-            setSelectedModel(prev => data.models.includes(prev) ? prev : '智能路由');
+            // If current selection is not in the list, fall back to default (empty = server default)
+            setSelectedModel(prev => data.models.includes(prev) ? prev : '');
           }
         }).catch(() => {});
       }, []);
@@ -5208,14 +5238,6 @@
           // Don't enter recovery — just clean up and show what we have.
           if (!lastTurn || lastTurn.summary !== '[...]') return;
           if (recoveryTimerRef.current) { clearInterval(recoveryTimerRef.current); recoveryTimerRef.current = null; }
-          if (!runningConvs.has(activeConvId)) {
-            // Backend is no longer running — keep the orphaned turn so its
-            // persisted phase logs and steering messages remain inspectable.
-            console.log('[recovery] orphaned [...] — showing preserved process');
-            setTurns(historyTurns.map(historyTurnFromApi));
-            setPhaseLogs([]); setActivePhase(null); setCompletedPhases(new Set());
-            return;
-          }
 
           const historyEntries = historyTurns.slice(0, -1).map(historyTurnFromApi);
           const recoveringConvId = activeConvId;
@@ -5300,6 +5322,8 @@
             }
           } catch (e) { console.log('[recovery] SSE status check failed:', e); }
 
+          // 修复：不再凭 runningConvs 判断（页面重载后它为空会误判为中断）。
+          // 后端未 running（或状态检查失败）→ 保留原 polling 兜底（等待后端收尾/结果保存）。
           // Step 2: Fallback to polling
           startPolling();
         });
@@ -5353,7 +5377,7 @@
         if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
       }, [turns, phaseLogs]);
 
-      const handleSend = useCallback((question, context, mode, reviewStrategy, model, files, replaceTurnIndex = null, replaceSessionId = '') => {
+      const handleSend = useCallback((question, context, mode, reviewStrategy, model, files, replaceTurnIndex = null, replaceSessionId = '', resumeFrom = '') => {
         console.log('[handleSend] activeConvRef.current:', activeConvRef.current, 'turns.length:', turnsRef.current.length);
         let cid = activeConvRef.current;
         const projectIdForRun = activeConversation ? (activeConversation.project_id || '') : activeProjectRef.current;
@@ -5446,6 +5470,7 @@
               }
             },
             replaceSessionId: shouldReplaceTurn ? replaceSessionId : '',
+            resumeFrom: resumeFrom || '',
             onTitle: (title, cid) => {
               console.log('[onTitle] title:', title, 'cid:', cid);
               if (cid) {
@@ -5491,8 +5516,22 @@
 
       const continueTurn = useCallback((turn, turnIndex) => {
         if (!turn?.interrupted && !isInterruptedSummary(turn?.summary)) return;
-        resendTurn(turn, turnIndex);
-      }, [resendTurn]);
+        if (running || !turn.question?.trim()) return;
+        // 断点续跑：复用中断前的已产出思维过程，从断点之后继续。
+        // 'auto' 让后端依据事件序列自动定位最后一个成功断点。
+        // 注意：不传 replaceSessionId（保留中断轮次的事件作为续跑断点真相源）。
+        handleSend(
+          turn.question.trim(),
+          (turn.context || '').trim(),
+          turn.mode || 'deep',
+          turn.reviewStrategy || 'off',
+          turn.model || selectedModel,
+          turn.files || [],
+          turnIndex,
+          '',
+          'auto',
+        );
+      }, [handleSend, running, selectedModel]);
 
       const copyText = useCallback(async (text, key) => {
         const value = String(text || '');
@@ -5681,7 +5720,7 @@
 
                     {/* Phase block: live for running last turn, or stored for completed turns (if setting allows) */}
                     {i === turns.length - 1 && turn.running && phaseLogs.length > 0 && (
-                      <PhaseBlock phases={phaseLogs} activePhase={activePhase} completedPhases={completedPhases} running={true} onSteer={handleSteer} steeringCount={steeringCount} />
+                      <PhaseBlock phases={phaseLogs} activePhase={activePhase} completedPhases={completedPhases} running={true} onSteer={handleSteer} steeringCount={steeringCount} uiSettings={uiSettings} />
                     )}
                     {/* Agent bubble */}
                     {!turn.running && turn.summary && (
@@ -5698,7 +5737,7 @@
                            )}
                            {historyProcessOpen[i] && turn.phaseLogs && turn.phaseLogs.length > 0 && (
                              <div id={'history-process-' + i} className="praxic-agent-process">
-                               <PhaseBlock phases={turn.phaseLogs} activePhase={null} completedPhases={new Set(turn.phaseLogs.map(p => p.phase))} />
+                               <PhaseBlock phases={turn.phaseLogs} activePhase={null} completedPhases={new Set(turn.phaseLogs.map(p => p.phase))} uiSettings={uiSettings} />
                              </div>
                            )}
                            <div className={'praxic-agent-answer' + (historyProcessOpen[i] && turn.phaseLogs && turn.phaseLogs.length > 0 ? ' praxic-agent-answer--separated' : '')}>
@@ -5771,7 +5810,7 @@
                 </div>
               </div>
             )}
-            <InputBar onSend={handleSend} running={running} onStop={stopCurrent} onSteer={handleSteer} model={selectedModel} availableModels={availableModels} onModelChange={v => { setSelectedModel(v); try { localStorage.setItem('praxic_selected_model', v); } catch {} }} files={files} setFiles={setFiles} uploading={uploading} handleFiles={handleFiles} awaitingClarification={!!(clarify && clarify.convId === activeConvId)} onAnswer={submitAnswer} />
+            <InputBar onSend={handleSend} running={running} onStop={stopCurrent} onSteer={handleSteer} model={selectedModel} availableModels={availableModels} onModelChange={v => { setSelectedModel(v); try { localStorage.setItem('praxic_selected_model', v); } catch {} }} files={files} setFiles={setFiles} uploading={uploading} handleFiles={handleFiles} awaitingClarification={!!(clarify && clarify.convId === activeConvId)} onAnswer={submitAnswer} convPermission={convPermission} onConvPermissionChange={saveConvPermission} />
           </div>
           {inspectorOpen ? (
             <WorkspaceInspector
@@ -5842,8 +5881,45 @@
       return <App />;
     }
 
+    class PraxicErrorBoundary extends React.Component {
+      constructor(props) {
+        super(props);
+        this.state = { hasError: false, message: '' };
+      }
+      static getDerivedStateFromError(error) {
+        return { hasError: true, message: String(error && (error.message || error)) };
+      }
+      componentDidCatch(error, info) {
+        try { console.error('[Praxic] 渲染异常已捕获:', error, info && info.componentStack); } catch (e) {}
+      }
+      handleReload = () => {
+        try { localStorage.clear(); } catch (e) {}
+        window.location.reload();
+      };
+      render() {
+        if (!this.state.hasError) return this.props.children;
+        return (
+          <div className="min-h-screen bg-paper flex items-center justify-center px-6">
+            <div className="max-w-md w-full bg-cream border border-linen/60 rounded-2xl p-8 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-2.5 h-2.5 rounded-full bg-gold" />
+                <span className="praxic-eyebrow">即物穷理 · Praxic</span>
+              </div>
+              <h1 className="text-ink font-bold text-lg mb-2">界面出现了一点问题</h1>
+              <p className="text-sm text-warmgray mb-4 leading-relaxed">渲染过程中发生了未预期的错误，页面已暂停以避免白屏。你可以重新加载，或返回设置检查配置。</p>
+              <div className="bg-paper border border-linen/40 rounded-lg p-3 mb-4 text-[11px] font-mono text-clay break-words max-h-32 overflow-auto">{this.state.message || '未知错误'}</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={this.handleReload} className="flex-1 px-4 py-2 rounded-lg bg-seal text-white text-sm font-semibold hover:bg-seal-light">重新加载</button>
+                <button type="button" onClick={() => { this.setState({ hasError: false, message: '' }); }} className="flex-1 px-4 py-2 rounded-lg bg-paper border border-clay/40 text-warmgray text-sm font-medium hover:border-seal/40">尝试恢复</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
+
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<RouteGuard />);
+    root.render(<PraxicErrorBoundary><RouteGuard /></PraxicErrorBoundary>);
   </script>
   <script src="/annotate.js"></script>
 </body>

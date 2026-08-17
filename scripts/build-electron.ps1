@@ -48,26 +48,9 @@ Write-Host "[1/4] Node.js $(& $nodePath --version)"
 # 2. 安装依赖
 Write-Host "[2/4] 安装 npm 依赖..."
 npm install
-if (Test-Path "praxic/web/package.json") {
-    Write-Host "       安装前端依赖..."
-    Set-Location praxic/web
-    npm install
-    Set-Location $projectRoot
-}
 
-# 3. 构建前端
-Write-Host "[3/4] 构建前端（Vite）..."
-if (Test-Path "praxic/web") {
-    Set-Location praxic/web
-    npx vite build
-    Set-Location $projectRoot
-    Write-Host "       前端构建完成 -> praxic/web/dist/"
-} else {
-    Write-Host "       praxic/web/ 不存在，跳过" -ForegroundColor Yellow
-}
-
-# 3.5 后端 exe 闸门：确保 PyInstaller 产物存在，否则拒绝打包（防空壳包）
-Write-Host "[3.5] 检查后端 exe..."
+# 3. 后端 exe 闸门：确保 PyInstaller 产物存在，否则拒绝打包（防空壳包）
+Write-Host "[3/4] 检查后端 exe..."
 & (Join-Path $projectRoot "scripts\check-backend-exe.ps1")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
