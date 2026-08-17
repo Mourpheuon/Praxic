@@ -1040,6 +1040,12 @@ class CognitiveLoop:
             if "investigation" in skip_phases:
                 log.info("cognitive_loop.skip_phase", phase="investigation")
                 _emit_phase(on_phase, CognitivePhaseName.INVESTIGATION, "已跳过：上一轮结论充分")
+                # 兜底：调查被跳过时 fact_report 保持 None，下游 contradiction/rational
+                # 直接访问 .facts 会崩（NoneType attribute）。给空调查产物，语义为“无事实产出”。
+                if fact_report is None:
+                    from ..api.schemas.models import FactReport as _EmptyFactReport
+                    fact_report = _EmptyFactReport(summary="（调查阶段已跳过，无新事实产出）")
+                    trace.investigation = fact_report
             else:
                 _emit_phase(on_phase, CognitivePhaseName.INVESTIGATION, "正在调查研究")
                 self.skill_manager.inject_phase_skills("investigation", working_mem)

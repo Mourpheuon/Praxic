@@ -142,6 +142,30 @@ class TestBasic:
             "首轮不应出现跨题复用的跳过日志"
         )
 
+    @pytest.mark.asyncio
+    async def test_investigation_skip_does_not_crash_downstream(self, mk):
+        """回归修复：simple creative_design 任务 investigation 被判 skip 时，
+        fact_report 需兜底为空调查产物，否则 contradiction.analyze 访问 .facts 崩溃
+        （AttributeError: 'NoneType' object has no attribute 'facts'）。"""
+        step1 = json.dumps({
+            "task_nature": "creative_design", "complexity": "simple",
+            "needs_investigation": True,
+        })
+        mk._last_response = REFL_CONV
+        # 0=step1(creative_design+simple→investigation light→skip)，1-4=预处理回退，
+        # 5=探查，6=contradiction，7=rational，8-10=实践规划失败，11=知性分析，12=reflection
+        mk.set_responses([
+            step1, "{}", "{}", "{}", "{}", "{}",
+            CONTR, RATION, PERSP, PERSP, PERSP, "{}", REFL_CONV,
+        ])
+        loop = CognitiveLoop(llm=mk, web_search_enabled=False)
+        r = await loop.run(question="设计一个 logo")
+        t = r.full_trace
+        # 不崩溃且调查产物有兜底，下游阶段照常执行
+        assert t.investigation is not None
+        assert t.contradictions is not None
+        assert r.summary != ""
+
 
     @pytest.mark.asyncio
     async def test_reinvest(self, mk):
