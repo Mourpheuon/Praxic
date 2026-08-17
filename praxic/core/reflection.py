@@ -24,8 +24,15 @@ _REFLECTION_PROMPT = '''
 4. 解读实践分析：实践结论（confirmed/challenged/falsified）说明什么？可信度如何变化？
 5. 识别认知偏差和逻辑漏洞
 6. 总结可复用的经验教训
-7. 判断是否需要触发新一轮调查研究，以及收敛度（0.0~1.0）
-   7a. 参考下方【终止判定参考数据】中的子问题覆盖、实践验证、矛盾状态数据——
+7. 判断任务目标是否达成（goal-checking，优先于收敛度）与收敛度（0.0~1.0）
+   7a. goal_achieved：用户的问题是否已经被实质回答（结论明确、事实充分）？
+       - 能力询问/事实查询/简单判断类问题，第一轮往往就已达成
+       - 达成判定不看“分析是否足够辩证”，看“用户要的答案是否已经到手”
+       - 达成时不应为了“更辩证”而继续迭代；should_reinvestigate 应倾向于 false
+   7b. goal_evidence：达成/未达成的判断依据（一句话）
+   7c. incomplete_tasks：未完成/未验证事项清单（达成时可为空数组；未达成时如实列出，
+       例如“未验证 X”“未读取 Y 文件”）。强制收敛时此清单会随最终回答输出给用户。
+   7d. 收敛度：参考下方【终止判定参考数据】中的子问题覆盖、实践验证、矛盾状态数据——
        这些数据是系统自动收集的结构性事实（非LLM产出），
        用来帮助判断收敛度，但不构成刚性规则。
        如果有未覆盖的子问题但对最终回答不关键，可以不把它当作继续的理由。
@@ -90,6 +97,9 @@ _REFLECTION_PROMPT = '''
   "should_reinvestigate": false,
   "reinvestigation_focus": "若需重新调查的方向",
   "convergence_score": 0.85,
+  "goal_achieved": true,
+  "goal_evidence": "能力询问，结论已明确：无执行环境，答案是否定的",
+  "incomplete_tasks": ["未验证 X（缺真实数据）"],
   "contradiction_stability": 0.85,
   "contradiction_shift_detected": false,
   "contradiction_shift_description": "",
@@ -158,7 +168,8 @@ class ReflectionEngine:
         _schema_scope = {
             _Depth.SHALLOW: (
                 "\n\n## 输出范围（本档）\n"
-                "重点输出 convergence_score、should_reinvestigate、final_answer，"
+                "重点输出 convergence_score、goal_achieved、incomplete_tasks、"
+                "should_reinvestigate、final_answer，"
                 "复盘类字段可精简，skill_draft_candidates 输出空数组。"
             ),
             _Depth.STANDARD: (
@@ -405,6 +416,9 @@ class ReflectionEngine:
             should_reinvestigate=data.get("should_reinvestigate", False),
             reinvestigation_focus=data.get("reinvestigation_focus", ""),
             convergence_score=float(conv),
+            goal_achieved=bool(data.get("goal_achieved", False)),
+            goal_evidence=str(data.get("goal_evidence", "") or ""),
+            incomplete_tasks=list(data.get("incomplete_tasks", []) or []),
             investigation_retrospective=data.get("investigation_retrospective", ""),
             contradiction_retrospective=data.get("contradiction_retrospective", ""),
             practice_retrospective=data.get("practice_retrospective", ""),

@@ -346,6 +346,22 @@ async def test_shell_rejects_shell_composition(tmp_path):
     result = await registry.call("shell_exec", command="echo safe && whoami", cwd=str(tmp_path))
     assert result.status == ToolStatus.ERROR
     assert "shell" in result.error.lower() or "控制" in result.error
+    # 根因⑤修复：链接符拒绝时给出拆分建议与专用工具替代，而非整条拒绝不带指引
+    assert "拆成" in result.error
+    assert "command_probe" in result.error
+
+
+@pytest.mark.asyncio
+async def test_shell_split_hint_covers_semicolon_chain(tmp_path):
+    """"where lean; where lake" 这类分号链应提示拆分而非仅报错。"""
+    registry = ToolRegistry(
+        policy=PermissionPolicy(allowed_roots=(tmp_path,)),
+    )
+    registry.register(ShellTool(allowed_roots=(tmp_path,)))
+    result = await registry.call("shell_exec", command="where lean; where lake", cwd=str(tmp_path))
+    assert result.status == ToolStatus.ERROR
+    assert "拆成" in result.error
+    assert "command_probe" in result.error
 
 
 @pytest.mark.asyncio

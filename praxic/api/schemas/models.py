@@ -321,6 +321,10 @@ class ReflectionReport(BaseModel):
     qualitative_leap: bool = False; level_progression: str = ""
     final_answer: str = ""
     recommend_detailed_report: bool = False           # 反思自荐：本问题值得输出详实报告
+    # 根因②修复：goal-checking（任务目标是否达成），优先于收敛度门槛作为停止判据
+    goal_achieved: bool = False                       # 用户的问题是否已被实质回答
+    goal_evidence: str = ""                          # 达成判断的依据（一句话）
+    incomplete_tasks: list[str] = Field(default_factory=list)  # 未完成/未验证清单（随最终回答输出）
     # S线：Steering 集成输出
     updated_effective_question: str = ""              # 吸收 steering 后更新的有效问题
     phases_to_redo: list[str] = Field(default_factory=list)  # 下一轮需要重做的阶段列表

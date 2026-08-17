@@ -136,7 +136,13 @@ class ShellTool(BaseTool):
     def _argv(self, command: list[str] | tuple[str, ...] | str) -> list[str]:
         if isinstance(command, str):
             if any(token in command for token in self._BLOCKED_TOKENS):
-                raise ValueError("命令包含 shell 链接、管道或重定向符号")
+                raise ValueError(
+                    "命令包含 shell 链接、管道或重定向符号（&、&&、||、;、|、>、>>、<、`、$ 等），"
+                    "shell_exec 只执行单条命令、不解析 shell 语法。"
+                    "请把命令拆成多条独立调用（每条一个命令数组），"
+                    "或改用 command_probe（探测命令是否存在）、"
+                    "file_list/file_stat（文件信息）、data_query（数据查询）等专用工具。"
+                )
             command = shlex.split(command, posix=False)
         argv = [str(part) for part in command]
         if not argv or not argv[0].strip():

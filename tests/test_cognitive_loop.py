@@ -13,6 +13,10 @@ PRACT = json.dumps({"steps_taken":[{"description":"模拟分类","observed_resul
 REFL = json.dumps({"convergence_score":0.88,"should_reinvestigate":False,"reinvestigation_focus":"","skip_phases":[],"focus_hints":{},"recommended_mode":"","lessons":["需要灵活标准"],"issues":[],"improvements":[],"contradiction_stability":0.85,"contradiction_shift_detected":False,"contradiction_shift_description":"","understanding_level":"理性","qualitative_leap":True,"level_progression":""})
 REFL_REINV = json.dumps({"convergence_score":0.4,"should_reinvestigate":True,"reinvestigation_focus":"深入调查","skip_phases":[],"focus_hints":{},"recommended_mode":"","lessons":[],"issues":[],"improvements":[],"contradiction_stability":0.3,"contradiction_shift_detected":True,"contradiction_shift_description":"不稳定","understanding_level":"感性","qualitative_leap":False,"level_progression":""})
 REFL_CONV = json.dumps({"convergence_score":0.87,"should_reinvestigate":False,"reinvestigation_focus":"","skip_phases":[],"focus_hints":{},"recommended_mode":"","lessons":[],"issues":[],"improvements":[],"contradiction_stability":0.9,"contradiction_shift_detected":False,"contradiction_shift_description":"","understanding_level":"理性","qualitative_leap":True,"level_progression":""})
+# 根因②修复测试数据：goal_achieved=true 但收敛度低且 reinvestigate=true（旧判据会继续空转）
+REFL_GOAL = json.dumps({"convergence_score":0.78,"should_reinvestigate":True,"reinvestigation_focus":"更深入调查","skip_phases":[],"focus_hints":{},"recommended_mode":"","lessons":[],"issues":[],"improvements":[],"contradiction_stability":0.5,"contradiction_shift_detected":False,"contradiction_shift_description":"","understanding_level":"知性","qualitative_leap":False,"level_progression":"","goal_achieved":True,"goal_evidence":"能力询问，结论已明确","incomplete_tasks":["未验证 lean 安装"]})
+# 收敛停滞测试数据：连续两轮 0.6 且 reinvestigate=true（旧判据会继续跑到 max_iterations）
+REFL_LOW = json.dumps({"convergence_score":0.6,"should_reinvestigate":True,"reinvestigation_focus":"深入调查","skip_phases":[],"focus_hints":{},"recommended_mode":"","lessons":[],"issues":[],"improvements":[],"contradiction_stability":0.3,"contradiction_shift_detected":True,"contradiction_shift_description":"不稳定","understanding_level":"感性","qualitative_leap":False,"level_progression":"","goal_achieved":False,"goal_evidence":"","incomplete_tasks":["事实不足"]})
 PSYNTH = json.dumps({"synthesized_insight":"综合洞察","critical_warnings":[],"consensus_points":["共识点1"],"divergence_points":[]})
 SYNTH = json.dumps({"synthesized_insight":"综合","critical_warnings":[],"consensus_points":[],"divergence_points":[]})
 
@@ -66,6 +70,78 @@ class TestBasic:
         r = await loop.run(question="收敛")
         assert r.full_trace.metadata.iterations >= 1
         assert r.full_trace.reflection is not None
+
+    @pytest.mark.asyncio
+    async def test_goal_achieved_stops_early(self, mk):
+        """根因②修复：任务目标已达成（能力询问第一轮即有答案），
+        即使收敛度 0.78 < 0.85 且 should_reinvestigate=true，也应一轮收敛。"""
+        # 第一轮调用序列：预处理5+调查1+探查1+矛盾1+理性1+实践规划3+知性分析1 = 13 个；
+        # 第 14 个（reflection）放 REFL_GOAL，保证 reflection 拿到 goal_achieved=true 判定。
+        mk._last_response = REFL_GOAL
+        mk.set_responses(list(FULL[:13]) + [REFL_GOAL])
+        loop = CognitiveLoop(llm=mk, web_search_enabled=False)
+        loop.max_iterations = 3  # 测试环境默认为 1，调大以排除“因上限才停”的混淆
+        r = await loop.run(question="你可以跑 lean 代码吗")
+        assert r.full_trace.metadata.iterations == 1, (
+            f"goal_achieved 应一轮收敛，实际 {r.full_trace.metadata.iterations} 轮"
+        )
+        assert r.full_trace.reflection.goal_achieved is True
+
+    @pytest.mark.asyncio
+    async def test_convergence_stagnation_forces_stop(self, mk):
+        """根因②修复：连续两轮收敛度不升（0.6 → 0.6）且 reinvestigate=true，
+        旧判据会继续空转，新判据第二轮强制收敛止损。"""
+        mk._last_response = REFL_LOW
+        mk.set_responses(list(FULL[:13]) + [REFL_LOW])
+        loop = CognitiveLoop(llm=mk, web_search_enabled=False)
+        loop.max_iterations = 3  # 测试环境默认为 1，调大才能验证“第二轮强制停”而非“上限停”
+        r = await loop.run(question="收敛如何")
+        assert r.full_trace.metadata.iterations == 2, (
+            f"收敛停滞应第二轮强制停，实际 {r.full_trace.metadata.iterations} 轮"
+        )
+        assert r.full_trace.reflection.convergence_score == 0.6
+
+    @pytest.mark.asyncio
+    async def test_goal_fields_parsed(self, mk):
+        """根因②修复：ReflectionReport 新字段（goal_achieved/incomplete_tasks）可被解析。"""
+        from praxic.core.reflection import ReflectionEngine
+        report = ReflectionEngine(llm=mk)._parse_response(REFL_GOAL)
+        assert report.goal_achieved is True
+        assert report.goal_evidence != ""
+        assert "lean" in report.incomplete_tasks[0]
+
+    @pytest.mark.asyncio
+    async def test_practice_forced_on_first_round_even_if_skipped(self, mk):
+        """根因④修复：预处理将 practice 判为 skip（如 fact_lookup）时，
+        首轮也必须强制执行——"复用上一轮"只对同一认知循环的后续轮有意义，
+        跨问题没有上一轮，跳过会导致反思面对空白实践受旧题结论污染。"""
+        step1_fact_lookup = json.dumps({
+            "task_nature": "fact_lookup", "complexity": "standard",
+            "needs_investigation": True,
+        })
+        events = []
+        # 响应序列：0=step1(fact_lookup→practice=skip)，1-4=预处理后续失败回退，
+        # 5=investigation，6=probe，7=contradiction，8=rational，9-11=实践规划失败，
+        # 12=知性分析，13=reflection(收敛)。
+        responses = [
+            step1_fact_lookup, "{}", "{}", "{}", "{}",
+            INV, "{}", CONTR, RATION, PERSP, PERSP, PERSP, "{}", REFL_CONV,
+        ]
+        mk._last_response = REFL_CONV
+        mk.set_responses(responses)
+        loop = CognitiveLoop(llm=mk, web_search_enabled=False)
+
+        def _on_phase(phase, summary, data=None):
+            events.append(summary)
+
+        r = await loop.run(question="查一下事实", on_phase=_on_phase)
+        # 首轮 practice 被执行（即使预处理标了 skip），trace.practice 非空
+        assert r.full_trace.practice is not None, "首轮 practice 应被强制执行"
+        # 事件流中不应出现“复用上一轮”的跳过日志
+        assert not any("已跳过：实践结论复用上一轮" in e for e in events), (
+            "首轮不应出现跨题复用的跳过日志"
+        )
+
 
     @pytest.mark.asyncio
     async def test_reinvest(self, mk):

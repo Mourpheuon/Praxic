@@ -342,3 +342,26 @@ class TestEpistemicDegrade:
         assert report.confidence_ceiling == "V2", "可信度上限应为 V2"
         assert len(report.rounds) == 0, "不应空跑三轮"
         assert report.world_changed is False
+
+
+class TestFileStatDiscipline:
+    def test_harness_prompts_enforce_file_stat(self):
+        """根因④修复：规划 prompt 强制“引用文件前先 file_stat 验证存在”，
+        杜绝 report.md/sales_data.csv 这类幻觉文件名进入规划与总结。"""
+        from praxic.core import practice_harness as h
+        for prompt in (h.R1_PLAN, h.RN_PLAN):
+            assert "文件引用纪律" in prompt
+            assert "file_stat" in prompt
+            assert "not found" in prompt
+        assert "file_stat" in h.DEFAULT_TOOLS
+
+    def test_registry_tools_include_file_stat(self, tmp_path):
+        """动态工具清单（registry 优先）与兜底清单都披露 file_stat。"""
+        from praxic.core import practice_harness as h
+        from praxic.tools.registry import ToolRegistry
+        from praxic.tools.assembler import register_workspace_tools
+        reg = ToolRegistry()
+        register_workspace_tools(reg, tmp_path)
+        tools_text = reg.format_for_prompt(categories=["file", "code", "system", "data"])
+        assert "file_stat" in tools_text
+        assert "file_stat" in h.DEFAULT_TOOLS

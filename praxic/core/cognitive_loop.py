@@ -965,6 +965,16 @@ class CognitiveLoop:
             if trace.contradictions and not working_mem.get_contradiction_graph():
                 working_mem.set_contradiction(trace.contradictions)
             skip_phases = working_mem.get("skip_phases") or []
+            # 根因④修复：首轮禁止 skip practice——"复用上一轮"只对同一认知循环的
+            # 后续轮次有意义，跨问题没有上一轮；首轮跳过会导致 trace.practice 为空，
+            # 反思阶段面对空白实践结论易受对话历史旧题结论污染（Lean 轮复用纽科姆轮）。
+            if iteration == 1 and "practice" in skip_phases and not working_mem.get("_resume_active", False):
+                log.info(
+                    "cognitive_loop.force_practice_first_round",
+                    reason="iteration==1 无上一轮可复用，强制执行实践（断点续跑除外）",
+                )
+                skip_phases = [p for p in skip_phases if p != "practice"]
+                working_mem.set("skip_phases", skip_phases)
             focus_hints = working_mem.get("focus_hints") or {}
             # 下一轮各阶段执行预算（上一轮反思写入；本迭代各阶段只读，反思后覆盖）
             phase_budgets = working_mem.get("phase_budgets") or {}
@@ -1249,15 +1259,51 @@ class CognitiveLoop:
             contradiction_stable = getattr(reflection_report, 'contradiction_stability', 0.5) >= 0.8
             understanding_sufficient = getattr(reflection_report, 'understanding_level', '') == "理性"
             had_leap = getattr(reflection_report, 'qualitative_leap', True)
+            # 根因②修复：goal-checking——任务目标已达成即收敛，不受收敛度门槛束缚。
+            # 能力询问/事实查询等任务第一轮就应停，不再为“更辩证”空转。
+            goal_achieved = getattr(reflection_report, 'goal_achieved', False)
+            # 强制收敛止损：出现一轮收敛度不升（<= 上一轮）即停止，未完成清单随回答输出。
+            prev_convergence = working_mem.get("_prev_convergence_score")
+            conv_stagnated = (
+                iteration >= 2
+                and prev_convergence is not None
+                and reflection_report.convergence_score <= prev_convergence
+            )
+            working_mem.set("_prev_convergence_score", reflection_report.convergence_score)
+            if goal_achieved and on_phase:
+                _emit_phase(
+                    on_phase,
+                    CognitivePhaseName.REFLECTION,
+                    "任务目标已达成，停止迭代",
+                    data={
+                        "event_type": "goal_achieved",
+                        "evidence": getattr(reflection_report, 'goal_evidence', ''),
+                    },
+                )
+            if conv_stagnated and on_phase:
+                _emit_phase(
+                    on_phase,
+                    CognitivePhaseName.REFLECTION,
+                    "收敛度未提升，强制收敛止损",
+                    data={
+                        "event_type": "forced_convergence",
+                        "prev": prev_convergence,
+                        "current": reflection_report.convergence_score,
+                    },
+                )
             # V2 场景（边界/纯知性分析）：实践阶段无法产生可执行代码，
             # 收敛度是 LLM 对自身产出的自我评估，数值门槛无独立意义——
-            # 反思的定性判断（should_reinvestigate）说了算。
+            # 反思的定性判断（should_reinvestigate）说了算；goal_achieved 仍可提前收敛。
             if trace.practice and trace.practice.mode in ("epistemic_only", "partial"):
                 should_stop = (iteration >= mode_max_iter
-                               or not reflection_report.should_reinvestigate)
+                               or not reflection_report.should_reinvestigate
+                               or goal_achieved)
             else:
-                # V3 场景：有可执行实践检验，收敛度门槛有意义
+                # V3 场景：有可执行实践检验，收敛度门槛有意义；
+                # goal_achieved / 收敛停滞优先止损，不再等分数过线。
                 should_stop = (iteration >= mode_max_iter
+                               or goal_achieved
+                               or conv_stagnated
                                or (not reflection_report.should_reinvestigate
                                    and reflection_report.convergence_score >= self.convergence_threshold
                                    and contradiction_stable
@@ -1733,6 +1779,13 @@ class CognitiveLoop:
                 parts.append(f"知性分析：{p.analysis_summary[:cap_ess]}")
 
         parts.append("\n---\n请根据以上材料，直接回答用户的原始问题。")
+        # 根因②修复：未完成/未验证清单随最终回答输出（如实标注，不假装已完成）
+        if trace.reflection:
+            _tasks = getattr(trace.reflection, 'incomplete_tasks', None) or []
+            if _tasks:
+                parts.append("\n## 未完成/未验证事项（如实告知用户，不要假装已完成）")
+                for _t in _tasks[:8]:
+                    parts.append(f"- {str(_t)[:200]}")
         return "\n".join(parts)
 
     def _save_episode(self, response, conversation_id="", project_id="", context=""):
