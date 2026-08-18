@@ -218,21 +218,47 @@ class RationalCognitionModule:
             data = json.loads(raw)
             return RationalSynthesis(
                 essence=data.get("essence", ""),
-                patterns=data.get("patterns", []),
-                hypotheses=data.get("hypotheses", []),
+                patterns=self._coerce_str_list(data.get("patterns", [])),
+                hypotheses=self._coerce_str_list(data.get("hypotheses", [])),
                 synthesis_text=data.get("synthesis_text", ""),
                 contradiction_motion=data.get("contradiction_motion", ""),
-                quantitative_changes=data.get("quantitative_changes", []),
+                quantitative_changes=self._coerce_str_list(data.get("quantitative_changes", [])),
                 qualitative_threshold=data.get("qualitative_threshold", ""),
                 negation_of_negation=data.get("negation_of_negation", ""),
                 fact_foundation=data.get("fact_foundation", ""),
                 abstract_from=data.get("abstract_from", ""),
                 return_to_concrete=data.get("return_to_concrete", ""),
-                unexplained_phenomena=data.get("unexplained_phenomena", []),
+                unexplained_phenomena=self._coerce_str_list(data.get("unexplained_phenomena", [])),
             )
         except json.JSONDecodeError:
             # 保留完整原文，前端负责把可解析字段整理展示，原始内容放入可折叠区域。
             return RationalSynthesis(essence=raw, synthesis_text=raw)
+
+    @staticmethod
+    def _coerce_str_list(items, fallback_keys=("pattern", "hypothesis", "content", "description", "text")):
+        """模型有时把字符串数组输出成对象数组（如 [{"pattern": "..."}]），
+        pydantic 校验 list[str] 会报 string_type。统一归一化为字符串：
+        str 原样保留；dict 优先取常见键的值，其次取第一个字符串值；其他转 str。"""
+        out = []
+        for item in items or []:
+            if isinstance(item, str):
+                out.append(item)
+            elif isinstance(item, dict):
+                picked = ""
+                for key in fallback_keys:
+                    value = item.get(key)
+                    if isinstance(value, str):
+                        picked = value
+                        break
+                if not picked:
+                    for value in item.values():
+                        if isinstance(value, str):
+                            picked = value
+                            break
+                out.append(picked if picked else str(item))
+            else:
+                out.append(str(item))
+        return out
 
     # ═══════════════════════════════════════════════════════════════════
     # I 线：理性认识深化

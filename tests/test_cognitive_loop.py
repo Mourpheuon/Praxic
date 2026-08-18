@@ -166,6 +166,38 @@ class TestBasic:
         assert t.contradictions is not None
         assert r.summary != ""
 
+    @pytest.mark.asyncio
+    async def test_rational_coerces_object_arrays(self, mk):
+        """回归修复：模型把 patterns/hypotheses 输出成对象数组（{"pattern": ...}）时，
+        解析层归一化为字符串，不再抛 pydantic string_type 校验错误。"""
+        from praxic.core.rational import RationalCognitionModule
+        raw = json.dumps({
+            "essence": "本质",
+            "patterns": [{"pattern": "生成-验证循环结构"}],
+            "hypotheses": [{"hypothesis": "若生成与验证解耦，功率上升"}],
+            "synthesis_text": "论述",
+        })
+        mod = RationalCognitionModule(llm=mk)
+        result = mod._parse(raw)
+        assert result.patterns == ["生成-验证循环结构"]
+        assert result.hypotheses == ["若生成与验证解耦，功率上升"]
+
+    @pytest.mark.asyncio
+    async def test_reflection_coerces_object_arrays(self, mk):
+        """回归修复：reflection 的字符串数组字段同样可能被模型输出为对象数组，
+        归一化后不再校验失败。"""
+        from praxic.core.reflection import ReflectionEngine
+        raw = json.dumps({
+            "cognitive_biases_found": [{"bias": "确认偏差"}],
+            "lessons_learned": [{"lesson": "先验证再下结论"}],
+            "incomplete_tasks": [{"content": "未读取 report.md"}],
+            "convergence_score": 0.8,
+        })
+        report = ReflectionEngine(llm=mk)._parse_response(raw)
+        assert report.cognitive_biases_found == ["确认偏差"]
+        assert report.lessons_learned == ["先验证再下结论"]
+        assert report.incomplete_tasks == ["未读取 report.md"]
+
 
     @pytest.mark.asyncio
     async def test_reinvest(self, mk):

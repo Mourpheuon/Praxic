@@ -9,6 +9,32 @@ from ..llm.base import BaseLLM
 
 log = structlog.get_logger(__name__)
 
+
+def _coerce_str_list(items, fallback_keys=("pattern", "hypothesis", "content", "description", "text", "lesson", "bias")):
+    """模型有时把字符串数组输出成对象数组（如 [{"content": "..."}]），
+    pydantic 校验 list[str] 会报 string_type。统一归一化为字符串：
+    str 原样保留；dict 优先取常见键的值，其次取第一个字符串值；其他转 str。"""
+    out = []
+    for item in items or []:
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict):
+            picked = ""
+            for key in fallback_keys:
+                value = item.get(key)
+                if isinstance(value, str):
+                    picked = value
+                    break
+            if not picked:
+                for value in item.values():
+                    if isinstance(value, str):
+                        picked = value
+                        break
+            out.append(picked if picked else str(item))
+        else:
+            out.append(str(item))
+    return out
+
 _REFLECTION_PROMPT = '''
 你正在研究用户提出的问题，当前正处于【反思】阶段。
 核心信条：实践是检验真理的唯一标准。
@@ -411,14 +437,14 @@ class ReflectionEngine:
 
         return ReflectionReport(
             quality_assessment=data.get("quality_assessment", ""),
-            cognitive_biases_found=data.get("cognitive_biases_found", []),
-            lessons_learned=data.get("lessons_learned", []),
+            cognitive_biases_found=_coerce_str_list(data.get("cognitive_biases_found", [])),
+            lessons_learned=_coerce_str_list(data.get("lessons_learned", [])),
             should_reinvestigate=data.get("should_reinvestigate", False),
             reinvestigation_focus=data.get("reinvestigation_focus", ""),
             convergence_score=float(conv),
             goal_achieved=bool(data.get("goal_achieved", False)),
             goal_evidence=str(data.get("goal_evidence", "") or ""),
-            incomplete_tasks=list(data.get("incomplete_tasks", []) or []),
+            incomplete_tasks=_coerce_str_list(data.get("incomplete_tasks", [])),
             investigation_retrospective=data.get("investigation_retrospective", ""),
             contradiction_retrospective=data.get("contradiction_retrospective", ""),
             practice_retrospective=data.get("practice_retrospective", ""),
