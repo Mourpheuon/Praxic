@@ -137,6 +137,8 @@ class FactReport(BaseModel):
     facts: list[Fact] = Field(default_factory=list)
     gaps: list[InformationGap] = Field(default_factory=list)
     summary: str = ""; raw_context: str = ""; autonomous_assessment: str = ""
+    # 模型输出截断/非法导致解析失败时为 True（此时 facts 为降级占位，非真实事实）
+    parse_failed: bool = False
     # 改进一：解剖麻雀
     illustrative_case: Optional[IllustrativeCase] = None
 
@@ -204,6 +206,8 @@ class ContradictionGraph(BaseModel):
     # B方案：思维链原始文本（thinking 模式产物）。仅供前端展开/开发者检视，
     # 不进入后续阶段输入；正文 content 仍是唯一消费口径。
     thinking_trace: str = ""
+    # 反方审查→仲裁的结构化记录（策略、挑战、裁决、被丢弃的无证据攻击）
+    debate_audit: dict = Field(default_factory=dict)
 
     @property
     def all_contradictions(self) -> list[Contradiction]:
@@ -290,6 +294,8 @@ class PracticeReport(BaseModel):
     failure_classes: list[str] = Field(default_factory=list)
     world_changed: bool = False
     cache_metrics: dict = Field(default_factory=dict)
+    # 程序化复核：python_exec 实验的独立复跑比对（repro_check）
+    repro_checks: list[dict] = Field(default_factory=list)
     direction_state: DirectionStateUpdate = Field(default_factory=DirectionStateUpdate)
     direction_state_history: list[DirectionStateUpdate] = Field(default_factory=list)
 

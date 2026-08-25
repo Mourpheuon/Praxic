@@ -183,6 +183,8 @@ class CognitiveLoop:
         self.project_id = project_id
         self._active_phase_callback = None
         self.episodic = EpisodicMemory()
+        from ..memory.semantic_memory import SemanticMemory
+        self.semantic = SemanticMemory()
         # 项目感知 workspace：指定 project_id 时用项目独立目录，否则用全局 workspace
         if project_id:
             _ws = settings.projects_dir / project_id / "workspace"
@@ -1056,9 +1058,35 @@ class CognitiveLoop:
                 if _resume_tools:
                     extra_ctx = extra_ctx + ("\n\n## 断点前已收集的工具结果\n" + _resume_tools)
                     working_mem.set("_resume_tools_results", "")  # 只生效一次
+                # 内部事实源（source_type=internal）：本地记忆（按问题检索）+ 自我快照（缓存）
+                _self_model = getattr(self, "_self_model_text", None)
+                if _self_model is None:
+                    try:
+                        from .internal_facts import build_self_model
+                        _self_model = build_self_model(self._registry, self.workspace)
+                        self._self_model_text = _self_model
+                    except Exception:
+                        log.warning("cognitive_loop.self_model_build_failed", exc_info=True)
+                        _self_model = ""
+                try:
+                    from .internal_facts import build_internal_context
+                    _internal_ctx = build_internal_context(
+                        effective_question, self._registry, self.workspace,
+                        episodic=self.episodic,
+                        semantic=getattr(self, "semantic", None),
+                        self_model=_self_model,
+                        conversation_id=self.conversation_id,
+                    )
+                except Exception:
+                    log.warning("cognitive_loop.internal_context_failed", exc_info=True)
+                    _internal_ctx = ""
+                # self_capability 问题：内部事实即可回答，禁止网络搜索
+                _web_allowed = _task_nature != "self_capability"
                 fact_report = await self.investigation.investigate(
                     question=effective_question,
                     additional_context=extra_ctx,
+                    internal_context=_internal_ctx,
+                    web_search_allowed=_web_allowed,
                     tools_results=_resume_tools,
                     skip_external_collection=_skip_collect,
                     budget=phase_budgets.get("investigation", {}),
@@ -1077,15 +1105,28 @@ class CognitiveLoop:
                 if on_phase:
                     n_facts = len(fact_report.facts)
                     n_gaps = len(fact_report.gaps)
+                    if getattr(fact_report, "parse_failed", False):
+                        _inv_msg = "调查结果解析失败（已降级处理，原始输出留痕）"
+                        log.warning("cognitive_loop.investigation_parse_failed")
+                    else:
+                        _inv_msg = "发现 " + str(n_facts) + " 条事实，" + str(n_gaps) + " 个信息缺口"
                     _emit_phase(
                         on_phase,
                         CognitivePhaseName.INVESTIGATION,
-                        "发现 " + str(n_facts) + " 条事实，" + str(n_gaps) + " 个信息缺口",
+                        _inv_msg,
                         data=fact_report,
                     )
             if mode == "fast":
                 _emit_phase(on_phase, CognitivePhaseName.CONTRADICTION, "正在矛盾分析（快速模式）")
                 contradiction_graph = await self.contradiction.analyze(fact_report, effective_question, additional_context=working_mem.get_context_for_phase("contradiction"), budget=phase_budgets.get("contradiction", {}))
+                try:
+                    from ..core.contradiction import validate_fact_citations
+                    _fids = {f.id or "f" + str(i + 1) for i, f in enumerate(fact_report.facts)}
+                    _c, _t, _inv = validate_fact_citations(contradiction_graph, _fids)
+                    working_mem.set("fact_citation_coverage", round(_c / _t, 3) if _t else 1.0)
+                    working_mem.set("fact_citation_invalid", _inv)
+                except Exception:
+                    pass
                 trace.contradictions = contradiction_graph
                 _emit_phase(on_phase, CognitivePhaseName.RATIONAL, "正在形成理性认识（快速模式）")
                 rational = await self.rational.synthesize(effective_question, fact_report, contradiction_graph,
@@ -1123,7 +1164,37 @@ class CognitiveLoop:
                         additional_context=_probe_ctx,
                         budget=phase_budgets.get("contradiction", {}),
                     )
+                # review_strategy 从原先的日志参数变成真实认知关卡：正方→反方→代码仲裁。
+                # once 只审首轮；iterative 每轮都审；fast 保持低延迟不触发。
+                _should_debate = (
+                    mode != "fast"
+                    and hasattr(self.contradiction, "debate")
+                    and effective_review in ("once", "iterative")
+                    and not (effective_review == "once" and trace.metadata.iterations > 1)
+                )
+                if _should_debate:
+                    _emit_phase(on_phase, CognitivePhaseName.CONTRADICTION, "正在进行反方审查")
+                    contradiction_graph = await self.contradiction.debate(
+                        contradiction_graph, fact_report, _q_c, strategy=effective_review
+                    )
+                    _audit = contradiction_graph.debate_audit or {}
+                    working_mem.set("contradiction_debate_status", _audit.get("status", "unknown"))
+                    working_mem.set("contradiction_debate_challenges", len(_audit.get("challenges", [])))
+                    _emit_phase(
+                        on_phase,
+                        CognitivePhaseName.CONTRADICTION,
+                        f"反方审查完成：{_audit.get('status', 'unknown')}，{len(_audit.get('challenges', []))} 条有效挑战",
+                        data={"event_type": "debate", "audit": _audit},
+                    )
                 trace.contradictions = contradiction_graph
+                try:
+                    from ..core.contradiction import validate_fact_citations
+                    _fids = {f.id or "f" + str(i + 1) for i, f in enumerate(fact_report.facts)}
+                    _c, _t, _inv = validate_fact_citations(contradiction_graph, _fids)
+                    working_mem.set("fact_citation_coverage", round(_c / _t, 3) if _t else 1.0)
+                    working_mem.set("fact_citation_invalid", _inv)
+                except Exception:
+                    pass
                 working_mem.set_contradiction(contradiction_graph)
                 # 存储系统模型供下游阶段使用
                 if contradiction_graph.system_model:
@@ -1184,6 +1255,16 @@ class CognitiveLoop:
                 if practice_report is not None:
                     trace.practice = practice_report
                     _record_duration(trace, "practice", t_prac)
+                    # 程序化复核指标落库（供反思相位与遥测消费）
+                    if practice_report.repro_checks:
+                        try:
+                            from ..core.repro_check import repro_stats
+                            _rs = repro_stats(practice_report.repro_checks)
+                            working_mem.set("practice_repro_stats", _rs)
+                            working_mem.set("practice_repro_reproduced", _rs["reproduced"])
+                            working_mem.set("practice_repro_differs", _rs["differs"])
+                        except Exception:
+                            pass
                     # ── 统一处理（不再区分 exec/boundary）──
                     if on_phase:
                         n_findings = len(practice_report.unexpected_findings) + len(practice_report.unexpected_insights)

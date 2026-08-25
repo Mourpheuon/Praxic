@@ -35,6 +35,7 @@ _STEP1_TASK_NATURE_PROMPT = """判断以下用户问题的任务性质与复杂�
 
 - code_generation：需要生成可运行代码、脚本、查询、配置文件。需求明确、有正确答案、可通过执行验证。典型："用 Python 求质数和""写一个 SQL JOIN 查询""帮我写个 shell 脚本"。
 - fact_lookup：查询确定的事实、数据、日期、定义、状态。有公认的正确答案，可通过搜索确证。典型："Python 3.12 什么时候发布的""某公司 CEO 是谁""以太坊 gas 费现在多少"。
+- self_capability：询问助手自身的能力、环境或状态（"你能跑 Lean 代码吗""你装了哪些工具""你的环境是什么系统"）。答案取决于助手自身事实（工具清单 / 运行环境 / 本地记忆），不依赖外部信息；needs_investigation 应为 false。
 - causal_explanation：理解某事物为何发生、原因和结果之间的机制。需要调查事实、分析因果关系。典型："为什么开源项目难以吸引贡献者""某政策效果不及预期的原因"。
 - comparison_decision：在多个选项中做选择，或对比不同方案的优劣。需要厘清标准、收集信息、权衡利弊。典型："微服务 vs 单体架构""我该不该换工作"。
 - exploration_understanding：深入理解一个概念、现象、体系。需要多角度调查、识别本质、提炼规律。典型："什么是涌现""区块链共识机制的演化"。
@@ -85,6 +86,11 @@ PHASE_NECESSITY_TABLE = {
     "creative_design": {
         "investigation": "light",    "contradiction": "required",
         "rational": "required",      "practice": "required",
+        "reflection": "required",
+    },
+    "self_capability": {
+        "investigation": "light",    "contradiction": "skip",
+        "rational": "skip",          "practice": "required",
         "reflection": "required",
     },
     "other": {
@@ -170,7 +176,7 @@ _STEP4_PREMISE_AUDIT_PROMPT = """审查用户问题中隐含的预设和框架�
 
 
 # Step 4 仅在以下任务性质下执行——纯代码生成/事实查询通常不含事实主张
-_STEP4_SKIP_TASK_TYPES = {"code_generation", "fact_lookup"}
+_STEP4_SKIP_TASK_TYPES = {"code_generation", "fact_lookup", "self_capability"}
 
 
 _STEP5_STRUCTURE_PROMPT = """基于已经完成的任务性质判断、意图矛盾分析和预设审查，对用户问题进行结构化扩展。

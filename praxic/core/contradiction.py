@@ -281,6 +281,49 @@ CRITICAL: 只输出 JSON，不要任何其他文字。
 """
 
 
+_DEBATE_CRITIC_PROMPT = """
+你是 Praxic 矛盾分析的【反方审查者】。你的职责不是重复结论，也不是引入外部事实，
+而是攻击矛盾图中最脆弱的部分：事实引用不足、忽略反证、假二分、遗漏系统要素、推理跳跃。
+
+## 审查纪律
+- 只能使用给出的事实编号；不得凭空补充事实。
+- 每条 challenge 的 fact_ids 若非空，必须来自可用编号。
+- issue 只能是 unsupported_fact | ignored_counterevidence | false_dichotomy | missing_factor | inference_gap。
+- missing_factor 可以没有 fact_ids，但必须明确说明它是“证据缺口”，不能断言该因素实际存在。
+- 没有实质问题时 challenges 输出空数组。
+
+## 输出 JSON
+{
+  "verdict": "sound|needs_revision|insufficient_evidence",
+  "challenges": [
+    {"target": "principal|element:<name>|relationship:<a>-<b>", "claim": "被攻击的主张", "issue": "上述枚举之一", "fact_ids": ["f1"], "severity": "low|medium|high", "revision_hint": "应如何修正或补调查"}
+  ]
+}
+"""
+
+
+def validate_fact_citations(graph, fact_ids: set) -> tuple:
+    """引用完整性校验：返回 (被引用的不同事实数, 事实总数, 无效引用列表)。
+
+    "没有调查就没有发言权"的结构化关卡：矛盾图的 based_on_fact_ids 必须
+    指向真实事实编号，否则下游推理建立在幻觉引用上。
+    """
+    cited: set = set()
+    invalid: set = set()
+    sm = getattr(graph, "system_model", None)
+    if sm:
+        for el in getattr(sm, "elements", []) or []:
+            for fid in getattr(el, "based_on_fact_ids", []) or []:
+                (cited if fid in fact_ids else invalid).add(fid)
+        for rel in getattr(sm, "relationships", []) or []:
+            for fid in getattr(rel, "based_on_fact_ids", []) or []:
+                (cited if fid in fact_ids else invalid).add(fid)
+        for ep in getattr(sm, "emergent_properties", []) or []:
+            for fid in getattr(ep, "based_on_fact_ids", []) or []:
+                (cited if fid in fact_ids else invalid).add(fid)
+    return len(cited), len(fact_ids), sorted(invalid)
+
+
 class ContradictionAnalyzer:
     """矛盾分析模块 —— 系统-矛盾交替分析"""
 
@@ -303,12 +346,13 @@ class ContradictionAnalyzer:
         log.info("contradiction.start", n_facts=len(fact_report.facts))
 
         facts_text = "\n".join(
-            f"- [可信度:{f.credibility:.2f}] {f.content}" for f in fact_report.facts
+            f"- [{f.id or 'f' + str(i + 1)}]（{f.source_type}，可信度 {f.credibility:.2f}）{f.content}"
+            for i, f in enumerate(fact_report.facts)
         )
         user_content = f"""## 用户问题
 {question}
 
-## 已调查的事实
+## 已调查的事实（引用契约：based_on_fact_ids 只能填下列 [编号]，每条论断必须基于事实）
 {facts_text}
 
 ## 调查摘要
@@ -350,6 +394,28 @@ class ContradictionAnalyzer:
         graph = self._parse_response(response.content)
         # B方案：思维链仅供展示，随图存储，不进后续输入
         graph.thinking_trace = (response.metadata or {}).get("reasoning", "")
+
+        # ── 引用完整性关卡（"没有调查就没有发言权"的结构化兑现）──
+        # based_on_fact_ids 必须指向真实事实编号；无效引用 → 附纠错反馈重试一次
+        _fact_ids = {f.id or f"f{i + 1}" for i, f in enumerate(fact_report.facts)}
+        _cited, _total, _invalid = validate_fact_citations(graph, _fact_ids)
+        if _invalid and _total:
+            log.info("contradiction.citation_retry", invalid=_invalid, valid=sorted(_fact_ids))
+            _fb = user_content + (
+                f"\n\n## 引用纠错（上一轮输出被校验拒绝）\n"
+                f"你引用了不存在的事实编号：{_invalid}。可用编号仅限：{sorted(_fact_ids)}。\n"
+                f"重新输出完整结果，并把所有 based_on_fact_ids 修正为可用编号。"
+            )
+            _resp2 = await self.llm.call(
+                messages=[{"role": "user", "content": _fb}],
+                system=system,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            graph = self._parse_response(_resp2.content)
+            graph.thinking_trace = (_resp2.metadata or {}).get("reasoning", "")
+            _cited, _total, _invalid = validate_fact_citations(graph, _fact_ids)
+        log.info("contradiction.fact_citation_coverage", cited=_cited, total=_total, invalid=_invalid)
         # C3：DEEP 要求完整 system_model，缺失时 log warning（不崩溃，走既有 fallback）
         from .depth import Depth
         if depth == Depth.DEEP and graph.system_model is None:
@@ -363,6 +429,97 @@ class ContradictionAnalyzer:
             has_derivation=graph.principal_contradiction.derivation_chain is not None
                 if graph.principal_contradiction else False,
         )
+        return graph
+
+    async def debate(
+        self,
+        graph: ContradictionGraph,
+        fact_report: FactReport,
+        question: str,
+        strategy: str = "once",
+    ) -> ContradictionGraph:
+        """正方图 → 反方攻击 → 代码仲裁。
+
+        反方不能凭空创造事实；仲裁由代码按引用有效性与严重度完成，结果写入
+        ``dynamic_note``，让理性阶段必须消费反方意见，而非同模型自说自话。
+        """
+        if strategy not in ("once", "iterative"):
+            return graph
+        fact_ids = {f.id or f"f{i + 1}" for i, f in enumerate(fact_report.facts)}
+        facts_text = "\n".join(
+            f"- [{f.id or 'f' + str(i + 1)}]（{f.source_type}，可信度 {f.credibility:.2f}）{f.content}"
+            for i, f in enumerate(fact_report.facts)
+        )
+        try:
+            graph_data = graph.model_dump(mode="json")
+        except AttributeError:
+            graph_data = graph.dict()
+        user_content = (
+            f"## 用户问题\n{question}\n\n"
+            f"## 可用事实编号\n{facts_text}\n\n"
+            f"## 待审查的矛盾图\n{json.dumps(graph_data, ensure_ascii=False)[:12000]}"
+        )
+        try:
+            response = await self.llm.call(
+                messages=[{"role": "user", "content": user_content}],
+                system=_DEBATE_CRITIC_PROMPT,
+                temperature=0.0,
+                max_tokens=1400,
+            )
+            raw = response.content.strip()
+            start, end = raw.find("{"), raw.rfind("}")
+            data = json.loads(raw[start:end + 1]) if start >= 0 and end > start else {}
+        except Exception as exc:
+            graph.debate_audit = {"status": "critic_parse_failed", "error": str(exc)[:300]}
+            log.warning("contradiction.debate_failed", error=str(exc))
+            return graph
+
+        allowed_issues = {"unsupported_fact", "ignored_counterevidence", "false_dichotomy", "missing_factor", "inference_gap"}
+        allowed_severity = {"low", "medium", "high"}
+        challenges, discarded = [], []
+        for item in data.get("challenges", []) if isinstance(data.get("challenges", []), list) else []:
+            if not isinstance(item, dict):
+                continue
+            refs = [str(x) for x in item.get("fact_ids", []) if str(x)]
+            invalid = sorted(set(refs) - fact_ids)
+            if invalid:
+                discarded.append({"target": str(item.get("target", "")), "reason": "invalid_fact_ids", "fact_ids": invalid})
+                continue
+            issue = str(item.get("issue", "inference_gap"))
+            if issue not in allowed_issues:
+                issue = "inference_gap"
+            severity = str(item.get("severity", "medium"))
+            if severity not in allowed_severity:
+                severity = "medium"
+            challenges.append({
+                "target": str(item.get("target", "principal"))[:120],
+                "claim": str(item.get("claim", ""))[:500],
+                "issue": issue,
+                "fact_ids": refs,
+                "severity": severity,
+                "revision_hint": str(item.get("revision_hint", ""))[:500],
+            })
+
+        status = "challenged" if any(c["severity"] == "high" for c in challenges) else ("caveated" if challenges else "accepted")
+        audit = {
+            "strategy": strategy,
+            "critic_verdict": str(data.get("verdict", "")),
+            "status": status,
+            "challenges": challenges,
+            "discarded_challenges": discarded,
+        }
+        graph.debate_audit = audit
+        if challenges:
+            notes = [f"[反方审查/代码仲裁：{status}]"]
+            for c in challenges[:5]:
+                refs = ",".join(c["fact_ids"]) or "证据缺口"
+                notes.append(f"- [{c['severity']}] {c['issue']}：{c['claim']}（依据：{refs}；修正：{c['revision_hint']}）")
+            graph.dynamic_note = (graph.dynamic_note + "\n\n" + "\n".join(notes)).strip()
+            if graph.system_model:
+                graph.system_model.uncertainty_areas.extend(
+                    f"反方审查[{c['severity']}]：{c['revision_hint'] or c['claim']}" for c in challenges
+                )
+        log.info("contradiction.debate_done", status=status, challenges=len(challenges), discarded=len(discarded))
         return graph
 
     def _resolve_budget(self, budget: dict) -> tuple:

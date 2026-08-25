@@ -56,6 +56,7 @@
   name: praxic.cordis.services.tools:ToolService
   inject: [tool-registry]
 
+
 - id: plugin-scan
   name: praxic.cordis.services.tools:ToolService
   inject: [tool-registry]

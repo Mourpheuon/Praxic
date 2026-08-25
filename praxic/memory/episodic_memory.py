@@ -15,6 +15,7 @@ from typing import Optional
 import structlog
 
 from ..config import settings
+from .hybrid_retrieval import rank_records
 
 log = structlog.get_logger(__name__)
 
@@ -208,21 +209,28 @@ class EpisodicMemory:
         return [dict(r) for r in rows]
 
     def search(self, query, limit=5):
-        keywords = query.split()[:5]
-        if not keywords:
+        """混合检索历史 episode：中文 BM25 召回 + 时间轻量重排。
+
+        取代旧的 ``query.split()+LIKE``：中文问题通常无空格，整句 LIKE 几乎无法命中。
+        """
+        if not (query or "").strip():
             return self.get_recent(limit)
-        conditions = " OR ".join("question LIKE ? OR summary LIKE ?" for _ in keywords)
-        params = []
-        for kw in keywords:
-            params.extend(["%" + kw + "%", "%" + kw + "%"])
-        params.append(limit)
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT * FROM episodes WHERE " + conditions + " ORDER BY created_at DESC LIMIT ?",
-                params,
+                "SELECT * FROM episodes WHERE summary != '[...]' ORDER BY created_at DESC LIMIT 1000"
             ).fetchall()
-        return [dict(r) for r in rows]
+        return rank_records(
+            query,
+            rows,
+            lambda ep: "\n".join([
+                ep.get("question", ""), ep.get("question", ""),
+                ep.get("summary", ""), ep.get("principal_contradiction", ""),
+                ep.get("lessons", ""), ep.get("action_items", ""),
+            ]),
+            limit=limit,
+            time_key="created_at",
+        )
 
     def get_recent(self, limit=5):
         with sqlite3.connect(self.db_path) as conn:
@@ -237,31 +245,28 @@ class EpisodicMemory:
     # ═══════════════════════════════════════════════════════════════════
 
     def search_derivation_chains(self, question: str, limit: int = 3) -> list[dict]:
-        """检索与当前问题相关的历史推导链"""
-        keywords = question.split()[:5]
-        if not keywords:
+        """混合检索与当前问题相关的历史推导链。"""
+        if not (question or "").strip():
             return []
-
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            conditions = " OR ".join("dc.summary LIKE ?" for _ in keywords)
-            params = []
-            for kw in keywords:
-                params.append("%" + kw + "%")
-            params.append(limit)
-
             rows = conn.execute(
                 "SELECT dc.*, e.question as source_question "
-                "FROM derivation_chains dc "
-                "JOIN episodes e ON dc.episode_id = e.id "
-                "WHERE " + conditions +
-                " ORDER BY dc.created_at DESC LIMIT ?",
-                params,
+                "FROM derivation_chains dc JOIN episodes e ON dc.episode_id = e.id "
+                "WHERE e.summary != '[...]' ORDER BY dc.created_at DESC LIMIT 1000"
             ).fetchall()
-
+        ranked = rank_records(
+            question,
+            rows,
+            lambda dc: "\n".join([
+                dc.get("source_question", ""), dc.get("summary", ""),
+                dc.get("contradiction", ""), dc.get("factual_foundation", ""),
+            ]),
+            limit=limit,
+            time_key="created_at",
+        )
         results = []
-        for r in rows:
-            d = dict(r)
+        for d in ranked:
             try:
                 d["steps"] = json.loads(d.get("steps_json", "[]"))
             except (json.JSONDecodeError, TypeError):
@@ -706,7 +711,9 @@ class EpisodicMemory:
     def format_for_context(self, episodes):
         if not episodes:
             return ""
-        lines = ["[相关历史经验]"]
+        lines = ["[相关历史经验：检索线索，需结合原始证据复核]"]
         for ep in episodes:
-            lines.append(f"- 问题：{ep['question'][:60]}... -> 结论：{ep['summary'][:80]}")
+            score = ep.get("_retrieval_score")
+            suffix = f"（检索相关度 {score:.2f}）" if isinstance(score, (int, float)) else ""
+            lines.append(f"- 问题：{ep['question'][:60]}... -> 结论：{ep['summary'][:80]}{suffix}")
         return "\n".join(lines)

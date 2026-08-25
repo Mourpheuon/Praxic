@@ -96,6 +96,7 @@ class ToolService(Service):
 
             return ReadUserContextTool()
 
+
         if rid == "plugin-scan":
             from praxic.tools.assembler import register_plugins
 

@@ -14,6 +14,7 @@ from typing import Optional
 import structlog
 
 from ..config import settings
+from .hybrid_retrieval import rank_records
 
 log = structlog.get_logger(__name__)
 
@@ -93,28 +94,39 @@ class SemanticMemory:
         limit: int = 5,
         min_confidence: float = 0.5,
     ) -> list[dict]:
-        """检索相关知识"""
+        """混合检索相关知识：中文 BM25 相关性 + 置信度/使用度重排。
+
+        旧实现把中文整句当一个 LIKE 关键词，几乎无法命中；现在先按内容、领域、类别
+        做 BM25 召回，再以既有 confidence/use_count 作为轻量质量偏好。
+        """
         conditions = ["confidence >= ?"]
         params: list = [min_confidence]
         if domain:
             conditions.append("domain = ?")
             params.append(domain)
-        if query:
-            kws = query.split()[:4]
-            kw_conds = " OR ".join("content LIKE ?" for _ in kws)
-            conditions.append(f"({kw_conds})")
-            for kw in kws:
-                params.append(f"%{kw}%")
-        params.append(limit)
         where = " AND ".join(conditions)
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                f"SELECT * FROM knowledge WHERE {where} "
-                "ORDER BY confidence DESC, use_count DESC LIMIT ?",
+                f"SELECT * FROM knowledge WHERE {where} ORDER BY updated_at DESC LIMIT 1000",
                 params,
             ).fetchall()
-        return [dict(r) for r in rows]
+        if not (query or "").strip():
+            return [dict(r) for r in sorted(
+                rows,
+                key=lambda r: (float(r["confidence"]), int(r["use_count"])),
+                reverse=True,
+            )[:limit]]
+        return rank_records(
+            query,
+            rows,
+            lambda e: "\n".join([e.get("content", ""), e.get("domain", ""), e.get("category", "")]),
+            limit=limit,
+            confidence_of=lambda e: min(
+                1.0, float(e.get("confidence", 0.0)) + min(0.2, 0.03 * float(e.get("use_count", 0)))
+            ),
+            time_key="updated_at",
+        )
 
     def increment_use(self, knowledge_id: int) -> None:
         with sqlite3.connect(self.db_path) as conn:
@@ -127,10 +139,12 @@ class SemanticMemory:
     def format_for_context(self, entries: list[dict]) -> str:
         if not entries:
             return ""
-        lines = ["[相关知识经验]"]
+        lines = ["[相关知识经验：历史蒸馏线索，外部事实需复核]"]
         for e in entries:
             tag = f"[{e.get('category', 'pattern')}]"
-            lines.append(f"- {tag} {e['content'][:120]}")
+            score = e.get("_retrieval_score")
+            meta = f"（检索相关度 {score:.2f}，原置信 {float(e.get('confidence', 0.0)):.2f}）" if isinstance(score, (int, float)) else ""
+            lines.append(f"- {tag} {e['content'][:120]}{meta}")
         return "\n".join(lines)
 
     def consolidate_from_lessons(

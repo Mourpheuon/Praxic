@@ -49,6 +49,14 @@ _INVESTIGATION_PROMPT = """
 你正在研究用户提出的问题，当前正处于【调查研究】阶段。
 核心信条：没有调查就没有发言权。
 
+## 内部事实（source_type="internal"，第一等事实源）
+下方"内部事实"是助手本地可核实的信息：自身能力与环境快照（工具清单、平台、解释器、执行约束），以及本地记忆库按当前问题检索到的历史记录、推导链与蒸馏知识。
+- 对**任何**问题，内部事实与外部信息同等重要：先看内部记忆有没有相关积累，再决定外部搜索补什么缺口。
+- 回答"助手能否做 X / 环境里有什么 / 之前调查过什么"这类问题时，内部事实是权威依据——不要为了验证自身能力去网络搜索。
+- 自我快照（工具清单、平台、解释器、执行约束）可作为高可信内部事实，source_type 记为 "internal"，credibility 0.9~1.0。
+- 历史 episode、推导链、semantic 蒸馏知识只是相关线索，不因存于本地库就自动为真：外部事实主张须与 web/file 交叉核验，credibility 按原始证据强度评估（通常不高于 0.8）。
+- 内部记忆检索不到相关内容时，如实写入 gaps（"内部记忆无相关记录"）。
+
 ## 你的任务
 基于下方给出的"外部收集信息"（可能来自网络搜索、文件读取等）以及用户提出的结构化问题，
 完成以下工作：
@@ -95,6 +103,8 @@ _INVESTIGATION_PROMPT = """
 你无需重复预处理已做的意图揣度与结构化拆分；但结构化不等于已证实——清单中的每条预设都必须核实真伪，切勿默认其成立。
 
 ## 输出格式（严格 JSON，不要添加任何 Markdown 代码块标记）
+
+每条 fact 的 content 不超过 200 字，宁可少而精——输出超长会被截断，导致整个结果作废。
 {
   "facts": [
     {
@@ -151,6 +161,25 @@ _SEARCH_QUERY_PROMPT = """
   "queries": ["查询1", "查询2", ...]
 }}
 """
+
+
+def _looks_truncated(raw: str) -> bool:
+    """判断模型输出是否被截断（JSON 结构未闭合 / 字符串被切断）。"""
+    s = (raw or "").strip()
+    if not s:
+        return False
+    if s.count("{") != s.count("}") or s.count("[") != s.count("]"):
+        return True
+    quotes = 0
+    i = 0
+    while i < len(s):
+        if s[i] == "\\":
+            i += 2
+            continue
+        if s[i] == '"':
+            quotes += 1
+        i += 1
+    return quotes % 2 == 1
 
 
 class InvestigationModule:
@@ -210,6 +239,8 @@ class InvestigationModule:
         budget: dict = None,
         contradiction: ContradictionGraph = None,
         skip_external_collection: bool = False,
+        internal_context: str = "",
+        web_search_allowed: bool = True,
     ) -> FactReport:
         def _notify(tool: str, summary: str, result: dict | None = None) -> None:
             if not on_progress:
@@ -264,7 +295,10 @@ class InvestigationModule:
                         all_external_info += f"\n## 工作区文件内容\n{file_contents}"
 
             # 网络搜索 + 网页全文抓取
-            if self.can_search_web:
+            # 闸门：self_capability 等内部事实即可回答的问题，禁止网络搜索
+            if self.can_search_web and not web_search_allowed:
+                log.info("investigation.web_search_gated", reason="internal_only")
+            if self.can_search_web and web_search_allowed:
                 _notify("web_search", "WEB_SEARCH · 进行中")
                 search_results_text, search_results = await self._do_web_search(question, additional_context, "", budget)
                 _notify(
@@ -347,6 +381,8 @@ class InvestigationModule:
         user_content = f"## 用户问题\n{question}"
         if additional_context:
             user_content += f"\n\n## 背景上下文\n{additional_context}"
+        if internal_context:
+            user_content += f"\n\n## 内部事实\n{internal_context}"
         if all_external_info:
             user_content += f"\n\n## 外部收集信息\n{all_external_info[:settings.investigation_external_info_max_chars]}"
         else:
@@ -367,6 +403,21 @@ class InvestigationModule:
 
         report = self._parse_response(response.content, question)
 
+        # 受迫截断（输出在 max_tokens 处被切断导致 JSON 非法）→ 降预算重试一次
+        if getattr(report, "parse_failed", False) and _looks_truncated(response.content):
+            log.info("investigation.parse_truncated_retry", retry_max_tokens=max(1024, max_tokens // 2))
+            _retry_system = system + (
+                "\n上次输出因长度被截断导致 JSON 不合法。"
+                "请大幅缩短每条 fact 的 content（不超过 120 字），并确保 JSON 完整闭合。"
+            )
+            _resp2 = await self.llm.call(
+                messages=[{"role": "user", "content": user_content}],
+                system=_retry_system,
+                temperature=temperature,
+                max_tokens=max(1024, max_tokens // 2),
+            )
+            report = self._parse_response(_resp2.content, question)
+
         # C3：按当前深度校验 schema 层字段。
         # DEEP 要求 illustrative_case（解剖麻雀）；缺失时 log warning，不崩溃（走既有 fallback）。
         if depth == Depth.DEEP and not report.illustrative_case:
@@ -379,7 +430,7 @@ class InvestigationModule:
             return report
 
         high_gaps = [g for g in report.gaps if g.importance == "high"]
-        if high_gaps and self.can_search_web and not tools_results:
+        if high_gaps and self.can_search_web and web_search_allowed and not tools_results:
             log.info("investigation.second_pass", n_high_gaps=len(high_gaps))
             gap_queries = [g.suggested_query for g in high_gaps if g.suggested_query]
             if gap_queries:
@@ -400,7 +451,8 @@ class InvestigationModule:
                     user_content2 = (
                         f"## 用户问题\n{question}\n\n"
                         f"## 第一轮调查结果\n{all_external_info[:settings.investigation_external_info_max_chars // 2]}\n\n"
-                        f"## 补充搜索\n{combined[:3000]}"
+                        + (f"## 内部事实\n{internal_context}\n\n" if internal_context else "")
+                        + f"## 补充搜索\n{combined[:3000]}"
                     )
                     response2 = await self.llm.call(
                         messages=[{"role": "user", "content": user_content2}],
@@ -559,12 +611,13 @@ class InvestigationModule:
                         raw_first=raw_original[:300],
                         raw_end=raw_original[-200:],
                         errors=errors)
+            # 解析失败不伪装成事实：用显式占位标记，避免下游把残文当 internal 事实推理
             return FactReport(
                 facts=[Fact(
-                    id="f1",
-                    content=raw_original[:500],
-                    source_type="internal",
-                    credibility=0.5,
+                    id="parse_error",
+                    content="调查结果解析失败：模型输出被截断或格式非法，本轮未获得可靠事实（原始输出已存 raw_context 供排查）",
+                    source_type="parse_error",
+                    credibility=0.0,
                 )],
                 gaps=[InformationGap(
                     description="无法解析结构化调查结果，需要重新调查",
@@ -572,6 +625,7 @@ class InvestigationModule:
                 )],
                 summary="调查结果解析失败，建议重试",
                 raw_context=raw_original,
+                parse_failed=True,
             )
 
         # 改进一：解析 illustrative_case

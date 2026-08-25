@@ -32,6 +32,7 @@ from ..tools.user_context import ReadUserContextTool
 
 from . import practice_harness as harness
 from .autonomy import get_autonomy_instruction, PermissionMode
+from .repro_check import check_python_reproducibility, repro_stats
 
 log = structlog.get_logger(__name__)
 
@@ -355,6 +356,17 @@ class PracticeModule:
             summary = overall_rationale or f"完成 {total_rounds} 轮实验"
 
         summary = f"[共 {total_rounds} 轮实验] {summary}"
+
+        # 程序化复核：python_exec 实验独立复跑，"实验证实了结论"不能只靠自评
+        try:
+            _ws_dir = str(self.workspace.workspace) if self.workspace else ""
+            repro_checks = await check_python_reproducibility(all_call_records, _ws_dir)
+        except Exception:
+            log.warning("practice.repro_check_failed", exc_info=True)
+            repro_checks = []
+        _repro_stats = repro_stats(repro_checks)
+        log.info("practice.repro_check", **_repro_stats)
+
         log.info("practice.done", rounds=total_rounds, verdict=analysis.get("verdict") if analysis else "no_analysis", unexpected=len(all_unexpected))
 
         report = PracticeReport(
@@ -375,12 +387,21 @@ class PracticeModule:
             failure_classes=failure_classes,
             world_changed=world_changed,
             cache_metrics=wm.get_cache_metrics() if wm and hasattr(wm, "get_cache_metrics") else {},
+            repro_checks=repro_checks,
             direction_state=self._direction_state,
             direction_state_history=direction_state_history,
         )
         if analysis:
             report.success_indicators.append(f"实验结论：{analysis.get('verdict', '')}")
             report.failure_indicators.append(f"可信度变化：{analysis.get('confidence_change', '')}")
+        if _repro_stats["differs"]:
+            report.failure_indicators.append(
+                f"程序复核：{_repro_stats['differs']} 个实验复跑输出与记录不一致（不可复现）"
+            )
+        if _repro_stats["reproduced"]:
+            report.success_indicators.append(
+                f"程序复核：{_repro_stats['reproduced']} 个实验独立复跑输出一致（可复现）"
+            )
         return report
 
     def _get_fallback_registry(self) -> ToolRegistry:
