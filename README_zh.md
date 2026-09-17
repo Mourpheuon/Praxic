@@ -1,5 +1,7 @@
 # 即物穷理（Praxic）
 
+v0.2.0 修复 Windows 安装后的后端启动故障。下载请见 [GitHub Releases](https://github.com/Mourpheuon/Praxic/releases)，升级说明见 [v0.2.0](maintenance/releases/v0.2.0.md)。
+
 > 维护说明（2026-09-17）：当前后端直接提供 `praxic/web/index.html` 内联页面；`web/src` 组件版本暂未接入该入口。安装源码依赖后使用 `praxic run`，`python -m praxic` 用于启动 Web。配置模板默认 flash，代码无配置兜底默认 pro。当前 v0.1.8 Windows 发布包存在已复现的后端启动缺陷，构建成功不等于可交付。详见 [维护索引](maintenance/README.md) 和 [发布诊断](maintenance/RELEASE_DIAGNOSIS.md)。
 
 

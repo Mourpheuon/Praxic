@@ -7,10 +7,11 @@ import socket
 import subprocess
 import tempfile
 import time
+import tomllib
 import urllib.request
 
 
-def smoke(executable):
+def smoke(executable, expected_version=None):
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
@@ -43,7 +44,11 @@ def smoke(executable):
                         assert response.status == 200
                         assert response.read(), route
                 assert (runtime / 'config.toml').is_file()
-                print('Frozen backend smoke passed: health, HTML, static assets, Unicode runtime path.')
+                if expected_version:
+                    with opener.open(f'http://127.0.0.1:{port}/openapi.json', timeout=5) as response:
+                        version = json.load(response)['info']['version']
+                    assert version == expected_version, f'Stale backend: {version} != {expected_version}'
+                print('Frozen backend smoke passed: health, HTML, static assets, Unicode runtime path, version.')
             except Exception:
                 logs.seek(0)
                 print(logs.read().decode('utf-8', errors='replace')[-8000:])
@@ -61,4 +66,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('executable', nargs='?', type=Path,
                         default=Path('dist') / ('praxic-backend.exe' if os.name == 'nt' else 'praxic-backend'))
-    smoke(parser.parse_args().executable)
+    default_version = tomllib.loads((Path(__file__).resolve().parents[1] / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
+    parser.add_argument('--expected-version', default=default_version)
+    args = parser.parse_args()
+    smoke(args.executable, args.expected_version)

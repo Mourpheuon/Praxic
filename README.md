@@ -1,5 +1,7 @@
 # Praxic
 
+v0.2.0 fixes the packaged Windows backend startup failure. See [GitHub Releases](https://github.com/Mourpheuon/Praxic/releases) and the [v0.2.0 upgrade notes](maintenance/releases/v0.2.0.md).
+
 > Maintenance note (2026-09-17): the backend serves the inline `praxic/web/index.html`; `web/src` is not wired into this entrypoint. After installing the source package, use `praxic run` for the CLI and `python -m praxic` for Web startup. The example config selects flash; the no-config code fallback selects pro. The v0.1.8 Windows release has a reproduced backend startup defect; a successful build does not establish release readiness. See the [maintenance index](maintenance/README.md) and [release diagnosis](maintenance/RELEASE_DIAGNOSIS.md).
 
 
