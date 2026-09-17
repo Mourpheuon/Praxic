@@ -12,6 +12,14 @@ def test_repository_consistency():
     assert module.check() == []
 
 
+def test_packaged_version_does_not_depend_on_current_directory(monkeypatch, tmp_path):
+    from praxic import __version__
+    from praxic.api.routes.setup import _get_pyproject_version, _get_package_json_version
+    monkeypatch.chdir(tmp_path)
+    assert _get_pyproject_version() == __version__
+    assert _get_package_json_version() == __version__
+
+
 async def test_api_version_and_missing_frontend(monkeypatch, tmp_path):
     from fastapi import HTTPException
     from praxic import __version__

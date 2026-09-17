@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ...config import settings, CONFIG_TOML, save_config_section, save_config_key, _toml_value
+from ... import __version__
 from ...core.autonomy import PermissionMode
 from .agent import init_agent_resources
 
@@ -541,8 +542,8 @@ async def test_connection(req: TestConnectionRequest):
 # ── Version / Update routes ──────────────────────────────────────
 
 class VersionInfoResponse(BaseModel):
-    python_version: str = "0.1.5"
-    electron_version: str = "0.1.5"
+    python_version: str = __version__
+    electron_version: str = __version__
     latest_version: str = ""
     update_available: bool = False
     release_url: str = ""
@@ -553,35 +554,13 @@ class VersionInfoResponse(BaseModel):
 
 
 def _get_pyproject_version() -> str:
-    try:
-        ppt = Path.cwd() / "pyproject.toml"
-        if ppt.exists():
-            text = ppt.read_text(encoding="utf-8")
-            for line in text.split("\n"):
-                line = line.strip()
-                if line.startswith("version") and "=" in line:
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    except Exception:
-        pass
-    return "0.1.5"
+    # Frozen builds have no pyproject.toml in the writable runtime directory.
+    return __version__
 
 
 def _get_package_json_version() -> str:
-    try:
-        pj = Path.cwd() / "package.json"
-        if pj.exists():
-            data = json.loads(pj.read_text(encoding="utf-8"))
-            return data.get("version", "0.1.5")
-    except Exception:
-        pass
-    try:
-        pj2 = Path.cwd() / "resources" / "app" / "package.json"
-        if pj2.exists():
-            data = json.loads(pj2.read_text(encoding="utf-8"))
-            return data.get("version", "0.1.5")
-    except Exception:
-        pass
-    return "0.1.5"
+    # Desktop and backend versions are kept equal by check_repository.py.
+    return __version__
 
 
 @router.get("/setup/version", response_model=VersionInfoResponse)
