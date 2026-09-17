@@ -4,7 +4,7 @@
 统计规划成功率、失败模式、代码运行成功率、方向字段完整性。
 
 用法：
-    python scripts/verify_practice_real.py [--rounds 2] [--quiet]
+    python scripts/diagnostics/verify_practice_real.py [--rounds 2] [--quiet]
 
 注意：需要真实 API Key（config.toml/.env），会消耗配额，耗时数分钟到数十分钟。
 不打印任何 API Key，不修改源码。
@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 

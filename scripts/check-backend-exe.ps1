@@ -1,6 +1,6 @@
 ﻿# 即物穷理 Praxic —— 后端 exe 闸门检查
 # 用途：检查 PyInstaller 后端存在且健康接口、页面、静态资源可用，再允许打包。
-# 被 package.json 的 electron:build 和 scripts/build-electron.ps1 共同调用。
+# 独立兼容检查入口；主构建统一由 scripts/build_desktop.py 调用 smoke_backend.py。
 # 用法：powershell -ExecutionPolicy Bypass -File scripts\check-backend-exe.ps1
 # 退出码：0 = 通过；1 = 后端缺失或启动检查失败；构建机需 Python 3.11+。
 

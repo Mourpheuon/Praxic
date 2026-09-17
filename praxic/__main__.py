@@ -42,8 +42,8 @@ def _prepare_runtime_dir():
     os.chdir(runtime)
 
 # ── Auto-activate .venv if present ──
-if sys.version_info < (3, 10):
-    sys.exit("需要 Python 3.10+")
+if sys.version_info < (3, 11):
+    sys.exit("需要 Python 3.11+")
 try:
     import uvicorn  # noqa
 except ImportError:
@@ -70,7 +70,7 @@ def _ensure_config():
             import shutil
             shutil.copy(bundled, cfg)
             print("[即物穷理] 已复制配置:", cfg)
-            print("[即物穷理] 请编辑此文件填入你的 API Key 后重新启动")
+            print("[即物穷理] API Key 请写入 .env 或通过设置页保存，config.toml 不保存密钥")
             return
     with open(cfg, "w", encoding="utf-8") as f:
         f.write('[llm]\nprovider="openai_compatible"\nbase_url="https://api.deepseek.com"\nmodel="deepseek-v4-pro"\n')

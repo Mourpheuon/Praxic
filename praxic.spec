@@ -43,11 +43,8 @@ web_public = _root / "praxic" / "web" / "public"
 if web_public.is_dir():
     datas.append((str(web_public), "praxic/web/public"))
 
-# prompts 目录（如果存在）
-prompts_dir = _root / "prompts"
-if prompts_dir.is_dir():
-    for md_file in prompts_dir.glob("*.md"):
-        datas.append((str(md_file), "prompts"))
+# Local prompt overrides are runtime configuration, never implicit build inputs.
+# Built-in phase prompts provide defaults; PRAXIC_PROMPTS_DIR selects overrides.
 
 # 默认 config.toml.example（包内兜底配置，首次运行复制到工作目录并提示用户填写 key）
 config_example = _root / "config.toml.example"

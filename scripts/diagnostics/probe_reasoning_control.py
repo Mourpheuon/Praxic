@@ -11,7 +11,7 @@
 观测：reasoning_content 长度、content 长度、finish_reason、耗时。
 """
 import asyncio, time, os, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
 from praxic.config import settings
 from openai import AsyncOpenAI

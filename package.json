@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "python -m uvicorn praxic.api.server:app --host 127.0.0.1 --port 8000",
     "electron:dev": "concurrently -n py,electron -c blue,magenta \"python -m uvicorn praxic.api.server:app --host 127.0.0.1 --port 8000\" \"npx electron .\"",
-    "electron:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-backend-exe.ps1 && node node_modules/electron-builder/cli.js",
+    "electron:build": "python scripts/build_desktop.py --shell-only",
     "postinstall": ""
   },
   "devDependencies": {

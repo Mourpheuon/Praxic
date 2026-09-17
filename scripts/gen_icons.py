@@ -9,8 +9,9 @@
 from pathlib import Path
 from PIL import Image
 
-SRC = Path(r"E:\Scripts\Praxic\assets\brand\source\praxic-compass-v1.png")
-OUT = Path(r"E:\Scripts\Praxic\assets")
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "assets"
+SRC = OUT / "brand" / "source" / "praxic-compass-v1.png"
 
 def main():
     img = Image.open(SRC).convert("RGBA")

@@ -4,7 +4,7 @@
 并观察 position_shifts / iteration 演化数据。
 
 用法：
-    python scripts/verify_contradiction_spine_real.py [--question T] [--max-iter N]
+    python scripts/diagnostics/verify_contradiction_spine_real.py [--question T] [--max-iter N]
 
 需要真实 API Key（config.toml/.env），会消耗配额、耗时数分钟。
 不打印 API Key，不修改源码。
@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 

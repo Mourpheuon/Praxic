@@ -34,6 +34,30 @@ def check(root=ROOT):
             errors.append(name + ' obsolete command')
     if not (root / 'praxic/web/index.html').is_file():
         errors.append('active frontend missing')
+    # Documentation links must resolve without ignored handoff/experiment files.
+    documents = [root / 'README.md', root / 'README_zh.md', root / 'maintenance/README.md',
+                 root / 'maintenance/BUILD_RELEASE.md', root / 'praxic/web/README.md']
+    for document in documents:
+        text = document.read_text(encoding='utf-8')
+        for target in re.findall(r'\]\(([^)]+)\)', text):
+            if '://' in target or target.startswith('#'):
+                continue
+            if not (document.parent / target.split('#')[0]).exists():
+                errors.append(f'{document.relative_to(root)} broken link: {target}')
+    for obsolete in ('scripts/push.sh', 'scripts/release.sh', 'scratch_probe_real.py',
+                     'scripts/verify_practice_real.py', 'scripts/probe_reasoning_control.py'):
+        if (root / obsolete).exists():
+            errors.append('retired file restored to active tree: ' + obsolete)
+    build_script = (root / 'scripts/build_desktop.py').read_text(encoding='utf-8')
+    for required in ('check_repository.py', 'smoke_backend.py', "'--publish', 'never'"):
+        if required not in build_script:
+            errors.append('local build guard missing: ' + required)
+    setup = (root / 'praxic/api/routes/setup.py').read_text(encoding='utf-8')
+    if '_gh_release_create' in setup or '_bump_versions' in setup:
+        errors.append('legacy API release implementation restored')
+    ignore = (root / '.dockerignore').read_text(encoding='utf-8').splitlines()
+    if '**' not in ignore or '**/.github-token' not in ignore:
+        errors.append('Docker context exclusion guard missing')
     return errors
 
 

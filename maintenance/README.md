@@ -1,33 +1,47 @@
 # 仓库维护索引
 
-本目录对应 2026-09-17 核对的源码；历史计划不作为当前功能依据。
+当前发行版：[v0.2.0](https://github.com/Mourpheuon/Praxic/releases/tag/v0.2.0)，已于 2026-09-17 发布。
+本地后续清理不修改已发布标签或附件；重新发行需要新版本。
 
-## 当前事实来源
+本轮变更、验证及保留理由见 [集中清理记录](CLEANUP_2026-09-17.md)。
 
-- Python 版本：praxic/__init__.py；发行元数据需与 pyproject.toml、两个 package.json 和 lock 文件同步。
-- API 版本直接引用包版本。运行 `python scripts/check_repository.py` 检查静态一致性。
-- CLI：安装开发包后使用 `praxic run` / `praxic serve`；`python -m praxic` 只接受 Web 启动参数。
-- 实际 Web 页面：praxic/web/index.html（内联应用，依赖 CDN）；API 直接读取它。
-- praxic/web/src 是另一套组件实现，目前未被上述服务入口加载。未核对功能等价，保留，不能直接删除或声称其构建产物已用于发布。
-- 配置模板选择 deepseek-v4-flash；无模板配置时 Settings 的模型兜底为 deepseek-v4-pro。这是两条路径，不改变用户现有配置。
-- prompts/ 中仅与阶段名匹配的文件被 load_phase_prompt 加载；目录受忽略保护。自定义提示词及用户配置保留。
-- 已退休的 praxic/ui 原生界面引用及 flet 依赖已去除，ui 安装 extra 保留为空兼容别名。
+## 唯一事实来源
 
-## 归档边界
+- 版本源为 praxic/__init__.py。发行前同步 pyproject.toml、根目录与 web 的 package.json/lock、Docker 默认版本，使用 scripts/check_repository.py 检查。
+- 运行依赖由 pyproject.toml 声明；desktop extra 服务于本地、CI 和 Docker。高级语义存储的可选 storage extra 独立保留。
+- 本地构建入口 scripts/build_desktop.py；bat/PowerShell/bash 旧命令只作薄包装，不再另装依赖或直接发布。
+- 发行入口 .github/workflows/build.yml；设置页旧发布入口返回 410，不再修改版本或 Release。
+- 产品前端与保留组件的边界见 [前端说明](../praxic/web/README.md)。
+- 当前状态看本文件；旧诊断看 [v0.1.8 历史证据](RELEASE_DIAGNOSIS.md)，其中各轮测试数字对应当时提交。
 
-原样保留在本机 maintenance/archive/2026-09-17/：旧三份计划记录、四份根目录设计 prompt、jian.md、scratch_probe_real.py、旧 scratch 登记簿、旧 release.sh、cortex-adapter 状态及轨迹。
-archive/ 不进入发行源码；归档是可恢复的本地副本，需跨机器保存时应另外备份。此前已提交的版本仍可从 Git 历史读取。
+## 已归档或隔离
 
-旧 release.sh 仅修改 Python 元数据就提交推送，容易产生版本漂移，已退出活动脚本目录。手工发布前应同步六个版本文件及 Docker 版本默认值，通过一致性检查，再由维护者决定提交、标签和发布。
+- 第一轮历史记录位于本机 maintenance/archive/2026-09-17/，包括旧规划、根目录设计提示词、scratch 脚本、release.sh 和内部运行轨迹。
+- 本轮旧 push.sh 归档到 maintenance/archive/2026-09-17-post-release/，不再从凭据文件拼接推送 URL；维护者使用正常 Git 凭据管理。
+- 四个真实模型验收脚本移到 scripts/diagnostics/，保留在 Git，明确与离线回归隔离。
+- PROJECT_HANDOFF.md 属于历史内部交接，原样本地归档，不再作为新开发入口。
+- 根目录临时计划在任务结束后收拢到 maintenance/local/；上述本地归档均受忽略规则保护。此前已提交内容也可从 Git 历史恢复。
 
-未删除：data/、workspace/、projects/、logs/、output/、dist/、dist-electron/、依赖环境、设计资产及真实验证脚本。构建产物可以再生，但本轮留作发布问题证据。
+## 保留项与原因
 
-本轮 task_plan.md / findings.md / progress.md 工作记录收尾后移入 maintenance/local/，已忽略；产品文档以本索引和 README 为准。未来维护任务的根目录工作记录也在忽略规则中。
+- data/、workspace/、projects/、logs/、output/：可能包含用户数据和验证证据，不按目录名批量删除。
+- dist/、dist-electron/：保留旧发行包及构建证据，新构建仍按工具自身规则更新对应版本产物。
+- .venv、.venv-build、node_modules：工作环境，不属于应删除的源码残留。
+- prompts/、config.toml、.env、技能及插件目录：用户配置和运行扩展，不归档或展示内容。
+- 本地自定义 prompts 和 skills 不再隐式夹带进安装包；在目标运行目录配置或导入，发行默认使用代码内提示词。
+- web/src：未整合组件，不声称等价于产品页面；保留直到完成迁移验收。
+- praxic/storage 空命名空间、ui 空安装 extra：保留兼容边界，不新增业务逻辑。
+- assets/brand/source 与导出图：设计源及产品素材，不以相似文件名判断重复。
 
-## 本轮验证
+## 防止再次漂移
 
-`python scripts/check_repository.py` 通过；完整 pytest 回归 371 项通过，保留一个已有的 tar 解压弃用警告。未运行真实模型集成、Docker 构建或跨平台安装验收。
+一致性检查覆盖版本、内部文档链接、已退役路径、构建门控与测试边界。Docker 使用默认拒绝的上下文白名单；Python wheel 不强制夹带本地 prompts。
+日常修改先运行：
 
-## 发布状态
+```bash
+python scripts/check_repository.py
+python -m pytest -q
+node --test tests/backend-ready.test.cjs
+```
 
-详见 [Windows 发布诊断与修复](RELEASE_DIAGNOSIS.md)。用户确认是安装后的启动失败后，源码启动链路已修复并通过实际冻结后端验证。已发布安装包保持不变，尚未上传新 release。
+构建、发布和迁移边界见 [操作说明](BUILD_RELEASE.md)。

@@ -6,7 +6,7 @@ appId: com.praxic.agent
 productName: "即物穷理"
 copyright: "Copyright © 2026 Mourpheuon"
 
-# 打包目录：Electron 主进程与技能；冻结后端由 extraResources 提供
+# 打包目录：Electron 主进程；冻结后端由 extraResources 提供
 directories:
   output: dist-electron
   buildResources: assets
@@ -15,8 +15,7 @@ files:
   # Electron 主进程
   - electron/**/*
   - package.json
-  # 技能包
-  - praxic/skills/**/*
+  # Local skill libraries are runtime data, not implicit release inputs.
   # ── 运行时不需要的内容 ──
   # 后端已打成自包含 exe（extraResources），不再分发 Python 源码
   # - praxic/**/*

@@ -8,7 +8,7 @@
   3. maintain 后 iteration 递增、position_shifts 字段可用（有数据则打印，无则说明）。
   4. 对比本轮新事实对矛盾的影响（fact1/fact2 注入轮次不同）。
 
-用法：python scripts/verify_contradiction_spine_real_light.py
+用法：python scripts/diagnostics/verify_contradiction_spine_real_light.py
 可直接在前台运行，预计 1-3 分钟，消耗少量真实配额。
 """
 import asyncio
@@ -16,7 +16,7 @@ import os
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 
