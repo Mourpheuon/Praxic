@@ -40,6 +40,9 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Check repository consistency
+        run: python scripts/check_repository.py
+
       - name: Install Python deps
         run: |
           pip install --upgrade pip

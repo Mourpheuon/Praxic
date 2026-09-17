@@ -6,7 +6,8 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="Praxic"
 LABEL org.opencontainers.image.description="AI agent with Maoist dialectical-materialist cognitive core"
-LABEL org.opencontainers.image.version="0.1.5"
+ARG PRAXIC_VERSION=0.1.8
+LABEL org.opencontainers.image.version=$PRAXIC_VERSION
 
 WORKDIR /app
 
@@ -33,7 +34,7 @@ RUN pip install --no-cache-dir --break-system-packages \
 
 # Copy application code
 COPY praxic/ ./praxic/
-# prompts/ 目录由应用启动时自动创建（praxic/config.py _resolve_prompts_dir），无需 COPY
+# Optional local phase prompts are not included; modules provide fallback prompts.
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash praxic && chown -R praxic:praxic /app

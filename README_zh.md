@@ -1,5 +1,8 @@
 # 即物穷理（Praxic）
 
+> 维护说明（2026-09-17）：当前后端直接提供 `praxic/web/index.html` 内联页面；`web/src` 组件版本暂未接入该入口。安装源码依赖后使用 `praxic run`，`python -m praxic` 用于启动 Web。配置模板默认 flash，代码无配置兜底默认 pro。当前 v0.1.8 Windows 发布包存在已复现的后端启动缺陷，构建成功不等于可交付。详见 [维护索引](maintenance/README.md) 和 [发布诊断](maintenance/RELEASE_DIAGNOSIS.md)。
+
+
 > **以辩证唯物主义方法论为认知内核的 AI 智能体**
 >
 > "即物"贴近事物，"穷理"穷尽条理。Praxic = Praxis + Dialectic——在实践中穿过矛盾，淬出真知。
@@ -75,9 +78,9 @@ cp .env.example .env
 **命令行（CLI）：**
 
 ```bash
-python -m praxic run "为什么我的开源项目难以吸引贡献者？"
-python -m praxic run "考虑一群个体进行博弈..." --mode deep
-python -m praxic run --help   # 查看全部选项
+praxic run "为什么我的开源项目难以吸引贡献者？"
+praxic run "考虑一群个体进行博弈..." --mode deep
+praxic run --help   # 查看全部选项
 ```
 
 **Web UI（浏览器）：**
@@ -238,7 +241,7 @@ Praxic/
 │   └── preload.js                 # 安全桥接（文件选择等原生 API）
 ├── scripts/
 │   ├── push.sh                    # GitHub token 推送
-│   ├── release.sh                 # 版本发布
+│   ├── check_repository.py        # 版本与文档一致性检查
 │   ├── import_skills.py           # 技能批量导入
 │   ├── verify_practice_real.py    # 真实验收（真实 LLM 跑实践阶段，统计规划成功率）
 │   ├── probe_reasoning_control.py # 推理控制探针（验证 provider 参数行为）
@@ -311,7 +314,9 @@ Web UI 的设置对话框支持：
 ### Electron 桌面应用（Windows）
 
 ```powershell
-npm install
+python -m pip install -e ".[web,storage,search]" pyinstaller
+python -m PyInstaller praxic.spec --noconfirm --clean
+npm ci
 npm run electron:build
 # 产物：dist-electron/即物穷理 Setup *.exe
 ```
@@ -326,8 +331,8 @@ docker run -p 8000:8000 -v $(pwd)/data:/app/data praxic
 ### 版本发布
 
 ```bash
-bash scripts/release.sh 0.2.0
-# 更新 pyproject.toml → 创建 release commit → 打标签 → 推送
+python scripts/check_repository.py
+# 发布前同步所有版本文件；旧单文件版本脚本已归档。
 ```
 
 ---

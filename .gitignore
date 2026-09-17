@@ -9,6 +9,7 @@ build/
 
 # Virtual env
 .venv/
+.venv-build/
 venv/
 env/
 
@@ -81,3 +82,11 @@ praxic/skills/*
 # Project handoff (internal, not for distribution)
 PROJECT_HANDOFF.md
 progress.md
+
+# Local agent state and maintenance working records
+.cortex-adapter/
+task_plan.md
+findings.md
+maintenance/archive/
+maintenance/local/
+scratch_*.py

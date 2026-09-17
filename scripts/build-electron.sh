@@ -4,13 +4,14 @@
 #
 # 前置条件：
 #   1. Node.js >= 18（https://nodejs.org）
-#   2. Python 3.11+（用户自行安装，不打包进应用）
+#   2. Python 3.11+（仅构建时使用，最终分发应包含冻结后端）
 #   3. Git（用于版本标签）
 #
 # 用法：
 #   bash scripts/build-electron.sh          # 构建当前平台
 #   bash scripts/build-electron.sh --all    # 构建所有平台（需对应平台或 CI）
 #   bash scripts/build-electron.sh --publish # 构建并发布到 GitHub Releases
+# 当前发布链路有已知缺陷，执行前阅读 maintenance/RELEASE_DIAGNOSIS.md。
 
 set -euo pipefail
 

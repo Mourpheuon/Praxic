@@ -30,7 +30,7 @@ if errorlevel 1 (
     echo  [WARN] Some dependencies may have failed, continuing...
 )
 
-echo  [3/3] Building 即物穷理.exe...
+echo  [3/3] Building praxic-backend.exe...
 echo.
 pyinstaller praxic.spec --noconfirm --clean
 
@@ -44,8 +44,8 @@ if errorlevel 1 (
 echo.
 echo  ==================================================
 echo   Build complete!
-echo   Output: dist\即物穷理.exe
-echo   Double-click to launch the web interface.
+echo   Output: dist\praxic-backend.exe
+echo   Backend only. See maintenance/RELEASE_DIAGNOSIS.md before distributing.
 echo  ==================================================
 echo.
 pause

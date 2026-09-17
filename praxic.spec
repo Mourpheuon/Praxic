@@ -88,7 +88,6 @@ hiddenimports = [
     "praxic.tools",
     "praxic.tools.filesystem",
     "praxic.tools.web_search",
-    "praxic.ui",
     "praxic.config",
     "praxic.cli",
 
@@ -149,7 +148,6 @@ hiddenimports = [
     "sqlalchemy",
     "chromadb",
     "networkx",
-    "flet",
 ]
 
 a = Analysis(

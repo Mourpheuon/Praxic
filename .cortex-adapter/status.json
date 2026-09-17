@@ -1,1 +1,0 @@
-{"at":1787641729681,"version":1,"phase":"active","canaryR1":0.045845272206303724,"samples":1856,"recall3":null,"hit1":null,"errorRate":null,"silence":null,"cum":{"steps":0,"nonError":0,"hits1":0,"recalls3":0,"tokenSaved":0,"wouldDenyOk":0,"notesInjected":0,"notesSuppressed":0,"adoptedOk":0,"adoptedFail":0,"ignoredOk":0,"ignoredFail":0},"recent":[]}

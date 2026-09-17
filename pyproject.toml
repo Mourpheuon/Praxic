@@ -27,9 +27,8 @@ web = [
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",
 ]
-ui = [
-    "flet>=0.85.0",
-]
+# Compatibility alias: the old native UI has been retired.
+ui = []
 storage = [
     "chromadb>=0.5.0",
     "aiosqlite>=0.20.0",
@@ -46,7 +45,7 @@ dev = [
     "mypy>=1.10.0",
 ]
 all = [
-    "praxic-agent[web,ui,storage,search]",
+    "praxic-agent[web,storage,search]",
 ]
 
 [project.scripts]

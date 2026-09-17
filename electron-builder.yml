@@ -6,7 +6,7 @@ appId: com.praxic.agent
 productName: "即物穷理"
 copyright: "Copyright © 2026 Mourpheuon"
 
-# 打包目录：包含 Electron 主进程 + Python 源码
+# 打包目录：Electron 主进程与技能；冻结后端由 extraResources 提供
 directories:
   output: dist-electron
   buildResources: assets
@@ -51,7 +51,7 @@ extraResources:
     to: backend/praxic-backend.exe
     filter: ["**/*"]
 
-# 不打包进 asar——Python 需要导入普通文件
+# 保留普通文件布局；冻结后端不依赖 app 内的 Python 源码
 asar: false
 
 # macOS 配置（未签名：无 Apple Developer 证书，用户首次打开需右键→打开）

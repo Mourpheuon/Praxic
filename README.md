@@ -1,5 +1,8 @@
 # Praxic
 
+> Maintenance note (2026-09-17): the backend serves the inline `praxic/web/index.html`; `web/src` is not wired into this entrypoint. After installing the source package, use `praxic run` for the CLI and `python -m praxic` for Web startup. The example config selects flash; the no-config code fallback selects pro. The v0.1.8 Windows release has a reproduced backend startup defect; a successful build does not establish release readiness. See the [maintenance index](maintenance/README.md) and [release diagnosis](maintenance/RELEASE_DIAGNOSIS.md).
+
+
 > **An AI agent with dialectical-materialist methodology as its cognitive core**
 >
 > "Jiwu" (即物) to engage with things, "Qiongli" (穷理) to exhaust their principles. Praxic = Praxis + Dialectic — knowledge forged through contradiction in practice.
@@ -75,9 +78,9 @@ cp .env.example .env
 **Command Line (CLI):**
 
 ```bash
-python -m praxic run "Why is my open-source project struggling to attract contributors?"
-python -m praxic run "Consider a group of agents playing..." --mode deep
-python -m praxic run --help   # Show all options
+praxic run "Why is my open-source project struggling to attract contributors?"
+praxic run "Consider a group of agents playing..." --mode deep
+praxic run --help   # Show all options
 ```
 
 **Web UI (browser):**
@@ -238,7 +241,7 @@ Praxic/
 │   └── preload.js                 # Secure bridge (file picker etc. native APIs)
 ├── scripts/
 │   ├── push.sh                    # GitHub token push
-│   ├── release.sh                 # Version release
+│   ├── check_repository.py        # Version and documentation consistency
 │   ├── import_skills.py           # Batch skill import
 │   ├── verify_practice_real.py    # Real-LLM verification (practice phase stats)
 │   ├── probe_reasoning_control.py # Reasoning-control probe (provider parameter behavior)
@@ -311,7 +314,9 @@ The Web UI Settings dialog supports:
 ### Electron Desktop App (Windows)
 
 ```powershell
-npm install
+python -m pip install -e ".[web,storage,search]" pyinstaller
+python -m PyInstaller praxic.spec --noconfirm --clean
+npm ci
 npm run electron:build
 # Output: dist-electron/即物穷理 Setup *.exe
 ```
@@ -326,8 +331,8 @@ docker run -p 8000:8000 -v $(pwd)/data:/app/data praxic
 ### Version Release
 
 ```bash
-bash scripts/release.sh 0.2.0
-# Updates pyproject.toml → creates release commit → tags → pushes
+python scripts/check_repository.py
+# Synchronize all version metadata before releasing; the old script is archived.
 ```
 
 ---

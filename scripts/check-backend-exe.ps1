@@ -14,7 +14,7 @@ $backendExe = Join-Path $projectRoot "dist\praxic-backend.exe"
 if (-not (Test-Path -LiteralPath $backendExe -PathType Leaf)) {
     Write-Host "[错误] 后端 exe 不存在: $backendExe" -ForegroundColor Red
     Write-Host "       请先构建 Python 后端（PyInstaller）再打包 Electron。" -ForegroundColor Yellow
-    Write-Host "       构建后端：& 'E:\Scripts\Praxic\.venv-build\Scripts\python.exe' -m PyInstaller praxic.spec --noconfirm --clean" -ForegroundColor Yellow
+    Write-Host "       构建后端：python -m PyInstaller praxic.spec --noconfirm --clean" -ForegroundColor Yellow
     exit 1
 }
 

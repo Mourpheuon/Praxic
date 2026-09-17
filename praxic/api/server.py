@@ -17,11 +17,11 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from ..config import settings, CONFIG_TOML
+from .. import __version__
 from .routes.agent import init_agent_resources, router as agent_router
 from .routes.setup import router as setup_router
 from .routes.conversations import router as conversations_router
 
-UI_DIR = Path(__file__).parent.parent / "ui"
 WEB_DIR = Path(__file__).parent.parent / "web"
 
 log = structlog.get_logger(__name__)
@@ -99,7 +99,7 @@ def create_app() -> FastAPI:
             "以辩证唯物主义方法论为认知内核的 AI 智能体。"
             "认知循环：调查研究 → 矛盾分析 → 理性认识 → 实践检验 → 反思复盘"
         ),
-        version="0.1.5",
+        version=__version__,
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
@@ -263,9 +263,7 @@ def create_app() -> FastAPI:
         react_file = WEB_DIR / "index.html"
         if react_file.exists():
             return HTMLResponse(content=react_file.read_text(encoding="utf-8"))
-        # Fallback to old static HTML
-        html_file = UI_DIR / "index.html"
-        return HTMLResponse(content=html_file.read_text(encoding="utf-8"))
+        raise HTTPException(status_code=503, detail="前端资源缺失：praxic/web/index.html")
 
     return app
 
