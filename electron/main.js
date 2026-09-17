@@ -11,7 +11,6 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
-const http = require('http');
 const net = require('net');
 
 // ── 常量 ──────────────────────────────────────────────────────────
@@ -60,89 +59,33 @@ let actualPort = null;
 // ── Python 后端管理 ───────────────────────────────────────────────
 
 function startPythonBackend(port) {
-    return new Promise((resolve, reject) => {
-        const env = { ...process.env };
-        // Ensure .env file env vars are read by Python
-        // (python-dotenv loads them in praxic/config.py)
-
-        // 生产模式：优先使用 PyInstaller 打包好的后端 exe（自包含，无需外部 Python）
-        const bundledExe = resolveBackendExecutable();
-        if (bundledExe) {
-            // 后端进程工作目录设为其所在目录，单文件 exe 会在那里生成数据/找配置
-            pythonProcess = spawn(bundledExe, ['--host', HOST, '--port', String(port)], {
-                cwd: path.dirname(bundledExe),
-                env,
-                stdio: ['ignore', 'pipe', 'pipe'],
-            });
-        } else {
-            // 开发模式：回退到系统 Python
-            pythonProcess = spawn(PYTHON_COMMAND, [
-                '-m', 'uvicorn',
-                'praxic.api.server:app',
-                '--host', HOST,
-                '--port', String(port),
-            ], {
-                cwd: PROJECT_ROOT,
-                env,
-                stdio: ['ignore', 'pipe', 'pipe'],
-            });
-        }
-
-        pythonProcess.on('error', (err) => {
-            console.error('[praxic] 后端启动失败:', err.message);
-            reject(new Error(`无法启动后端: ${err.message}\n请确认已安装 Python 3.11+ 及依赖 (pip install -e ".[web]")`));
+    const fs = require('fs');
+    const { waitForBackend } = require('./backend-ready');
+    const env = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' };
+    const bundledExe = resolveBackendExecutable();
+    if (app.isPackaged && !bundledExe) {
+        return Promise.reject(new Error('安装包缺少后端程序，请重新安装完整安装包。'));
+    }
+    if (bundledExe) {
+        const runtimeDir = env.PRAXIC_RUNTIME_DIR || path.join(app.getPath('userData'), 'backend');
+        fs.mkdirSync(runtimeDir, { recursive: true });
+        env.PRAXIC_RUNTIME_DIR = runtimeDir;
+        pythonProcess = spawn(bundledExe, ['--no-browser', '--host', HOST, '--port', String(port)], {
+            cwd: runtimeDir, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
         });
-
-        pythonProcess.on('exit', (code, signal) => {
-            console.log(`[praxic] Python 后端已退出 (code=${code}, signal=${signal})`);
-            pythonProcess = null;
+    } else {
+        pythonProcess = spawn(PYTHON_COMMAND, [
+            '-m', 'uvicorn', 'praxic.api.server:app',
+            '--host', HOST, '--port', String(port),
+        ], {
+            cwd: PROJECT_ROOT, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
         });
-
-        // 收集 stderr 用于调试
-        let stderrLog = '';
-        pythonProcess.stderr.on('data', (data) => {
-            const msg = data.toString();
-            stderrLog += msg;
-            // uvicorn 的启动信息走 stderr，所以不隐藏
-            process.stderr.write(`[py] ${msg}`);
-        });
-
-        // Poll until backend is ready
-        const startTime = Date.now();
-        const MAX_WAIT = 30000;
-        const RETRY_INTERVAL = 300;
-
-        const checkReady = () => {
-            const req = http.get(`http://${HOST}:${port}/api/v1/setup/status`, (res) => {
-                // 任何响应（包括 200/404/500）都说明端口在监听
-                console.log(`[praxic] Python 后端就绪 (${Date.now() - startTime}ms)`);
-                resolve();
-            });
-
-            req.on('error', () => {
-                if (Date.now() - startTime > MAX_WAIT) {
-                    reject(new Error(
-                        `Python 后端超时未就绪 (${MAX_WAIT}ms)\n\n` +
-                        `stderr 输出:\n${stderrLog.slice(-2000)}`
-                    ));
-                } else {
-                    setTimeout(checkReady, RETRY_INTERVAL);
-                }
-            });
-
-            req.setTimeout(2000, () => {
-                req.destroy();
-                if (Date.now() - startTime > MAX_WAIT) {
-                    reject(new Error(`Python 后端超时未就绪 (${MAX_WAIT}ms)`));
-                } else {
-                    setTimeout(checkReady, RETRY_INTERVAL);
-                }
-            });
-        };
-
-        // 给 Python 进程一点启动时间，然后开始轮询
-        setTimeout(checkReady, 1000);
+    }
+    const child = pythonProcess;
+    child.on('close', () => {
+        if (pythonProcess === child) pythonProcess = null;
     });
+    return waitForBackend(child, `http://${HOST}:${port}/api/v1/setup/status`);
 }
 
 function stopPythonBackend() {
@@ -150,7 +93,7 @@ function stopPythonBackend() {
         console.log('[praxic] 正在关闭 Python 后端...');
         if (process.platform === 'win32') {
             // Windows: 使用 taskkill 确保子进程树全部终止
-            spawn('taskkill', ['/pid', String(pythonProcess.pid), '/f', '/t']);
+            if (pythonProcess.pid) spawn('taskkill', ['/pid', String(pythonProcess.pid), '/f', '/t'], { windowsHide: true });
         } else {
             pythonProcess.kill('SIGTERM');
             // 如果 3 秒后还没退出，强制 kill

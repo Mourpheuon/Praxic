@@ -30,4 +30,4 @@ archive/ 不进入发行源码；归档是可恢复的本地副本，需跨机�
 
 ## 发布状态
 
-详见 [Windows 发布诊断](RELEASE_DIAGNOSIS.md)。本轮不修改已发布安装包、不修复启动链路、不上传新 release。
+详见 [Windows 发布诊断与修复](RELEASE_DIAGNOSIS.md)。用户确认是安装后的启动失败后，源码启动链路已修复并通过实际冻结后端验证。已发布安装包保持不变，尚未上传新 release。

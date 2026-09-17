@@ -39,6 +39,10 @@ web_index = _root / "praxic" / "web" / "index.html"
 if web_index.exists():
     datas.append((str(web_index), "praxic/web"))
 
+web_public = _root / "praxic" / "web" / "public"
+if web_public.is_dir():
+    datas.append((str(web_public), "praxic/web/public"))
+
 # prompts 目录（如果存在）
 prompts_dir = _root / "prompts"
 if prompts_dir.is_dir():
@@ -114,6 +118,8 @@ hiddenimports = [
     "fastapi.middleware.cors",
     "starlette",
     "starlette.responses",
+    "python_multipart",
+    "multipart",
 
     # === Pydantic ===
     "pydantic",

@@ -1,6 +1,6 @@
 # Windows v0.1.8 发布诊断
 
-核对日期：2026-09-17。范围为诊断，尚未修改启动链路或重新发布。
+核对日期：2026-09-17。以下证据对应线上 v0.1.8；用户后续确认是安装完成后的启动失败。源码修复和验证见文末，线上安装包尚未重新发布。
 
 ## 证据身份
 
@@ -44,7 +44,18 @@ Electron 等待后端健康接口，因此这一错误可以解释“安装后�
 安装失败出现在哪一步、完整错误文字/截图、安装路径、Win11 系统架构及安全软件提示。
 没有进行干净 Win11 虚拟机的安装/卸载测试，所以不能把已复现的启动失败等同于安装器本身失败。
 
-## 参考
+## 源码修复与验证（2026-09-17）
+
+- 冻结模式在当前进程中调用 uvicorn.run，避免把 exe 当解释器再次启动；保持 Electron 指定端口。
+- Electron 传入 --no-browser，隐藏后端控制台，把运行数据放到 app.getPath('userData')/backend。独立 exe 默认使用 LOCALAPPDATA/Praxic/backend（Windows）。两者均可用 PRAXIC_RUNTIME_DIR 覆盖。
+- 不自动移动旧安装目录中的配置与数据。旧文件保留；需要恢复旧配置时先备份，再由用户迁移到新运行目录。
+- 收集 stdout 与 stderr，提前退出即时报告退出码和最后输出；只有健康接口返回 200 且 JSON 含 configured 布尔字段才视为就绪，整体等待上限 60 秒。
+- 补齐打包 public 静态资源、python-multipart 构建依赖；CI 和本地 Windows 打包闸门增加冻结后端启动检查。
+- 本机 Windows 11 新构建 exe 实测通过：隔离运行目录、中文空格路径、无 API Key 的健康接口、HTML、favicon、品牌 SVG。旧安装包未覆盖，新 exe 在 output/startup-fix/dist/。
+- 完整 Python 回归 373 项通过（一个已有 tar 解压弃用警告）；Node 启动逻辑 5 项通过，覆盖提前退出、输出捕获、健康/500 响应、网络挂起与程序缺失。
+- 尚未完成干净系统的完整安装器安装/卸载验收；签名与外部 CDN 依赖、非 Windows 安装包配置仍属于独立后续事项。没有推送或发布。
+
+## 原始诊断参考
 
 - [原始 release](https://github.com/Mourpheuon/Praxic/releases/tag/v0.1.8)
 - [PyInstaller 冻结运行时说明](https://www.pyinstaller.org/en/stable/runtime-information.html)

@@ -47,12 +47,15 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install "fastapi>=0.111.0" "uvicorn[standard]>=0.30.0" "sqlalchemy[asyncio]>=2.0.0" aiosqlite "pydantic>=2.7.0" structlog "httpx>=0.27.0" "openai>=1.35.0" "anthropic>=0.28.0" "tiktoken>=0.7.0" "python-dotenv>=1.0.0" "typer>=0.12.0" "rich>=13.7.0" networkx
-          pip install pyinstaller
+          pip install pyinstaller "python-multipart>=0.0.9"
 
       # ── 后端：PyInstaller 单文件 ────────────────────────────
       - name: Build backend (PyInstaller)
         run: |
           pyinstaller praxic.spec --noconfirm --clean
+
+      - name: Smoke test frozen backend
+        run: python scripts/smoke_backend.py
 
       # ── macOS 图标：从 iconset 生成 icns ────────────────────
       - name: Generate macOS icns
@@ -69,6 +72,9 @@ jobs:
 
       - name: Install npm deps
         run: npm ci --ignore-scripts
+
+      - name: Test desktop backend readiness
+        run: node --test tests/backend-ready.test.cjs
 
       # ── Electron 打包 ───────────────────────────────────────
       - name: Package (electron-builder)

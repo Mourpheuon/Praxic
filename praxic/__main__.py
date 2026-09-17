@@ -7,14 +7,28 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 
-# PyInstaller frozen: sys._MEIPASS is read-only temp dir; CWD should be exe dir
+# Bundle resources and mutable runtime data have separate locations.
 if getattr(sys, 'frozen', False):
     _ROOT = sys._MEIPASS
-    _CWD = os.path.dirname(sys.executable)
-    os.chdir(_CWD)
 else:
     _ROOT = HERE.parent
-    _CWD = str(_ROOT)
+
+
+def _prepare_runtime_dir():
+    """Never write configuration/data into an installed executable directory."""
+    if not getattr(sys, 'frozen', False):
+        return
+    override = os.environ.get('PRAXIC_RUNTIME_DIR')
+    if override:
+        runtime = Path(override).expanduser().resolve()
+    elif sys.platform == 'win32':
+        runtime = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local')) / 'Praxic' / 'backend'
+    elif sys.platform == 'darwin':
+        runtime = Path.home() / 'Library' / 'Application Support' / 'Praxic' / 'backend'
+    else:
+        runtime = Path(os.environ.get('XDG_DATA_HOME', Path.home() / '.local' / 'share')) / 'praxic' / 'backend'
+    runtime.mkdir(parents=True, exist_ok=True)
+    os.chdir(runtime)
 
 # ── Auto-activate .venv if present ──
 if sys.version_info < (3, 10):
@@ -117,7 +131,15 @@ def _print_help(url: str):
 
 
 def run_forever(host: str, port: int, open_browser: bool = True):
+    _prepare_runtime_dir()
     _ensure_config()
+    if getattr(sys, 'frozen', False):
+        # sys.executable is this application, not a Python interpreter.
+        # Keep the requested port: Electron polls exactly that address.
+        if open_browser:
+            threading.Timer(1.5, lambda: webbrowser.open(f'http://localhost:{port}')).start()
+        uvicorn.run('praxic.api.server:app', host=host, port=port, log_level='info')
+        return
     port = _find_free_port(host, port)
     url = f"http://localhost:{port}"
     if open_browser:
@@ -139,7 +161,10 @@ def run_forever(host: str, port: int, open_browser: bool = True):
         nonlocal proc
         while True:
             try:
-                cmd = sys.stdin.readline().strip().lower()
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                cmd = line.strip().lower()
             except (EOFError, OSError):
                 break
             if cmd in ("q", "quit"):

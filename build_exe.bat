@@ -25,9 +25,10 @@ if errorlevel 1 (
 )
 
 echo  [2/3] Checking dependencies...
-pip install --break-system-packages "fastapi>=0.111.0" "uvicorn[standard]>=0.30.0" structlog pydantic python-dotenv httpx openai tiktoken typer rich -q
+pip install --break-system-packages "fastapi>=0.111.0" "uvicorn[standard]>=0.30.0" "python-multipart>=0.0.9" structlog pydantic python-dotenv httpx openai tiktoken typer rich -q
 if errorlevel 1 (
-    echo  [WARN] Some dependencies may have failed, continuing...
+    echo  [ERROR] Dependency installation failed.
+    exit /b 1
 )
 
 echo  [3/3] Building praxic-backend.exe...
