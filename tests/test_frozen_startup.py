@@ -3,6 +3,18 @@ import sys
 import pytest
 
 
+def test_frozen_logs_use_utf8_even_with_western_windows_encoding(monkeypatch):
+    import io
+    import praxic.__main__ as entry
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding='cp1252')
+    monkeypatch.setattr(entry.sys, 'stdout', stream)
+    monkeypatch.setattr(entry.sys, 'stderr', None)
+    entry._configure_stdio()
+    print('即物穷理 用户数据', file=stream)
+    assert '即物穷理' in raw.getvalue().decode('utf-8')
+
+
 def test_frozen_server_runs_in_process(monkeypatch, tmp_path):
     import praxic.__main__ as entry
     monkeypatch.chdir(tmp_path)

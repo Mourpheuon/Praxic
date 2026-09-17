@@ -7,6 +7,17 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8000
 
+
+def _configure_stdio():
+    """Frozen Python ignores PYTHONIOENCODING; pipes must handle Unicode logs."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='backslashreplace', line_buffering=True)
+
+
+if getattr(sys, 'frozen', False):
+    _configure_stdio()
+
 # Bundle resources and mutable runtime data have separate locations.
 if getattr(sys, 'frozen', False):
     _ROOT = sys._MEIPASS
