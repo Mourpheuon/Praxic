@@ -46,16 +46,16 @@ files:
 # 打包后的 Python 后端 exe（PyInstaller 产物）随安装包分发。
 # Electron 生产模式会从 resources/backend/praxic-backend(.exe) 启动它，
 # 见 electron/main.js -> resolveBackendExecutable()。
-extraResources:
-  - from: dist/praxic-backend.exe
-    to: backend/praxic-backend.exe
-    filter: ["**/*"]
+artifactName: "Praxic-${version}-${os}-${arch}.${ext}"
 
 # 保留普通文件布局；冻结后端不依赖 app 内的 Python 源码
 asar: false
 
 # macOS 配置（未签名：无 Apple Developer 证书，用户首次打开需右键→打开）
 mac:
+  extraResources:
+    - from: dist/praxic-backend
+      to: backend/praxic-backend
   category: public.app-category.productivity
   target:
     - dmg
@@ -68,6 +68,9 @@ mac:
 
 # Windows 配置
 win:
+  extraResources:
+    - from: dist/praxic-backend.exe
+      to: backend/praxic-backend.exe
   target:
     - nsis
   icon: assets/icon.ico
@@ -81,6 +84,10 @@ nsis:
 
 # Linux 配置
 linux:
+  extraResources:
+    - from: dist/praxic-backend
+      to: backend/praxic-backend
+  maintainer: "Praxic Project"
   target:
     - AppImage
     - deb

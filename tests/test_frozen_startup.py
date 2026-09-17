@@ -1,4 +1,6 @@
 from pathlib import Path
+import sys
+import pytest
 
 
 def test_frozen_server_runs_in_process(monkeypatch, tmp_path):
@@ -16,6 +18,7 @@ def test_frozen_server_runs_in_process(monkeypatch, tmp_path):
     assert calls == [(('praxic.api.server:app',), {'host': '127.0.0.1', 'port': 18881, 'log_level': 'info'})]
 
 
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows default runtime directory')
 def test_frozen_default_directory_is_not_install_dir(monkeypatch, tmp_path):
     import praxic.__main__ as entry
     monkeypatch.chdir(tmp_path)

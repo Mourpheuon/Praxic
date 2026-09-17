@@ -6,7 +6,7 @@ FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="Praxic"
 LABEL org.opencontainers.image.description="AI agent with Maoist dialectical-materialist cognitive core"
-ARG PRAXIC_VERSION=0.1.8
+ARG PRAXIC_VERSION=0.2.0
 LABEL org.opencontainers.image.version=$PRAXIC_VERSION
 
 WORKDIR /app
